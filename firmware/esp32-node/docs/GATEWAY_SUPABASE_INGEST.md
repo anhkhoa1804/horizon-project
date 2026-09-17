@@ -59,6 +59,25 @@ The gateway sends a wrapper object, not the station payload directly:
 `edge-ingest` unwraps `raw_station_payload`, normalizes it, and stores the
 original station object in the database `raw_station_payload` column.
 
+## Timezone
+
+Telemetry timestamp columns use PostgreSQL `timestamptz`. That type stores the
+absolute moment, not a timezone label. Migration
+`infra/supabase/migrations/025_vietnam_timezone_views.sql` sets the database
+default timezone to `Asia/Ho_Chi_Minh` and adds read views for inspection:
+
+```text
+environmental_readings_vn
+soil_readings_vn
+station_health_logs_vn
+environmental_events_vn
+ingestion_audit_logs_vn
+```
+
+Use the `timestamp_vn` and `created_at_vn` columns in those views when checking
+or deleting data by Vietnam wall-clock time. Keep application inserts pointed at
+the original tables.
+
 ## STATION_01 Water Data
 
 These fields from `raw_station_payload` are stored in
@@ -117,7 +136,13 @@ Battery fields use the same `station_health_logs` behavior as STATION_01.
 
 ## Deploy Checklist
 
-1. Run migration `infra/supabase/migrations/024_station_summary_ingest_fields.sql`.
+1. Run migrations:
+
+   ```text
+   infra/supabase/migrations/024_station_summary_ingest_fields.sql
+   infra/supabase/migrations/025_vietnam_timezone_views.sql
+   ```
+
 2. Build the Edge Function bundle:
 
    ```powershell
