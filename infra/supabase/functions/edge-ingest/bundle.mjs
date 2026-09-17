@@ -6,7 +6,8 @@ function resolveIngestConfig(env = process.env) {
     salinityWarningLevel: Number(env.SALINITY_WARNING_LEVEL ?? "1.2"),
     salinityCriticalLevel: Number(env.SALINITY_CRITICAL_LEVEL ?? "1.8"),
     lowBatteryVoltage: Number(env.LOW_BATTERY_VOLTAGE ?? "3.6"),
-    lowSignalStrengthDbm: Number(env.LOW_SIGNAL_STRENGTH_DBM ?? "-95")
+    lowSignalStrengthDbm: Number(env.LOW_SIGNAL_STRENGTH_DBM ?? "-95"),
+    gatewayIngestToken: env.GATEWAY_INGEST_TOKEN
   };
 }
 
@@ -126,9 +127,15 @@ function soilValuesInRange(payload) {
     [soil.soil_temp_c, -10, 60],
     [soil.soil_moisture_pct, 0, 100],
     [soil.soil_ec_ms_cm, 0, 20],
+    [soil.soil_ec_us_cm ?? null, 0, 2e4],
+    [soil.soil_salinity ?? null, 0, 1e5],
+    [soil.soil_tds ?? null, 0, 1e5],
     [soil.soil_ph, 0, 14]
   ];
   return checks.every(([value, min, max]) => value === null || inRange(value, min, max));
+}
+function optionalInRange(value, min, max) {
+  return typeof value !== "number" || inRange(value, min, max);
 }
 function auditRow(payload, status, reason, timestamp) {
   return {
@@ -207,27 +214,36 @@ async function ingestTelemetry(request, db, config, nowEpochSeconds = Math.floor
       await db.insertAuditLog(auditRow(payload, "contract_mismatch", "x-contract-version header does not match payload.contract_version", nowEpochSeconds));
       return { ok: false, error_code: "MISSING_FIELD", message: "x-contract-version header does not match payload.contract_version", retryable: false };
     }
+    const gatewayToken = request.headers["x-gateway-token"] ?? "";
+    const isGatewayTokenAuthorized = Boolean(config.gatewayIngestToken) && timingSafeEqualHex(gatewayToken, config.gatewayIngestToken ?? "");
     const authenticatingDeviceId = request.headers["x-device-id"];
-    if (!authenticatingDeviceId) {
+    if (!isGatewayTokenAuthorized && !authenticatingDeviceId) {
       await db.insertAuditLog(auditRow(payload, "missing_field", "missing x-device-id header", nowEpochSeconds));
       return { ok: false, error_code: "MISSING_FIELD", message: "missing x-device-id header", retryable: false };
     }
-    const knownSecret = await db.getDeviceSecret(authenticatingDeviceId);
-    if (!knownSecret) {
-      await db.insertAuditLog(auditRow(payload, "device_not_registered", "unknown or inactive authenticating device", nowEpochSeconds));
-      return { ok: false, error_code: "DEVICE_NOT_REGISTERED", message: "unknown or inactive authenticating device", retryable: false };
+    if (isGatewayTokenAuthorized) {
+      if (!await db.isDeviceRegistered(payload.device_id)) {
+        await db.insertAuditLog(auditRow(payload, "device_not_registered", "attributed station is not a known, active device", nowEpochSeconds));
+        return { ok: false, error_code: "DEVICE_NOT_REGISTERED", message: "attributed station is not a known, active device", retryable: false };
+      }
+    } else {
+      const knownSecret = await db.getDeviceSecret(authenticatingDeviceId);
+      if (!knownSecret) {
+        await db.insertAuditLog(auditRow(payload, "device_not_registered", "unknown or inactive authenticating device", nowEpochSeconds));
+        return { ok: false, error_code: "DEVICE_NOT_REGISTERED", message: "unknown or inactive authenticating device", retryable: false };
+      }
+      const expectedSig = await signPayload(payload, knownSecret);
+      if (!timingSafeEqualHex(expectedSig, request.headers["x-signature"] ?? "")) {
+        await db.insertAuditLog(auditRow(payload, "invalid_signature", "signature verification failed", nowEpochSeconds));
+        return { ok: false, error_code: "INVALID_SIGNATURE", message: "signature verification failed", retryable: false };
+      }
     }
-    const expectedSig = await signPayload(payload, knownSecret);
-    if (!timingSafeEqualHex(expectedSig, request.headers["x-signature"] ?? "")) {
-      await db.insertAuditLog(auditRow(payload, "invalid_signature", "signature verification failed", nowEpochSeconds));
-      return { ok: false, error_code: "INVALID_SIGNATURE", message: "signature verification failed", retryable: false };
-    }
-    if (authenticatingDeviceId !== payload.device_id && !await db.isDeviceRegistered(payload.device_id)) {
+    if (!isGatewayTokenAuthorized && authenticatingDeviceId !== payload.device_id && !await db.isDeviceRegistered(payload.device_id)) {
       await db.insertAuditLog(auditRow(payload, "device_not_registered", "attributed station is not a known, active device", nowEpochSeconds));
       return { ok: false, error_code: "DEVICE_NOT_REGISTERED", message: "attributed station is not a known, active device", retryable: false };
     }
     const headerTimestamp = Number.parseInt(request.headers["x-timestamp"], 10);
-    const isHeaderValid = !Number.isNaN(headerTimestamp) && Math.abs(nowEpochSeconds - headerTimestamp) <= config.maxTimestampDriftSeconds;
+    const isHeaderValid = isGatewayTokenAuthorized && !request.headers["x-timestamp"] || !Number.isNaN(headerTimestamp) && Math.abs(nowEpochSeconds - headerTimestamp) <= config.maxTimestampDriftSeconds;
     const isPayloadValid = Math.abs(nowEpochSeconds - payload.timestamp) <= config.maxTimestampDriftSeconds;
     if (!isHeaderValid || !isPayloadValid) {
       const reason = !isHeaderValid ? "header timestamp is outside allowed drift window" : "payload timestamp is outside allowed drift window";
@@ -239,7 +255,7 @@ async function ingestTelemetry(request, db, config, nowEpochSeconds = Math.floor
         retryable: false
       };
     }
-    const valuesInRange = kind === "soil" ? soilValuesInRange(payload) : inRange(payload.salinity, 0, 50) && inRange(payload.water_level, -100, 1e3) && (typeof payload.battery_voltage !== "number" || inRange(payload.battery_voltage, 2.5, 5.5)) && (typeof payload.signal_strength_dbm !== "number" || inRange(payload.signal_strength_dbm, -130, -30));
+    const valuesInRange = kind === "soil" ? soilValuesInRange(payload) : inRange(payload.salinity, 0, 50) && inRange(payload.water_level, -100, 1e3) && optionalInRange(payload.salinity_ppm, 0, 1e5) && optionalInRange(payload.sensor_height_cm, 0, 1e4) && optionalInRange(payload.distance_cm, -100, 1e4) && optionalInRange(payload.ec_ms_cm, 0, 20) && optionalInRange(payload.ec_us_cm, 0, 2e4) && optionalInRange(payload.temperature_c, -10, 80) && optionalInRange(payload.tds_ppm, 0, 1e5) && (typeof payload.battery_voltage !== "number" || inRange(payload.battery_voltage, 2.5, 5.5)) && optionalInRange(payload.battery_percent, 0, 100) && (typeof payload.signal_strength_dbm !== "number" || inRange(payload.signal_strength_dbm, -130, -30));
     if (!valuesInRange) {
       await db.insertAuditLog(auditRow(payload, "value_out_of_range", "value out of accepted range", nowEpochSeconds));
       return { ok: false, error_code: "VALUE_OUT_OF_RANGE", message: "value out of accepted range", retryable: false };
@@ -264,25 +280,43 @@ async function ingestTelemetry(request, db, config, nowEpochSeconds = Math.floor
       soil_temp_c: payload.soil?.soil_temp_c ?? null,
       soil_moisture_pct: payload.soil?.soil_moisture_pct ?? null,
       soil_ec_ms_cm: payload.soil?.soil_ec_ms_cm ?? null,
+      soil_ec_us_cm: payload.soil?.soil_ec_us_cm ?? null,
+      soil_salinity: payload.soil?.soil_salinity ?? null,
+      soil_tds: payload.soil?.soil_tds ?? null,
       soil_ph: payload.soil?.soil_ph ?? null,
+      sequence: payload.sequence ?? null,
+      summary_minutes: payload.summary_minutes ?? null,
+      crop: payload.crop ?? null,
       fault_flags: payload.fault_flags,
-      timestamp: payload.timestamp
+      timestamp: payload.timestamp,
+      raw_station_payload: payload.raw_station_payload ?? null
     }) : await db.insertEnvironmental({
       message_id: payload.message_id,
       station_id: payload.device_id,
       salinity: payload.salinity,
+      salinity_ppm: payload.salinity_ppm ?? null,
       water_level: payload.water_level,
+      sensor_height_cm: payload.sensor_height_cm ?? null,
+      distance_cm: payload.distance_cm ?? null,
+      ec_ms_cm: payload.ec_ms_cm ?? null,
+      ec_us_cm: payload.ec_us_cm ?? null,
+      temperature_c: payload.temperature_c ?? null,
+      tds_ppm: payload.tds_ppm ?? null,
+      sequence: payload.sequence ?? null,
+      summary_minutes: payload.summary_minutes ?? null,
       fault_flags: payload.fault_flags,
       ec_probe_status: payload.sensor_status.ec_probe,
       ultrasonic_status: payload.sensor_status.ultrasonic,
-      timestamp: payload.timestamp
+      timestamp: payload.timestamp,
+      raw_station_payload: payload.raw_station_payload ?? null
     });
     if (status === "inserted") {
       try {
-        if (typeof payload.battery_voltage === "number" || typeof payload.signal_strength_dbm === "number") {
+        if (typeof payload.battery_voltage === "number" || typeof payload.battery_percent === "number" || typeof payload.signal_strength_dbm === "number") {
           await db.insertHealth({
             station_id: payload.device_id,
             battery_voltage: payload.battery_voltage ?? null,
+            battery_percent: payload.battery_percent ?? null,
             signal_strength_dbm: payload.signal_strength_dbm ?? null,
             firmware_version: payload.firmware_version,
             timestamp: payload.timestamp
@@ -321,6 +355,92 @@ async function ingestTelemetry(request, db, config, nowEpochSeconds = Math.floor
 }
 
 // src/httpHandler.ts
+function finiteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : void 0;
+}
+function nullableNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+function positiveNumber(value) {
+  const numberValue = finiteNumber(value);
+  return numberValue !== void 0 && numberValue > 0 ? numberValue : void 0;
+}
+function stringValue(value) {
+  return typeof value === "string" && value.length > 0 ? value : void 0;
+}
+function normalizeStationSummaryPayload(raw, nowEpochSeconds) {
+  if (raw.type !== "station_summary") {
+    return null;
+  }
+  const stationId = stringValue(raw.station_id);
+  const messageId = stringValue(raw.message_id);
+  const firmwareVersion = stringValue(raw.firmware_version);
+  if (!stationId || !messageId || !firmwareVersion) {
+    return null;
+  }
+  const timestamp = finiteNumber(raw.timestamp) ?? nowEpochSeconds;
+  const base = {
+    contract_version: "v1",
+    device_id: stationId,
+    message_id: messageId,
+    timestamp,
+    sequence: finiteNumber(raw.sequence),
+    summary_minutes: finiteNumber(raw.summary_minutes),
+    firmware_version: firmwareVersion,
+    fault_flags: 0,
+    battery_voltage: positiveNumber(raw.battery_voltage_v),
+    battery_percent: finiteNumber(raw.battery_percent),
+    raw_station_payload: raw
+  };
+  if (stationId === "STATION_02") {
+    return {
+      ...base,
+      reading_kind: "soil",
+      crop: stringValue(raw.crop),
+      soil: {
+        air_temp_c: nullableNumber(raw.air_temp_c),
+        air_humidity_pct: nullableNumber(raw.air_humidity_pct),
+        soil_temp_c: nullableNumber(raw.soil_temp_c),
+        soil_moisture_pct: nullableNumber(raw.soil_moisture_pct),
+        soil_ec_ms_cm: nullableNumber(raw.soil_ec_ms_cm),
+        soil_ec_us_cm: nullableNumber(raw.soil_ec_us_cm),
+        soil_salinity: nullableNumber(raw.soil_salinity),
+        soil_tds: nullableNumber(raw.soil_tds),
+        soil_ph: nullableNumber(raw.soil_ph)
+      }
+    };
+  }
+  if (stationId === "STATION_01") {
+    const ecMsCm = finiteNumber(raw.ec_ms_cm);
+    const ecUsCm = finiteNumber(raw.ec_us_cm);
+    const waterLevel = finiteNumber(raw.water_level_cm);
+    const distance = finiteNumber(raw.distance_cm);
+    return {
+      ...base,
+      reading_kind: "water",
+      salinity: finiteNumber(raw.salinity_ppt),
+      salinity_ppm: finiteNumber(raw.salinity_ppm),
+      water_level: waterLevel,
+      sensor_height_cm: finiteNumber(raw.sensor_height_cm),
+      distance_cm: distance,
+      ec_ms_cm: ecMsCm,
+      ec_us_cm: ecUsCm,
+      temperature_c: finiteNumber(raw.temperature_c),
+      tds_ppm: finiteNumber(raw.tds_ppm),
+      sensor_status: {
+        ec_probe: ecMsCm !== void 0 || ecUsCm !== void 0 ? "ok" : "fault",
+        ultrasonic: waterLevel !== void 0 || distance !== void 0 ? "ok" : "fault"
+      }
+    };
+  }
+  return null;
+}
+function normalizePayload(payload, nowEpochSeconds) {
+  const rawPayload = payload;
+  const stationPayload = rawPayload.raw_station_payload && typeof rawPayload.raw_station_payload === "object" && !Array.isArray(rawPayload.raw_station_payload) ? rawPayload.raw_station_payload : rawPayload;
+  const stationSummary = normalizeStationSummaryPayload(stationPayload, nowEpochSeconds);
+  return stationSummary ?? payload;
+}
 function ingestResponseToHttp(result) {
   if (!result.ok) {
     const statusByCode = {
@@ -337,14 +457,16 @@ function ingestResponseToHttp(result) {
   return { status: 200, body: { ...result } };
 }
 async function handleIngestRequest(payload, headers, db, config, nowEpochSeconds = Math.floor(Date.now() / 1e3)) {
+  const normalizedPayload = normalizePayload(payload, nowEpochSeconds);
   const request = {
     headers: {
       "x-device-id": headers["x-device-id"] ?? "",
       "x-timestamp": headers["x-timestamp"] ?? "",
       "x-signature": headers["x-signature"] ?? "",
-      "x-contract-version": headers["x-contract-version"] ?? ""
+      "x-contract-version": headers["x-contract-version"] ?? "",
+      "x-gateway-token": headers["x-gateway-token"] ?? ""
     },
-    payload
+    payload: normalizedPayload
   };
   const result = await ingestTelemetry(request, db, config, nowEpochSeconds);
   return ingestResponseToHttp(result);
@@ -423,11 +545,21 @@ var SupabaseDb = class _SupabaseDb {
       message_id: row.message_id,
       station_id: row.station_id,
       salinity: row.salinity,
+      salinity_ppm: row.salinity_ppm,
       water_level: row.water_level,
+      sensor_height_cm: row.sensor_height_cm,
+      distance_cm: row.distance_cm,
+      ec_ms_cm: row.ec_ms_cm,
+      ec_us_cm: row.ec_us_cm,
+      temperature_c: row.temperature_c,
+      tds_ppm: row.tds_ppm,
+      sequence: row.sequence,
+      summary_minutes: row.summary_minutes,
       fault_flags: row.fault_flags,
       ec_probe_status: row.ec_probe_status,
       ultrasonic_status: row.ultrasonic_status,
-      timestamp: new Date(row.timestamp * 1e3).toISOString()
+      timestamp: new Date(row.timestamp * 1e3).toISOString(),
+      raw_station_payload: row.raw_station_payload
     });
     if (result.ok) {
       return "inserted";
@@ -446,9 +578,16 @@ var SupabaseDb = class _SupabaseDb {
       soil_temp_c: row.soil_temp_c,
       soil_moisture_pct: row.soil_moisture_pct,
       soil_ec_ms_cm: row.soil_ec_ms_cm,
+      soil_ec_us_cm: row.soil_ec_us_cm,
+      soil_salinity: row.soil_salinity,
+      soil_tds: row.soil_tds,
       soil_ph: row.soil_ph,
+      sequence: row.sequence,
+      summary_minutes: row.summary_minutes,
+      crop: row.crop,
       fault_flags: row.fault_flags,
-      timestamp: new Date(row.timestamp * 1e3).toISOString()
+      timestamp: new Date(row.timestamp * 1e3).toISOString(),
+      raw_station_payload: row.raw_station_payload
     });
     if (result.ok) {
       return "inserted";
@@ -484,6 +623,7 @@ var SupabaseDb = class _SupabaseDb {
     const result = await this.request("station_health_logs", "POST", {
       station_id: row.station_id,
       battery_voltage: row.battery_voltage,
+      battery_percent: row.battery_percent,
       signal_strength_dbm: row.signal_strength_dbm,
       firmware_version: row.firmware_version,
       timestamp: new Date(row.timestamp * 1e3).toISOString()

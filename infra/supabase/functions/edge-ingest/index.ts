@@ -19,7 +19,7 @@ serve(async (req: Request) => {
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Headers":
-          "authorization, x-client-info, apikey, content-type, x-device-id, x-timestamp, x-signature, x-contract-version",
+          "authorization, x-client-info, apikey, content-type, x-device-id, x-timestamp, x-signature, x-contract-version, x-gateway-token",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
       },
     });
@@ -38,6 +38,7 @@ serve(async (req: Request) => {
     SALINITY_CRITICAL_LEVEL: readEnv("SALINITY_CRITICAL_LEVEL"),
     LOW_BATTERY_VOLTAGE: readEnv("LOW_BATTERY_VOLTAGE"),
     LOW_SIGNAL_STRENGTH_DBM: readEnv("LOW_SIGNAL_STRENGTH_DBM"),
+    GATEWAY_INGEST_TOKEN: readEnv("GATEWAY_INGEST_TOKEN"),
   };
 
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -59,6 +60,7 @@ serve(async (req: Request) => {
     "x-timestamp": req.headers.get("x-timestamp") ?? "",
     "x-signature": req.headers.get("x-signature") ?? "",
     "x-contract-version": req.headers.get("x-contract-version") ?? "",
+    "x-gateway-token": req.headers.get("x-gateway-token") ?? "",
   };
 
   const result = await processIngestHttp(payload, headers, env);

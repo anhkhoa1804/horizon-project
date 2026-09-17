@@ -1,9 +1,8 @@
 import { handleIngestFromEnv } from "./httpHandler.js";
 import { SupabaseDb } from "./supabaseDb.js";
-import type { TelemetryPayloadV1 } from "./types.js";
 
 export async function processIngestHttp(
-  payload: TelemetryPayloadV1,
+  payload: Record<string, unknown>,
   headers: Record<string, string>,
   env: Record<string, string | undefined>,
   nowEpochSeconds = Math.floor(Date.now() / 1000),

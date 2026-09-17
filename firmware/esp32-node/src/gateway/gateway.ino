@@ -11,13 +11,14 @@
   Role:
   - Receive raw JSON readings from Station 1 and Station 2 through SX1278 LoRa UART.
   - Add gateway metadata.
-  - Send packets to the webserver through a 4G SIM module using AT commands.
+  - Send packets to Supabase ingest through a 4G SIM module using AT commands.
   - Drive 3 status lamps and 1 buzzer through MOSFET outputs.
 
   Important:
   - The gateway should not calculate agricultural/environment thresholds.
-  - The webserver stores the raw observation and calculates dashboard values,
-    daily comparison tables, warnings, and recommendations.
+  - Supabase stores the raw observation. The frontend reads from Supabase to
+    calculate dashboard values, daily comparison tables, warnings, and
+    recommendations.
 
   Expected station payload examples:
   - Station 1: water_level_cm, salinity_ppt, ec_us_cm, ultrasonic_status, ec_status
@@ -25,7 +26,7 @@
                soil_ec_ms_cm, soil_ph, advice
 
   TODO:
-  - Set WEB_SERVER_URL to your deployed ingest endpoint.
+  - Keep WEB_SERVER_URL pointed at the Supabase Edge Function used by this deployment.
   - Set SIM_APN for the SIM provider.
   - Confirm SIM module model and HTTP AT command support.
   - Confirm LoRa UART baud rate / transparent mode.
@@ -42,8 +43,17 @@ static const IPAddress WIFI_AP_GATEWAY(192, 168, 4, 1);
 static const IPAddress WIFI_AP_SUBNET(255, 255, 255, 0);
 static const uint32_t DASHBOARD_ONLINE_WINDOW_MS = 60000;
 
-// Replace with your endpoint. It should accept JSON POST bodies.
-static const char *WEB_SERVER_URL = "https://eojvszriud4okpq.m.pipedream.net";
+// Production ingest endpoint.
+//
+// The gateway posts JSON to Supabase Edge Function `edge-ingest` with the
+// `x-gateway-token` header from gateway_secrets.h. The JSON body is a gateway
+// envelope containing `raw_station_payload`; the Edge Function unwraps that
+// station payload, stores STATION_01 water data in environmental_readings,
+// stores STATION_02 soil data in soil_readings, and keeps the original station
+// fields in raw_station_payload for audit/debugging.
+//
+// Do not point this back to Pipedream except for temporary packet debugging.
+static const char *WEB_SERVER_URL = "https://edhcnccvbwuffiwzywfm.supabase.co/functions/v1/edge-ingest";
 static const char *CONFIG_URL = "https://horizon-frogsleap.vercel.app/api/public/gateway/configs";
 #ifndef GATEWAY_INGEST_TOKEN_VALUE
 #define GATEWAY_INGEST_TOKEN_VALUE ""

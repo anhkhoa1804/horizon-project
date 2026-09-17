@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { signPayload } from "../src/canonical.js";
+import { handleIngestRequest } from "../src/httpHandler.js";
 import { ingestTelemetry } from "../src/ingest.js";
 import { MockDb } from "../src/mockDb.js";
 import type { IngestConfig } from "../src/ingest.js";
@@ -212,6 +213,132 @@ describe("ingest contract", () => {
       assert.equal(response.error_code, "TIMESTAMP_OUT_OF_WINDOW");
     }
     assert.equal(db.getSnapshot().auditLogs.at(-1)?.status, "expired_timestamp");
+  });
+});
+
+describe("station_summary gateway payloads", () => {
+  const tokenConfig: IngestConfig = {
+    ...config,
+    gatewayIngestToken: "gateway-token-01",
+  };
+
+  it("stores every STATION_01 field from the gateway summary in environmental_readings", async () => {
+    const db = new MockDb({}, otaCatalog, ["STATION_01"]);
+    const payload = {
+      type: "station_summary",
+      station_id: "STATION_01",
+      firmware_version: "simple-qos1-wire",
+      message_id: "STATION_01-1",
+      sequence: 1,
+      summary_minutes: 5,
+      sensor_height_cm: 350,
+      distance_cm: 228.6,
+      water_level_cm: 121.4,
+      ec_ms_cm: 0.106,
+      ec_us_cm: 106,
+      temperature_c: 29.5,
+      tds_ppm: 53,
+      salinity_ppt: 0.055,
+      salinity_ppm: 55,
+      battery_voltage_v: 0,
+      battery_percent: 0,
+    };
+
+    const response = await handleIngestRequest(payload, { "x-gateway-token": "gateway-token-01" }, db, tokenConfig, NOW);
+
+    assert.equal(response.status, 200);
+    const snapshot = db.getSnapshot();
+    assert.equal(snapshot.environmentalReadings.length, 1);
+    assert.equal(snapshot.soilReadings.length, 0);
+    assert.equal(snapshot.environmentalReadings[0]?.station_id, "STATION_01");
+    assert.equal(snapshot.environmentalReadings[0]?.water_level, 121.4);
+    assert.equal(snapshot.environmentalReadings[0]?.ec_us_cm, 106);
+    assert.equal(snapshot.environmentalReadings[0]?.tds_ppm, 53);
+    assert.equal(snapshot.environmentalReadings[0]?.raw_station_payload?.message_id, "STATION_01-1");
+    assert.equal(snapshot.healthLogs[0]?.battery_voltage, null);
+    assert.equal(snapshot.healthLogs[0]?.battery_percent, 0);
+  });
+
+  it("stores every STATION_02 field from the gateway summary in soil_readings", async () => {
+    const db = new MockDb({}, otaCatalog, ["STATION_02"]);
+    const payload = {
+      type: "station_summary",
+      station_id: "STATION_02",
+      firmware_version: "simple-qos1-wire",
+      message_id: "STATION_02-2",
+      sequence: 2,
+      summary_minutes: 5,
+      crop: "grapefruit",
+      air_temp_c: null,
+      air_humidity_pct: null,
+      soil_temp_c: 29.9,
+      soil_moisture_pct: 43.7,
+      soil_ec_ms_cm: 0.11,
+      soil_ec_us_cm: 110,
+      soil_salinity: 60,
+      soil_tds: 55,
+      soil_ph: 7,
+      battery_voltage_v: null,
+      battery_percent: null,
+    };
+
+    const response = await handleIngestRequest(payload, { "x-gateway-token": "gateway-token-01" }, db, tokenConfig, NOW);
+
+    assert.equal(response.status, 200);
+    const snapshot = db.getSnapshot();
+    assert.equal(snapshot.soilReadings.length, 1);
+    assert.equal(snapshot.environmentalReadings.length, 0);
+    assert.equal(snapshot.soilReadings[0]?.station_id, "STATION_02");
+    assert.equal(snapshot.soilReadings[0]?.soil_moisture_pct, 43.7);
+    assert.equal(snapshot.soilReadings[0]?.soil_ec_us_cm, 110);
+    assert.equal(snapshot.soilReadings[0]?.soil_salinity, 60);
+    assert.equal(snapshot.soilReadings[0]?.soil_tds, 55);
+    assert.equal(snapshot.soilReadings[0]?.crop, "grapefruit");
+    assert.equal(snapshot.soilReadings[0]?.raw_station_payload?.message_id, "STATION_02-2");
+    assert.equal(snapshot.healthLogs.length, 0);
+  });
+
+  it("unwraps the actual gateway envelope and stores the nested station summary", async () => {
+    const db = new MockDb({}, otaCatalog, ["STATION_02"]);
+    const response = await handleIngestRequest(
+      {
+        gateway_id: "GATEWAY",
+        firmware_version: "gateway-lora-wifi-0.8.2-rx-priority-preserve-http-fix",
+        sequence: 99,
+        uptime_ms: 12345,
+        transport: "lora_uart_to_4g",
+        raw_station_payload: {
+          type: "station_summary",
+          station_id: "STATION_02",
+          firmware_version: "simple-qos1-wire",
+          message_id: "STATION_02-wrapped-1",
+          sequence: 2,
+          summary_minutes: 5,
+          crop: "grapefruit",
+          air_temp_c: null,
+          air_humidity_pct: null,
+          soil_temp_c: 29.9,
+          soil_moisture_pct: 43.7,
+          soil_ec_ms_cm: 0.11,
+          soil_ec_us_cm: 110,
+          soil_salinity: 60,
+          soil_tds: 55,
+          soil_ph: 7,
+          battery_voltage_v: null,
+          battery_percent: null,
+        },
+      },
+      { "x-gateway-token": "gateway-token-01" },
+      db,
+      tokenConfig,
+      NOW,
+    );
+
+    assert.equal(response.status, 200);
+    const row = db.getSnapshot().soilReadings[0];
+    assert.equal(row?.message_id, "STATION_02-wrapped-1");
+    assert.equal(row?.soil_ec_us_cm, 110);
+    assert.equal(row?.raw_station_payload?.type, "station_summary");
   });
 });
 
