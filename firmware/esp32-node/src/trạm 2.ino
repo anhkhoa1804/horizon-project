@@ -42,8 +42,8 @@ static const uint32_t I2C_CLOCK_HZ = 25000;
 
 static const int INA226_SDA_PIN = 4;
 static const int INA226_SCL_PIN = 5;
-static const int SHT30_SDA_PIN = 8;
-static const int SHT30_SCL_PIN = 9;
+static const int SHT30_SDA_PIN = 47;
+static const int SHT30_SCL_PIN = 48;
 static const uint8_t SHT30_I2C_ADDRESS = 0x44;
 
 
