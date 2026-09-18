@@ -123,8 +123,9 @@ secret) — the gateway-relay and direct-connect paths are the same contract.
 
 **CURRENT (verified live):**
 - Supabase project `edhcnccvbwuffiwzywfm` is provisioned and reachable.
-- All 25 migrations (001–025) are applied to it; RLS-scoped public reads
-  work end-to-end against real data on every public route.
+- All 27 tracked migration files are applied to it (001–025 plus additive
+  024/025 gateway and timezone follow-ups); RLS-scoped public reads work
+  end-to-end against real data on every public route.
 - The web application reads real data from Supabase in production (typed
   repository layer, anon-key client for public pages, service-role for
   admin). The retained gateway history currently promotes to typed Station 01

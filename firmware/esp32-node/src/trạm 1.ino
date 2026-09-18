@@ -1,7 +1,6 @@
 #include <Arduino.h>
 
 #include <SPI.h>
-#include <SPIFFS.h>
 #include <Wire.h>
 #include <esp_sleep.h>
 #include <esp_task_wdt.h>
@@ -33,14 +32,12 @@ static HorizonNullSerial horizonNullSerial;
   - A02YYUW ultrasonic UART
   - ES-EC-WT-01 EC/salinity sensor via RS485 Modbus RTU
   - SX1278 LoRa transparent UART
-  - SPIFFS flash logging
 
   Operation:
   - Every ~1 minute:
       + 8 ultrasonic samples
       + 8 EC samples
       + filtered average
-      + save one minute record to SPIFFS
 
   - Every 5 minutes:
       + build aggregate
@@ -84,8 +81,8 @@ static const uint32_t I2C_CLOCK_HZ = 100000;
 
 // Production wiring restored to the original Station 1 pinout.
 // USB CDC/debug is not used in this build.
-static const int I2C_SDA_PIN = 19;
-static const int I2C_SCL_PIN = 20;
+static const int I2C_SDA_PIN = 4;
+static const int I2C_SCL_PIN = 5;
 
 static const uint8_t INA226_ADDRESS = 0x40;
 static const uint8_t LIFEPO4_CELL_COUNT = 4;
@@ -95,7 +92,7 @@ static const uint8_t INA226_REG_BUS_VOLTAGE = 0x02;
 static const float INA226_SHUNT_OHMS = 0.1f;
 static const bool DEBUG_BATTERY_READING = false;
 
-static const bool LORA_TEST_FAST_SEND = true;
+static const bool LORA_TEST_FAST_SEND = false;
 static const uint8_t RAW_SAMPLES_PER_MINUTE = LORA_TEST_FAST_SEND ? 1 : 8;
 static const uint8_t MIN_VALID_RAW_SAMPLES = LORA_TEST_FAST_SEND ? 1 : 3;
 
@@ -128,6 +125,7 @@ static const uint8_t LORA_TX_BURST_COUNT = 3;
 static const uint32_t LORA_ACK_TIMEOUT_MS = 5000;
 static const uint32_t LORA_REPLY_GUARD_MS = 1000;
 static const uint32_t LORA_TX_RETRY_GAP_MS = 1200;
+static const uint32_t DEFAULT_SLEEP_INTERVAL_MS = 60UL * 1000UL;
 
 
 // ============================================================
@@ -170,23 +168,25 @@ static const int A02YYUW_RX_PIN = 14;
 // so the slave ID is handled directly in the Modbus calls.
 
 // ESP32 TX -> TTL-RS485 RXD
-static const int EC_RS485_TX_PIN = 17;
+static const int EC_RS485_TX_PIN = 6;
 
 // ESP32 RX <- TTL-RS485 TXD
-static const int EC_RS485_RX_PIN = 18;
+static const int EC_RS485_RX_PIN = 7;
 
 // Your SN74HC14 TTL-RS485 board is auto-direction and has no DE/RE pin.
 // Keep this at -1 for that board.
 static const int EC_RS485_DE_RE_PIN = -1;
 static const uint32_t EC_RS485_TURNAROUND_DELAY_MS = 2;
+static const uint32_t EC_RS485_INTER_REQUEST_GAP_MS = 100;
+static const uint32_t EC_RS485_AUTO_RX_SETTLE_US = 300;
 
 // ============================================================
 // LORA UART
 // ============================================================
 
 // SX1278 UART module
-static const int LORA_UART_RX_PIN = 16;
-static const int LORA_UART_TX_PIN = 15;
+static const int LORA_UART_RX_PIN = 15;
+static const int LORA_UART_TX_PIN = 16;
 
 // Debug is on USB CDC; all three hardware UARTs are dedicated:
 // UART0=A02YYUW, UART1=LoRa, UART2=EC RS485.
@@ -194,38 +194,10 @@ static const bool DEBUG_DISABLE_LORA_UART = false;
 
 
 // ============================================================
-// SPIFFS STORAGE
-// ============================================================
-//
-// ESP32-S3 internal flash is used instead of external SD card.
-//
-
-// ============================================================
 // WATCHDOG
 // ============================================================
 
 static const uint32_t WATCHDOG_TIMEOUT_MS = 60000;
-
-
-// ============================================================
-// SPIFFS LOGGING
-// ============================================================
-
-static const size_t MINUTE_LOG_MAX_FILE_BYTES = 1200UL * 1024UL;
-static const size_t PACKET_LOG_MAX_FILE_BYTES = 96UL * 1024UL;
-static const size_t SPIFFS_MIN_FREE_BYTES = 8192;
-
-static const bool DEBUG_DISABLE_SPIFFS_FOR_LORA_TEST = false;
-static const bool DEBUG_PRINT_SPIFFS_WRITES = false;
-static const bool DEBUG_PRINT_STORED_LOG_TAIL_ON_BOOT = false;
-static const uint8_t SPIFFS_TAIL_LINES = 5;
-static const size_t SPIFFS_TAIL_SCAN_BYTES = 8192;
-
-static const char *MINUTE_LOG_PATH = "/station1_min.log";
-static const char *MINUTE_OLD_LOG_PATH = "/station1_min.old";
-
-static const char *PACKET_LOG_PATH = "/station1_pkt.log";
-static const char *PACKET_OLD_LOG_PATH = "/station1_pkt.old";
 
 
 // ============================================================
@@ -394,8 +366,6 @@ RTC_DATA_ATTR static float aggregateBatteryPercent[
 // GLOBAL STATE
 // ============================================================
 
-static bool spiffsReady = false;
-
 static bool watchdogReady = false;
 
 static bool ina226Ready = false;
@@ -410,7 +380,7 @@ static uint8_t activeEcSlaveId = EC_RS485_SLAVE_ID;
 
 static uint32_t lastSampleMs = 0;
 
-static uint32_t configuredSleepIntervalMs = 0;
+static uint32_t configuredSleepIntervalMs = DEFAULT_SLEEP_INTERVAL_MS;
 
 static String loraCommandLine;
 static bool gatewayPollPending = false;
@@ -493,434 +463,6 @@ void serviceWatchdog() {
 // SD LOG ROTATION
 // ============================================================
 
-size_t spiffsFreeBytes() {
-
-  if (!spiffsReady) {
-    return 0;
-  }
-
-  const size_t total =
-    SPIFFS.totalBytes();
-
-  const size_t used =
-    SPIFFS.usedBytes();
-
-  return total > used
-    ? total - used
-    : 0;
-}
-
-
-void removeSpiffsFileIfExists(
-  const char *path
-) {
-
-  if (
-    spiffsReady &&
-    SPIFFS.exists(path)
-  ) {
-
-    SPIFFS.remove(path);
-
-    Serial.printf(
-      "[SPIFFS] Da xoa log cu %s\n",
-      path
-    );
-  }
-}
-
-
-void forceRotateLog(
-  const char *path,
-  const char *oldPath
-) {
-
-  if (
-    !spiffsReady ||
-    !SPIFFS.exists(path)
-  ) {
-
-    return;
-  }
-
-  removeSpiffsFileIfExists(
-    oldPath
-  );
-
-  if (
-    SPIFFS.rename(
-      path,
-      oldPath
-    )
-  ) {
-
-    Serial.printf(
-      "[SPIFFS] Da xoay log %s -> %s\n",
-      path,
-      oldPath
-    );
-  }
-}
-
-
-void rotateLogIfNeeded(
-  const char *path,
-  const char *oldPath,
-  size_t maxBytes
-) {
-
-  if (!spiffsReady || !SPIFFS.exists(path)) {
-    return;
-  }
-
-  File file = SPIFFS.open(path, "r");
-
-  if (!file) {
-    return;
-  }
-
-  const size_t size = file.size();
-
-  file.close();
-
-  if (size < maxBytes) {
-    return;
-  }
-
-  forceRotateLog(
-    path,
-    oldPath
-  );
-}
-
-
-bool ensureSpiffsSpaceForAppend(
-  const char *path,
-  const char *oldPath,
-  size_t requiredBytes,
-  size_t maxBytes
-) {
-
-  rotateLogIfNeeded(
-    path,
-    oldPath,
-    maxBytes
-  );
-
-  if (
-    spiffsFreeBytes() >=
-    requiredBytes + SPIFFS_MIN_FREE_BYTES
-  ) {
-
-    return true;
-  }
-
-  removeSpiffsFileIfExists(
-    oldPath
-  );
-
-  if (
-    spiffsFreeBytes() >=
-    requiredBytes + SPIFFS_MIN_FREE_BYTES
-  ) {
-
-    return true;
-  }
-
-  forceRotateLog(
-    path,
-    oldPath
-  );
-
-  if (
-    spiffsFreeBytes() >=
-    requiredBytes + SPIFFS_MIN_FREE_BYTES
-  ) {
-
-    return true;
-  }
-
-  removeSpiffsFileIfExists(
-    oldPath
-  );
-
-  return
-    spiffsFreeBytes() >=
-    requiredBytes + SPIFFS_MIN_FREE_BYTES;
-}
-
-
-// ============================================================
-// APPEND TO SPIFFS
-// ============================================================
-
-void appendLineToSpiffs(
-  const char *path,
-  const char *oldPath,
-  const String &line,
-  size_t maxBytes
-) {
-
-  if (!spiffsReady) {
-    return;
-  }
-
-  const size_t requiredBytes =
-    line.length() + 2;
-
-  if (
-    !ensureSpiffsSpaceForAppend(
-      path,
-      oldPath,
-      requiredBytes,
-      maxBytes
-    )
-  ) {
-
-    Serial.println(
-      "[SPIFFS] Khong du dung luong de ghi log"
-    );
-
-    return;
-  }
-
-  File file =
-    SPIFFS.open(
-      path,
-      "a"
-    );
-
-  if (!file) {
-    removeSpiffsFileIfExists(
-      oldPath
-    );
-
-    file =
-      SPIFFS.open(
-        path,
-        "a"
-      );
-  }
-
-  if (!file) {
-    debugLine("[SPIFFS] Khong mo duoc file log");
-    return;
-  }
-
-  file.println(line);
-
-  file.close();
-
-  if (DEBUG_PRINT_SPIFFS_WRITES) {
-    Serial.printf(
-      "[SPIFFS] Da ghi log duong_dan=%s so_byte=%u da_dung=%lu con_trong=%lu\n",
-      path,
-      static_cast<unsigned int>(requiredBytes),
-      static_cast<unsigned long>(SPIFFS.usedBytes()),
-      static_cast<unsigned long>(spiffsFreeBytes())
-    );
-
-    Serial.println(
-      "[SPIFFS] Noi dung da luu"
-    );
-
-    Serial.println(
-      line
-    );
-  }
-}
-
-
-void printSpiffsLogTail(
-  const char *path
-) {
-
-  if (
-    !spiffsReady ||
-    !SPIFFS.exists(path)
-  ) {
-
-    Serial.printf(
-      "[SPIFFS] Chua co file %s\n",
-      path
-    );
-
-    return;
-  }
-
-  File file =
-    SPIFFS.open(
-      path,
-      "r"
-    );
-
-  if (!file) {
-    Serial.printf(
-      "[SPIFFS] Khong mo duoc %s\n",
-      path
-    );
-
-    return;
-  }
-
-  const size_t size =
-    file.size();
-
-  const size_t start =
-    size > SPIFFS_TAIL_SCAN_BYTES
-      ? size - SPIFFS_TAIL_SCAN_BYTES
-      : 0;
-
-  file.seek(
-    start,
-    SeekSet
-  );
-
-  if (start > 0) {
-    file.readStringUntil('\n');
-  }
-
-  String lines[
-    SPIFFS_TAIL_LINES
-  ];
-
-  uint16_t count = 0;
-
-  while (file.available()) {
-    String line =
-      file.readStringUntil('\n');
-
-    line.trim();
-
-    if (line.length() == 0) {
-      continue;
-    }
-
-    lines[
-      count % SPIFFS_TAIL_LINES
-    ] = line;
-
-    count++;
-
-    serviceWatchdog();
-  }
-
-  file.close();
-
-  Serial.printf(
-    "[SPIFFS] Cuoi file %s dung_luong=%lu so_dong=%u dang_in=%u\n",
-    path,
-    static_cast<unsigned long>(size),
-    static_cast<unsigned int>(count),
-    static_cast<unsigned int>(
-      min<uint16_t>(
-        count,
-        SPIFFS_TAIL_LINES
-      )
-    )
-  );
-
-  const uint16_t shown =
-    min<uint16_t>(
-      count,
-      SPIFFS_TAIL_LINES
-    );
-
-  const uint16_t first =
-    count - shown;
-
-  for (
-    uint16_t i = 0;
-    i < shown;
-    i++
-  ) {
-
-    Serial.println(
-      lines[
-        (first + i) %
-        SPIFFS_TAIL_LINES
-      ]
-    );
-  }
-}
-
-
-void printStoredSpiffsLogs() {
-
-  if (
-    !DEBUG_PRINT_STORED_LOG_TAIL_ON_BOOT ||
-    !spiffsReady
-  ) {
-
-    return;
-  }
-
-  Serial.printf(
-    "[SPIFFS] tong=%lu da_dung=%lu con_trong=%lu\n",
-    static_cast<unsigned long>(SPIFFS.totalBytes()),
-    static_cast<unsigned long>(SPIFFS.usedBytes()),
-    static_cast<unsigned long>(spiffsFreeBytes())
-  );
-
-  printSpiffsLogTail(
-    MINUTE_OLD_LOG_PATH
-  );
-
-  printSpiffsLogTail(
-    MINUTE_LOG_PATH
-  );
-
-  printSpiffsLogTail(
-    PACKET_OLD_LOG_PATH
-  );
-
-  printSpiffsLogTail(
-    PACKET_LOG_PATH
-  );
-}
-
-
-bool setupSpiffs() {
-
-  Serial.println(
-    "[SPIFFS] Dang gan bo nho..."
-  );
-
-  if (SPIFFS.begin(false)) {
-    Serial.printf(
-      "[SPIFFS] Da san sang tong=%lu da_dung=%lu\n",
-      static_cast<unsigned long>(SPIFFS.totalBytes()),
-      static_cast<unsigned long>(SPIFFS.usedBytes())
-    );
-
-    return true;
-  }
-
-  Serial.println(
-    "[SPIFFS] Gan bo nho loi, thu format lai..."
-  );
-
-  if (SPIFFS.begin(true)) {
-    Serial.printf(
-      "[SPIFFS] Da format va san sang tong=%lu da_dung=%lu\n",
-      static_cast<unsigned long>(SPIFFS.totalBytes()),
-      static_cast<unsigned long>(SPIFFS.usedBytes())
-    );
-
-    return true;
-  }
-
-  Serial.println(
-    "[SPIFFS] Khong kha dung - kiem tra cau hinh phan vung flash"
-  );
-
-  return false;
-}
-
-
-
-
-
 // ============================================================
 // MODBUS CRC16
 // ============================================================
@@ -964,6 +506,8 @@ void setEcRs485Transmit(
 ) {
 
   if (EC_RS485_DE_RE_PIN < 0) {
+    (void)transmit;
+    delayMicroseconds(EC_RS485_AUTO_RX_SETTLE_US);
     return;
   }
 
@@ -1073,6 +617,10 @@ bool readHoldingRegisters(
 ) {
 
   lastModbusStatus = "ok";
+
+  // Give an auto-direction RS485 transceiver time to release the bus before
+  // starting the next request, especially after a previous timeout.
+  delay(EC_RS485_INTER_REQUEST_GAP_MS);
 
   while (ecSerial.available() > 0) {
     ecSerial.read();
@@ -3211,13 +2759,7 @@ void sendAggregateIfReady() {
   packetLog += String(sentCopies);
   packetLog += "}";
 
-  appendLineToSpiffs(
-    PACKET_LOG_PATH,
-    PACKET_OLD_LOG_PATH,
-    packetLog,
-    PACKET_LOG_MAX_FILE_BYTES
-  );
-  Serial.println(packetLog);
+  Serial.printf("[LOG-PACKET] %s\n", packetLog.c_str());
 
   if (ackOk) {
     Serial.println("[LORA] Gateway da xac nhan - xoa aggregate");
@@ -3334,7 +2876,7 @@ void sendAggregateIfReadySimple() {
 
   String packetLog = packet;
   packetLog += ackOk ? "|ACK" : "|NOACK";
-  appendLineToSpiffs(PACKET_LOG_PATH, PACKET_OLD_LOG_PATH, packetLog, PACKET_LOG_MAX_FILE_BYTES);
+  Serial.printf("[LOG-PACKET] %s\n", packetLog.c_str());
 
   if (ackOk) {
     aggregateCount = 0;
@@ -3468,22 +3010,6 @@ void setup() {
 
 
   // ----------------------------------------------------------
-  // SPIFFS
-  // ----------------------------------------------------------
-
-  if (DEBUG_DISABLE_SPIFFS_FOR_LORA_TEST) {
-    spiffsReady = false;
-
-    Serial.println(
-      "[SPIFFS] Tam tat trong che do kiem thu LoRa"
-    );
-  } else {
-    spiffsReady =
-      setupSpiffs();
-
-    printStoredSpiffsLogs();
-  }
-
   // ----------------------------------------------------------
   // Startup information
   // ----------------------------------------------------------
@@ -3600,13 +3126,7 @@ void setup() {
   );
 
 
-  Serial.printf(
-    "[SPIFFS] %s\n",
-
-    spiffsReady
-      ? "san_sang"
-      : "khong_co"
-  );
+  Serial.println("[LOG] Luu du lieu flash: tat");
 
 
   Serial.printf(
@@ -3702,7 +3222,7 @@ void loop() {
 
 
   // ----------------------------------------------------------
-  // Save minute record
+  // Log minute record
   // ----------------------------------------------------------
 
   const String minutePayload =
@@ -3711,24 +3231,7 @@ void loop() {
     );
 
 
-  appendLineToSpiffs(
-    MINUTE_LOG_PATH,
-    MINUTE_OLD_LOG_PATH,
-    minutePayload,
-    MINUTE_LOG_MAX_FILE_BYTES
-  );
-
-
-  if (DEBUG_PRINT_MINUTE_PAYLOAD) {
-    Serial.println(
-      "[BAN GHI 1 PHUT - JSON]"
-    );
-
-
-    Serial.println(
-      minutePayload
-    );
-  }
+  Serial.printf("[LOG-MINUTE] %s\n", minutePayload.c_str());
 
 
   // ----------------------------------------------------------

@@ -4,20 +4,21 @@
 #include <esp_task_wdt.h>
 #include <WiFi.h>
 #include <WebServer.h>
-
+#include "gateway_secrets.h"
 /*
   HORIZON - Gateway node
 
   Role:
   - Receive raw JSON readings from Station 1 and Station 2 through SX1278 LoRa UART.
   - Add gateway metadata.
-  - Send packets to the webserver through a 4G SIM module using AT commands.
+  - Send packets to Supabase ingest through a 4G SIM module using AT commands.
   - Drive 3 status lamps and 1 buzzer through MOSFET outputs.
 
   Important:
   - The gateway should not calculate agricultural/environment thresholds.
-  - The webserver stores the raw observation and calculates dashboard values,
-    daily comparison tables, warnings, and recommendations.
+  - Supabase stores the raw observation. The frontend reads from Supabase to
+    calculate dashboard values, daily comparison tables, warnings, and
+    recommendations.
 
   Expected station payload examples:
   - Station 1: water_level_cm, salinity_ppt, ec_us_cm, ultrasonic_status, ec_status
@@ -25,14 +26,14 @@
                soil_ec_ms_cm, soil_ph, advice
 
   TODO:
-  - Set WEB_SERVER_URL to your deployed ingest endpoint.
+  - Keep WEB_SERVER_URL pointed at the Supabase Edge Function used by this deployment.
   - Set SIM_APN for the SIM provider.
   - Confirm SIM module model and HTTP AT command support.
   - Confirm LoRa UART baud rate / transparent mode.
 */
 
 static const char *GATEWAY_ID = "GATEWAY";
-static const char *FIRMWARE_VERSION = "gateway-lora-wifi-0.7.0-dashboard";
+static const char *FIRMWARE_VERSION = "gateway-lora-wifi-0.8.2-rx-priority-preserve-http-fix";
 
 // Local Wi-Fi dashboard.
 static const char *WIFI_AP_SSID = "HORIZON";
@@ -42,39 +43,27 @@ static const IPAddress WIFI_AP_GATEWAY(192, 168, 4, 1);
 static const IPAddress WIFI_AP_SUBNET(255, 255, 255, 0);
 static const uint32_t DASHBOARD_ONLINE_WINDOW_MS = 60000;
 
-/*
-  Ingest endpoints.
-
-  These point at the project's OWN domain, not at the *.vercel.app deployment
-  host. A QR code or a flashed gateway cannot be re-issued cheaply, and the
-  vercel.app address is a deployment detail that changes when hosting does —
-  the custom domain is the stable one.
-*/
-static const char *WEB_SERVER_URL = "https://horizon.frogsleap.com.vn/api/public/gateway";
-static const char *CONFIG_URL = "https://horizon.frogsleap.com.vn/api/public/gateway/configs";
-
-/*
-  Shared secret for POST /api/public/gateway, sent as `x-gateway-token`.
-
-  THE REAL VALUE IS NEVER COMMITTED. It lives in `gateway_secrets.h`, which is
-  gitignored; `gateway_secrets.example.h` beside it shows the shape. Provision
-  a board by copying the example, filling in the token issued for that
-  deployment, and flashing.
-
-  The server FAILS CLOSED: with no token configured there it answers 503 and
-  ingests nothing, and with a token configured it rejects any request whose
-  header does not match. So a gateway flashed without this value will not
-  silently deliver unauthenticated telemetry — it will simply be refused,
-  which is the intended behaviour rather than a fault to work around.
-*/
-#if __has_include("gateway_secrets.h")
-#include "gateway_secrets.h"
-#else
-#warning "gateway_secrets.h not found - building with an empty ingest token; the server will reject this gateway."
+// Production ingest endpoint.
+//
+// The gateway posts JSON to Supabase Edge Function `edge-ingest` with the
+// `x-gateway-token` header from gateway_secrets.h. The JSON body is a gateway
+// envelope containing `raw_station_payload`; the Edge Function unwraps that
+// station payload, stores STATION_01 water data in environmental_readings,
+// stores STATION_02 soil data in soil_readings, and keeps the original station
+// fields in raw_station_payload for audit/debugging.
+//
+// Do not point this back to Pipedream except for temporary packet debugging.
+static const char *WEB_SERVER_URL = "https://edhcnccvbwuffiwzywfm.supabase.co/functions/v1/edge-ingest";
+static const char *CONFIG_URL = "https://horizon-frogsleap.vercel.app/api/public/gateway/configs";
+#ifndef GATEWAY_INGEST_TOKEN_VALUE
 #define GATEWAY_INGEST_TOKEN_VALUE ""
 #endif
-
 static const char *GATEWAY_INGEST_TOKEN = GATEWAY_INGEST_TOKEN_VALUE;
+// CONFIG endpoint is currently returning HTTP 403. Keep runtime config polling disabled
+// so the modem cannot steal receive time from LoRa. Re-enable after server auth is ready.
+static const bool CONFIG_POLL_ENABLED = false;
+// Keep normal AT chatter quiet. Errors and high-level HTTP status are still printed.
+static const bool MODEM_VERBOSE_AT = false;
 static const char *SIM_APN = "internet";
 static const char *SIM_USER = "";
 static const char *SIM_PASS = "";
@@ -83,11 +72,11 @@ static const bool MODEM_ENABLED = true;
 static const uint32_t DEBUG_BAUD = 115200;
 static const uint32_t LORA_UART_BAUD = 9600;
 // RX hardening: larger UART buffer + pull-up + fast frame completion.
-static const size_t LORA_RX_BUFFER_BYTES = 4096;
+static const size_t LORA_RX_BUFFER_BYTES = 8192;
 static const uint32_t SIMPLE_FRAME_IDLE_TIMEOUT_MS = 600;
-static const uint8_t SIMPLE_ACK_REPEAT_COUNT = 3;
-static const uint32_t SIMPLE_ACK_START_DELAY_MS = 80;
-static const uint32_t SIMPLE_ACK_REPEAT_GAP_MS = 120;
+static const uint8_t SIMPLE_ACK_REPEAT_COUNT = 1;
+static const uint32_t SIMPLE_ACK_START_DELAY_MS = 50;
+static const uint32_t SIMPLE_ACK_REPEAT_GAP_MS = 150;
 static const uint32_t MODEM_BAUD_CANDIDATES[] = {115200, 9600, 57600, 38400, 19200, 230400};
 static const size_t MODEM_BAUD_CANDIDATE_COUNT = sizeof(MODEM_BAUD_CANDIDATES) / sizeof(MODEM_BAUD_CANDIDATES[0]);
 static const uint32_t MODEM_BAUD_PROBE_MS = 900;
@@ -100,34 +89,55 @@ static const int LORA_AUX_PIN = 10;
 // Garbage-storm watchdog. A normal HORIZON packet stream is only a few dozen bytes/s.
 // The observed failure was ~1000 bytes/s, almost saturating UART 9600.
 static const uint32_t LORA_RX_HEALTH_WINDOW_MS = 3000;
-static const uint32_t LORA_GARBAGE_STORM_BYTES_PER_WINDOW = 1200;
-static const uint8_t LORA_GARBAGE_BAD_WINDOWS_BEFORE_RESTART = 2;
-static const uint32_t LORA_UART_RESTART_COOLDOWN_MS = 8000;
-static const uint32_t LORA_NO_GOOD_FRAME_BEFORE_RESTART_MS = 5000;
+static const uint32_t LORA_GARBAGE_STORM_BYTES_PER_WINDOW = 2500;
+static const uint8_t LORA_GARBAGE_BAD_WINDOWS_BEFORE_RESTART = 3;
+static const uint32_t LORA_UART_RESTART_COOLDOWN_MS = 10000;
+static const uint32_t LORA_NO_GOOD_FRAME_BEFORE_RESTART_MS = 8000;
 
-static const int LORA_UART_RX_PIN = 16;
-static const int LORA_UART_TX_PIN = 15;
+static const int LORA_UART_RX_PIN = 15;
+static const int LORA_UART_TX_PIN = 16;
 
 static const int MODEM_TX_PIN = 17;   // ESP32 TX -> SIM RX.
 static const int MODEM_RX_PIN = 18;   // ESP32 RX <- SIM TX.
 static const int MODEM_PEN_PIN = 39;  // SIM 4G PEN / enable pin. Set to -1 if not used.
 
-// MOSFET outputs for the gateway tower light / buzzer. Active HIGH by default.
-static const int STATUS_GREEN_PIN = 45;
-static const int STATUS_YELLOW_PIN = 48;
-static const int STATUS_RED_PIN = 47;
-static const int BUZZER_PIN = 21;
-static const int BUZZER_MUTE_BUTTON_PIN = 14;  // Button to GND, uses INPUT_PULLUP.
-static const bool MOSFET_ACTIVE_LEVEL = HIGH;
+// 4-channel relay module for the gateway warning lamps.
+// IN1 -> IO45: GREEN (normal)
+// IN2 -> IO48: YELLOW (soil pH high)
+// IN3 -> IO47: RED (water surface <= 50 cm from ultrasonic sensor)
+// IN4 -> IO21: BUZZER relay (continuous alarm when water surface <= 5 cm).
+// Push button -> IO14 to GND: mute buzzer for the CURRENT critical-water event.
+static const int RELAY_GREEN_PIN = 45;
+static const int RELAY_YELLOW_PIN = 48;
+static const int RELAY_RED_PIN = 47;
+static const int BUZZER_RELAY_PIN = 21;
+static const int BUZZER_MUTE_BUTTON_PIN = 14;
+
+// Most common 4-channel relay boards are LOW-trigger.
+// Change to false if your module turns a relay ON when INx is HIGH.
+static const bool RELAY_ACTIVE_LOW = true;
+
+// Alarm thresholds. Distance is the S1 ultrasonic distance-to-water field.
+static const float WATER_RED_DISTANCE_CM = 50.0f;
+static const float WATER_CRITICAL_DISTANCE_CM = 5.0f;
+static const float SOIL_PH_HIGH_THRESHOLD = 7.0f;
 
 static const uint32_t MODEM_TIMEOUT_MS = 12000;
 static const uint32_t HTTP_TIMEOUT_MS = 30000;
-static const uint32_t DEFAULT_CONFIG_POLL_INTERVAL_MS = 60000;
+static const uint32_t DEFAULT_CONFIG_POLL_INTERVAL_MS = 900000;  // 15 min when CONFIG_POLL_ENABLED=true.
 static const uint32_t WATCHDOG_TIMEOUT_MS = 20000;
 static const size_t LORA_LINE_MAX_CHARS = 1400;
 static const uint32_t BUTTON_DEBOUNCE_MS = 80;
-static const uint32_t LORA_WAIT_LOG_INTERVAL_MS = 15000;
+static const uint32_t LORA_WAIT_LOG_INTERVAL_MS = 5000;
 static const bool DEBUG_LORA_RAW_UART = false;
+static const uint32_t BATCH_UPLOAD_RETRY_MS = 60000;
+static const uint32_t BATCH_LORA_SETTLE_MS = 700;
+static const uint32_t MODEM_POWER_OFF_SETTLE_MS = 300;
+// Do not hold one station's fresh packet indefinitely while waiting for the
+// other station. Independent deep-sleep phases can be offset after boot or a
+// missed ACK, so upload the available station after this window.
+static const uint32_t PAIR_WAIT_TIMEOUT_MS = 90000;
+static const uint8_t WEB_QUEUE_CAPACITY = 8; // legacy queue storage; V9 uses paired batch slots.
 
 // Gateway is the LoRa master: it polls exactly one station at a time.
 static const uint32_t LORA_POLL_RESPONSE_TIMEOUT_MS = 28000;
@@ -194,15 +204,61 @@ static uint32_t lastConfigPollMs = 0;
 static uint32_t lastLoraWaitLogMs = 0;
 static uint32_t configPollIntervalMs = DEFAULT_CONFIG_POLL_INTERVAL_MS;
 static uint32_t gatewaySleepIntervalMs = 0;
+
+// Latest sensor values used by the local 4-relay warning logic.
+static bool relayWaterDistanceValid = false;
+static float relayWaterDistanceCm = NAN;
+static bool relaySoilPhValid = false;
+static float relaySoilPh = NAN;
+static bool lastRelayGreenOn = false;
+static bool lastRelayYellowOn = false;
+static bool lastRelayRedOn = false;
+static bool lastRelayBuzzerOn = false;
+static bool relayStateInitialized = false;
+
+// Buzzer mute latch. When the critical condition clears (> 5 cm), this resets
+// automatically so a future critical-water event will sound the buzzer again.
+static bool buzzerMutedForCurrentCritical = false;
+static bool buzzerCriticalWasActive = false;
+static bool buzzerButtonLastRawPressed = false;
+static bool buzzerButtonStablePressed = false;
+static uint32_t buzzerButtonLastChangeMs = 0;
+
+// Legacy remote-config flags are kept for compatibility with old helper code,
+// but the physical relay outputs are driven directly from S1/S2 sensor data.
 static bool tideHighAlert = false;
 static bool tideCriticalAlert = false;
 static bool soilSalinityAlert = false;
 static bool forcedBuzzerAlert = false;
-static bool buzzerMuted = false;
-static bool lastMuteButtonPressed = false;
-static uint32_t lastMuteButtonChangeMs = 0;
 static uint32_t ignoredLoraLineCount = 0;
 static uint32_t recoveredLoraJsonCount = 0;
+
+// Paired-batch uploader. Gateway stays in LoRa-only mode until it has one fresh
+// payload from BOTH stations. Only then is 4G powered, the two payloads are sent,
+// and the modem is powered down again. This prevents modem startup/HTTP work from
+// stealing the normal LoRa receive window.
+static String pendingUploadStation1;
+static String pendingUploadStation2;
+static bool pendingStation1Ready = false;
+static bool pendingStation2Ready = false;
+static bool pairedBatchTriggered = false;
+static bool batchStation1Uploaded = false;
+static bool batchStation2Uploaded = false;
+static bool modemHttpBusy = false;
+static uint32_t lastBatchUploadAttemptMs = 0;
+static uint32_t lastSimpleLoRaActivityMs = 0;
+static uint32_t completedBatchCount = 0;
+static uint32_t pairWaitStartedMs = 0;
+// RX health / auto-recovery state. These are declared early because the SIMPLE
+// packet handler updates them before the parser implementation appears below.
+static uint32_t loraPhysicalRxBytes = 0;
+static uint32_t loraLastGoodFrameMs = 0;
+static uint32_t loraHealthWindowStartedMs = 0;
+static uint32_t loraHealthPrevGarbageBytes = 0;
+static uint32_t loraHealthPrevGoodFrames = 0;
+static uint8_t loraGarbageBadWindows = 0;
+static uint32_t loraUartRestartCount = 0;
+static uint32_t loraLastUartRestartMs = 0;
 
 // Robust JSON framing state for the UART stream.
 static String loraJsonBuffer;
@@ -225,40 +281,50 @@ static uint32_t lastLoraByteMs = 0;
 
 void serviceWatchdog();
 void watchdogDelay(uint32_t ms);
+void readSimpleLoRaUart();
+void servicePairedBatchUpload();
+void serviceBuzzerMuteButton();
 
-void writeMosfet(int pin, bool on) {
-  digitalWrite(pin, on ? MOSFET_ACTIVE_LEVEL : !MOSFET_ACTIVE_LEVEL);
+void writeRelay(int pin, bool on) {
+  const int onLevel = RELAY_ACTIVE_LOW ? LOW : HIGH;
+  const int offLevel = RELAY_ACTIVE_LOW ? HIGH : LOW;
+  digitalWrite(pin, on ? onLevel : offLevel);
 }
 
 void setupStatusOutputs() {
-  pinMode(STATUS_GREEN_PIN, OUTPUT);
-  pinMode(STATUS_YELLOW_PIN, OUTPUT);
-  pinMode(STATUS_RED_PIN, OUTPUT);
-  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(RELAY_GREEN_PIN, OUTPUT);
+  pinMode(RELAY_YELLOW_PIN, OUTPUT);
+  pinMode(RELAY_RED_PIN, OUTPUT);
+  pinMode(BUZZER_RELAY_PIN, OUTPUT);
   pinMode(BUZZER_MUTE_BUTTON_PIN, INPUT_PULLUP);
 
-  writeMosfet(STATUS_GREEN_PIN, false);
-  writeMosfet(STATUS_YELLOW_PIN, false);
-  writeMosfet(STATUS_RED_PIN, false);
-  writeMosfet(BUZZER_PIN, false);
+  // Start safe: all relays OFF until valid S1/S2 data arrives.
+  writeRelay(RELAY_GREEN_PIN, false);
+  writeRelay(RELAY_YELLOW_PIN, false);
+  writeRelay(RELAY_RED_PIN, false);
+  writeRelay(BUZZER_RELAY_PIN, false);
 }
 
 void selfTestStatusOutputs() {
-  writeMosfet(STATUS_GREEN_PIN, true);
+  writeRelay(RELAY_GREEN_PIN, true);
   watchdogDelay(180);
-  writeMosfet(STATUS_GREEN_PIN, false);
-  writeMosfet(STATUS_YELLOW_PIN, true);
+  writeRelay(RELAY_GREEN_PIN, false);
+  writeRelay(RELAY_YELLOW_PIN, true);
   watchdogDelay(180);
-  writeMosfet(STATUS_YELLOW_PIN, false);
-  writeMosfet(STATUS_RED_PIN, true);
+  writeRelay(RELAY_YELLOW_PIN, false);
+  writeRelay(RELAY_RED_PIN, true);
   watchdogDelay(180);
-  writeMosfet(STATUS_RED_PIN, false);
-  writeMosfet(BUZZER_PIN, true);
+  writeRelay(RELAY_RED_PIN, false);
+  writeRelay(BUZZER_RELAY_PIN, true);
   watchdogDelay(120);
-  writeMosfet(BUZZER_PIN, false);
+  writeRelay(BUZZER_RELAY_PIN, false);
 }
 
 void serviceWatchdog() {
+  // Sample the mute button even during modem/HTTP waits where this function is
+  // called repeatedly, so the alarm can be silenced without waiting for loop().
+  serviceBuzzerMuteButton();
+
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
   }
@@ -272,35 +338,104 @@ void watchdogDelay(uint32_t ms) {
   }
 }
 
-void updateMuteButton() {
+void serviceBuzzerMuteButton() {
+  const bool rawPressed = digitalRead(BUZZER_MUTE_BUTTON_PIN) == LOW;
   const uint32_t now = millis();
-  const bool pressed = digitalRead(BUZZER_MUTE_BUTTON_PIN) == LOW;
-  if (pressed != lastMuteButtonPressed && now - lastMuteButtonChangeMs >= BUTTON_DEBOUNCE_MS) {
-    lastMuteButtonPressed = pressed;
-    lastMuteButtonChangeMs = now;
-    if (pressed) {
-      buzzerMuted = true;
-      Serial.println("[STATUS] Da tat coi bang nut nhan");
-    }
+
+  if (rawPressed != buzzerButtonLastRawPressed) {
+    buzzerButtonLastRawPressed = rawPressed;
+    buzzerButtonLastChangeMs = now;
   }
 
-  if (!tideCriticalAlert && !forcedBuzzerAlert) {
-    buzzerMuted = false;
+  if (now - buzzerButtonLastChangeMs < BUTTON_DEBOUNCE_MS) {
+    return;
+  }
+
+  if (rawPressed == buzzerButtonStablePressed) {
+    return;
+  }
+
+  buzzerButtonStablePressed = rawPressed;
+
+  // Act only on the press edge. Pressing while no critical alarm exists does
+  // not pre-mute the next alarm.
+  if (buzzerButtonStablePressed) {
+    const bool criticalNow = relayWaterDistanceValid &&
+                             relayWaterDistanceCm <= WATER_CRITICAL_DISTANCE_CM;
+    if (criticalNow && !buzzerMutedForCurrentCritical) {
+      buzzerMutedForCurrentCritical = true;
+      writeRelay(BUZZER_RELAY_PIN, false);
+      Serial.println("[BUZZER] Nut IO14 da nhan -> TAT COI cho lan canh bao hien tai");
+    }
   }
 }
 
+bool parseRelaySensorFloat(const String &wireValue, float &out) {
+  if (wireValue.length() == 0 || wireValue == "x" || wireValue == "X" || wireValue == "-") {
+    return false;
+  }
+
+  char *endPtr = nullptr;
+  const float value = strtof(wireValue.c_str(), &endPtr);
+  if (endPtr == wireValue.c_str() || *endPtr != '\0' || !isfinite(value)) {
+    return false;
+  }
+
+  out = value;
+  return true;
+}
+
 void updateStatusOutputs() {
-  updateMuteButton();
+  serviceBuzzerMuteButton();
 
-  const bool greenOn = true;
-  const bool yellowOn = soilSalinityAlert;
-  const bool redOn = tideHighAlert || tideCriticalAlert;
-  const bool buzzerOn = (tideCriticalAlert || forcedBuzzerAlert) && !buzzerMuted;
+  const bool redOn = relayWaterDistanceValid && relayWaterDistanceCm <= WATER_RED_DISTANCE_CM;
+  const bool criticalOn = relayWaterDistanceValid && relayWaterDistanceCm <= WATER_CRITICAL_DISTANCE_CM;
+  const bool yellowOn = relaySoilPhValid && relaySoilPh > SOIL_PH_HIGH_THRESHOLD;
 
-  writeMosfet(STATUS_GREEN_PIN, greenOn);
-  writeMosfet(STATUS_YELLOW_PIN, yellowOn);
-  writeMosfet(STATUS_RED_PIN, redOn);
-  writeMosfet(BUZZER_PIN, buzzerOn);
+  // Leaving the <=5 cm critical zone rearms the buzzer for the NEXT event.
+  if (!criticalOn && buzzerCriticalWasActive) {
+    buzzerMutedForCurrentCritical = false;
+    Serial.println("[BUZZER] Muc nuoc da thoat nguong <=5cm -> da ARM lai coi");
+  }
+  buzzerCriticalWasActive = criticalOn;
+
+  // IN4 is now a continuous buzzer relay. It remains ON throughout the
+  // critical event unless the IO14 mute button has been pressed.
+  const bool buzzerOn = criticalOn && !buzzerMutedForCurrentCritical;
+
+  // "Normal" is only declared after BOTH required measurements are valid.
+  const bool dataReady = relayWaterDistanceValid && relaySoilPhValid;
+  const bool greenOn = dataReady && !redOn && !yellowOn && !criticalOn;
+
+  writeRelay(RELAY_GREEN_PIN, greenOn);
+  writeRelay(RELAY_YELLOW_PIN, yellowOn);
+  writeRelay(RELAY_RED_PIN, redOn);
+  writeRelay(BUZZER_RELAY_PIN, buzzerOn);
+
+  if (!relayStateInitialized ||
+      greenOn != lastRelayGreenOn ||
+      yellowOn != lastRelayYellowOn ||
+      redOn != lastRelayRedOn ||
+      buzzerOn != lastRelayBuzzerOn) {
+    relayStateInitialized = true;
+    lastRelayGreenOn = greenOn;
+    lastRelayYellowOn = yellowOn;
+    lastRelayRedOn = redOn;
+    lastRelayBuzzerOn = buzzerOn;
+
+    Serial.printf("[RELAY] xanh=%s vang=%s do=%s coi=%s muted=%s | distance=%s",
+                  greenOn ? "ON" : "OFF",
+                  yellowOn ? "ON" : "OFF",
+                  redOn ? "ON" : "OFF",
+                  buzzerOn ? "ON" : "OFF",
+                  buzzerMutedForCurrentCritical ? "YES" : "NO",
+                  relayWaterDistanceValid ? String(relayWaterDistanceCm, 1).c_str() : "x");
+    if (relayWaterDistanceValid) Serial.print("cm");
+    Serial.print(" | pH=");
+    if (relaySoilPhValid) Serial.print(relaySoilPh, 1);
+    else Serial.print("x");
+    Serial.println();
+  }
 }
 
 void clearModemRx(uint32_t quietMs = 80) {
@@ -308,11 +443,12 @@ void clearModemRx(uint32_t quietMs = 80) {
   uint32_t lastByteAt = millis();
   while (millis() - startedAt < 800) {
     while (modemSerial.available() > 0) {
-      modemSerial.read();
+modemSerial.read();
       lastByteAt = millis();
     }
     if (millis() - lastByteAt >= quietMs) break;
     serviceWatchdog();
+    readSimpleLoRaUart();
     delay(2);
   }
 }
@@ -339,6 +475,7 @@ bool modemProbeBaud(uint32_t baud) {
     const uint32_t t0 = millis();
     while (millis() - t0 < MODEM_BAUD_PROBE_MS) {
       serviceWatchdog();
+      readSimpleLoRaUart();
       while (modemSerial.available() > 0) {
         const uint8_t b = static_cast<uint8_t>(modemSerial.read());
         if (b == '\r' || b == '\n' || b == '\t' || (b >= 0x20 && b <= 0x7E)) {
@@ -378,7 +515,7 @@ bool detectModemBaud() {
 
   modemSerial.end();
   pinMode(MODEM_RX_PIN, INPUT_PULLUP);
-  Serial.println("[MODEM] KHONG tim thay modem AT. Kiem tra TX modem->RX18, RX modem<-TX17, GND chung va muc logic UART.");
+  Serial.println("[MODEM] KHONG tim thay modem AT. Kiem tra ESP TX17 -> SIM RX, ESP RX18 <- SIM TX, GND chung va muc logic UART.");
   return false;
 }
 
@@ -393,7 +530,7 @@ bool ensureModemReady() {
     Serial.printf("[MODEM] Chua san sang; cho retry ~%lu giay (baud=%lu)\n",
                   static_cast<unsigned long>((remain + 999) / 1000),
                   static_cast<unsigned long>(activeModemBaud));
-    return false;
+return false;
   }
 
   Serial.println("[MODEM] Thu khoi tao lai modem...");
@@ -410,6 +547,7 @@ String modemWaitHttpAction(uint8_t method, uint32_t timeoutMs) {
 
   while (millis() - startedAt < timeoutMs) {
     serviceWatchdog();
+    readSimpleLoRaUart();
     while (modemSerial.available() > 0) {
       const uint8_t b = static_cast<uint8_t>(modemSerial.read());
       if (b == '\r' || b == '\n' || b == '\t' || (b >= 0x20 && b <= 0x7E)) {
@@ -449,6 +587,7 @@ String modemReadUntil(uint32_t timeoutMs) {
 
   while (millis() - startedAt < timeoutMs) {
     serviceWatchdog();
+    readSimpleLoRaUart();
 
     while (modemSerial.available() > 0) {
       const uint8_t b = static_cast<uint8_t>(modemSerial.read());
@@ -479,18 +618,33 @@ String modemReadUntil(uint32_t timeoutMs) {
 
 bool sendAt(const String &command, const char *expected = "OK", uint32_t timeoutMs = MODEM_TIMEOUT_MS) {
   if (activeModemBaud == 0) return false;
-  Serial.print("[MODEM] ");
-  Serial.println(command);
+  if (MODEM_VERBOSE_AT) {
+    Serial.print("[MODEM] ");
+    Serial.println(command);
+  }
   clearModemRx(30);
   modemSerial.print(command);
   modemSerial.print("\r\n");
-  const String response = modemReadUntil(timeoutMs);
-  if (response.length() > 0) {
-    Serial.println(response);
-  } else {
-    Serial.println("[MODEM] (khong co phan hoi text)");
+const String response = modemReadUntil(timeoutMs);
+  const bool ok = response.indexOf(expected) >= 0;
+  if (MODEM_VERBOSE_AT) {
+    if (response.length() > 0) Serial.println(response);
+    else Serial.println("[MODEM] (khong co phan hoi text)");
+  } else if (!ok) {
+    const bool optionalFailure =
+      command == "AT+HTTPTERM" ||
+      command.startsWith("AT+HTTPPARA=\"CID\"") ||
+      command.startsWith("AT+HTTPPARA=\"REDIR\"") ||
+      command == "AT+NETOPEN";
+    if (optionalFailure) return ok;
+    String compact = response;
+    compact.replace("\r", " ");
+    compact.replace("\n", " ");
+    compact.trim();
+    if (compact.length() > 180) compact = compact.substring(0, 180) + "...";
+    Serial.printf("[MODEM FAIL] %s -> %s\n", command.c_str(), compact.length() ? compact.c_str() : "no-response");
   }
-  return response.indexOf(expected) >= 0;
+  return ok;
 }
 
 void setupWatchdog() {
@@ -510,6 +664,27 @@ void powerOnModem() {
   pinMode(MODEM_PEN_PIN, OUTPUT);
   digitalWrite(MODEM_PEN_PIN, HIGH);
   watchdogDelay(5000);
+}
+
+void powerOffModem() {
+  modemReady = false;
+  activeModemBaud = 0;
+  modemSerial.end();
+
+  // Turn the 4G module off, but do NOT actively drive its UART pins while LoRa
+  // is the priority. Keep IO17/IO18 high-impedance to minimize coupling/noise.
+  if (MODEM_PEN_PIN >= 0) {
+    pinMode(MODEM_PEN_PIN, OUTPUT);
+    digitalWrite(MODEM_PEN_PIN, LOW);
+  }
+
+  pinMode(MODEM_RX_PIN, INPUT);
+  pinMode(MODEM_TX_PIN, INPUT);
+  gpio_pullup_dis(static_cast<gpio_num_t>(MODEM_RX_PIN));
+  gpio_pulldown_dis(static_cast<gpio_num_t>(MODEM_RX_PIN));
+  gpio_pullup_dis(static_cast<gpio_num_t>(MODEM_TX_PIN));
+  gpio_pulldown_dis(static_cast<gpio_num_t>(MODEM_TX_PIN));
+  watchdogDelay(MODEM_POWER_OFF_SETTLE_MS);
 }
 
 bool initModem() {
@@ -545,7 +720,7 @@ bool initModem() {
   sendAt("AT+COPS?", "OK", 5000);
   sendAt("AT+CPSI?", "OK", 5000);
   if (!sendAt("AT+CSQ", "OK", 3000)) {
-    Serial.println("[MODEM FAIL] Khong doc duoc CSQ");
+Serial.println("[MODEM FAIL] Khong doc duoc CSQ");
     return false;
   }
   sendAt("AT+CREG?", "OK", 3000);
@@ -626,22 +801,24 @@ String httpGet(const char *url) {
   urlCommand += "\"";
   if (!sendAt(urlCommand)) return "";
 
-  if (String(url).startsWith("https://")) {
-    sendAt("AT+HTTPSSL=1", "OK", 4000);
-  }
+  // This modem firmware already reaches HTTPS URLs directly. AT+HTTPSSL=1 returns ERROR,
+  // so do not send that unsupported command.
+  (void)url;
 
+  String headerCommand = "AT+HTTPPARA=\"USERDATA\",\"User-Agent: HORIZON-Gateway/1.0\\r\\n";
   if (strlen(GATEWAY_INGEST_TOKEN) > 0) {
-    String headerCommand = "AT+HTTPPARA=\"USERDATA\",\"x-gateway-token: ";
+    headerCommand += "x-gateway-token: ";
     headerCommand += GATEWAY_INGEST_TOKEN;
-    headerCommand += "\\r\\n\"";
-    sendAt(headerCommand, "OK", 3000);
+    headerCommand += "\\r\\n";
   }
+  headerCommand += "\"";
+  sendAt(headerCommand, "OK", 3000);
 
   clearModemRx(30);
   modemSerial.print("AT+HTTPACTION=0\r\n");
   const String actionResponse = modemWaitHttpAction(0, HTTP_TIMEOUT_MS);
-  Serial.println(actionResponse);
-  const int httpStatus = parseHttpActionStatus(actionResponse, 0);
+  if (MODEM_VERBOSE_AT) Serial.println(actionResponse);
+const int httpStatus = parseHttpActionStatus(actionResponse, 0);
   Serial.printf("[HTTP GET] status=%d\n", httpStatus);
   if (httpStatus != 200) {
     sendAt("AT+HTTPTERM", "OK", 3000);
@@ -725,11 +902,11 @@ void applyGatewayConfig(int sampleSeconds, int sleepSeconds, int tideLevel, int 
                 tideLevel,
                 salinityAlert,
                 buzzerAlert,
-                buzzerMuted ? "yes" : "no");
+                buzzerMutedForCurrentCritical ? "yes" : "no");
 }
 
 void parseAndForwardConfigs(const String &body) {
-  const char *stations[] = {"STATION_01", "STATION_02", "STATION_03"};
+const char *stations[] = {"STATION_01", "STATION_02", "STATION_03"};
   for (const char *stationId : stations) {
     String stationKey = "\"station_id\":\"";
     stationKey += stationId;
@@ -799,15 +976,13 @@ void parseAndForwardConfigs(const String &body) {
 }
 
 void pollRuntimeConfigs() {
-  if (!MODEM_ENABLED) {
-    return;
-  }
-
-  if (millis() - lastConfigPollMs < configPollIntervalMs) {
-    return;
-  }
+  if (!MODEM_ENABLED || !CONFIG_POLL_ENABLED) return;
+  if (pairedBatchTriggered || pendingStation1Ready || pendingStation2Ready || modemHttpBusy) return;
+  if (loraSerial.available() > 0 || (lastSimpleLoRaActivityMs != 0 && millis() - lastSimpleLoRaActivityMs < 5000)) return;
+if (millis() - lastConfigPollMs < configPollIntervalMs) return;
   lastConfigPollMs = millis();
 
+  Serial.println("[CONFIG] Kiem tra cau hinh server...");
   const String body = httpGet(CONFIG_URL);
   if (body.length() == 0) {
     Serial.println("[CONFIG] Khong co phan hoi cau hinh");
@@ -818,7 +993,7 @@ void pollRuntimeConfigs() {
 }
 
 void maybeEnterGatewaySleep() {
-  if (gatewaySleepIntervalMs == 0 || loraLine.length() > 0) {
+  if (gatewaySleepIntervalMs == 0 || loraLine.length() > 0 || pairedBatchTriggered || pendingStation1Ready || pendingStation2Ready || modemHttpBusy) {
     return;
   }
 
@@ -865,18 +1040,17 @@ bool httpPostJson(const String &payload) {
 
   // HTTPS handling differs slightly by SIMCom firmware. A76xx often accepts an
   // https:// URL directly; HTTPSSL is therefore diagnostic/non-fatal here.
-  if (String(WEB_SERVER_URL).startsWith("https://")) {
-    const bool sslCmdOk = sendAt("AT+HTTPSSL=1", "OK", 4000);
-    Serial.printf("[HTTP] HTTPSSL=%s (ERROR co the binh thuong tren firmware tu xu ly https URL)\n",
-                  sslCmdOk ? "OK" : "khong-ho-tro/ERROR");
-  }
+  // This modem firmware accepts https:// URLs directly. AT+HTTPSSL=1 is unsupported
+  // on the tested firmware and only creates log noise, so it is intentionally skipped.
 
+  String headerCommand = "AT+HTTPPARA=\"USERDATA\",\"User-Agent: HORIZON-Gateway/1.0\\r\\n";
   if (strlen(GATEWAY_INGEST_TOKEN) > 0) {
-    String headerCommand = "AT+HTTPPARA=\"USERDATA\",\"x-gateway-token: ";
+    headerCommand += "x-gateway-token: ";
     headerCommand += GATEWAY_INGEST_TOKEN;
-    headerCommand += "\\r\\n\"";
-    sendAt(headerCommand, "OK", 3000);
+    headerCommand += "\\r\\n";
   }
+  headerCommand += "\"";
+  sendAt(headerCommand, "OK", 3000);
 
   if (!sendAt("AT+HTTPPARA=\"CONTENT\",\"application/json\"", "OK", 5000)) {
     Serial.println("[HTTP FAIL] CONTENT application/json");
@@ -891,16 +1065,16 @@ bool httpPostJson(const String &payload) {
   modemSerial.print(dataCommand);
   modemSerial.print("\r\n");
   String prompt = modemReadUntil(7000);
-  Serial.println(prompt);
+  if (MODEM_VERBOSE_AT) Serial.println(prompt);
   if (prompt.indexOf("DOWNLOAD") < 0) {
     Serial.println("[HTTP FAIL] Khong nhan duoc DOWNLOAD sau HTTPDATA");
-    sendAt("AT+HTTPTERM", "OK", 2500);
+sendAt("AT+HTTPTERM", "OK", 2500);
     return false;
   }
 
   modemSerial.print(payload);
   String dataResponse = modemReadUntil(15000);
-  Serial.println(dataResponse);
+  if (MODEM_VERBOSE_AT) Serial.println(dataResponse);
   if (dataResponse.indexOf("OK") < 0) {
     Serial.println("[HTTP FAIL] Modem khong xac nhan payload OK");
     sendAt("AT+HTTPTERM", "OK", 2500);
@@ -912,7 +1086,7 @@ bool httpPostJson(const String &payload) {
   clearModemRx(30);
   modemSerial.print("AT+HTTPACTION=1\r\n");
   const String actionResponse = modemWaitHttpAction(1, HTTP_TIMEOUT_MS);
-  Serial.println(actionResponse);
+  if (MODEM_VERBOSE_AT) Serial.println(actionResponse);
 
   const int httpStatus = parseHttpActionStatus(actionResponse, 1);
   Serial.printf("[HTTP] HTTPACTION POST status=%d\n", httpStatus);
@@ -999,7 +1173,6 @@ String &lastAcceptedMessageIdFor(const String &stationId) {
   }
   return lastAcceptedMessageIdStation2;
 }
-
 uint32_t &lastAcceptedAtFor(const String &stationId) {
   if (stationId == "STATION_01") {
     return lastAcceptedAtStation1;
@@ -1114,7 +1287,7 @@ bool validateStationDataPacket(
   payloadType = extractJsonStringField(json, "type");
 
   if (!isKnownStationId(stationId)) {
-    Serial.print("[LORA] BO GOI: station_id khong hop le: ");
+Serial.print("[LORA] BO GOI: station_id khong hop le: ");
     Serial.println(stationId);
     return false;
   }
@@ -1200,8 +1373,7 @@ void handleStationPayload(const String &stationPayload) {
 
   // ACK immediately so the station can close its transaction.
   sendStationAck(messageId);
-
-  String &lastAccepted = lastAcceptedMessageIdFor(stationId);
+String &lastAccepted = lastAcceptedMessageIdFor(stationId);
   if (lastAccepted == messageId) {
     lastAcceptedAtFor(stationId) = millis();
     Serial.printf("[LORA] Goi lap %s - ACK lai, KHONG gui web lan 2\n", messageId.c_str());
@@ -1313,7 +1485,7 @@ void readLoRaUart() {
   if (!gotByte && millis() - lastLoraWaitLogMs >= LORA_WAIT_LOG_INTERVAL_MS) {
     lastLoraWaitLogMs = millis();
     Serial.printf("[LORA] Cho theo poll, hien_tai=%s\n",
-                  waitingForPollResponse ? activePollStation.c_str() : "chuan_bi_poll");
+waitingForPollResponse ? activePollStation.c_str() : "chuan_bi_poll");
   }
 }
 
@@ -1387,6 +1559,8 @@ void updateDashboardSnapshot(const String &line, bool station1, uint32_t seq) {
   const uint32_t now = millis();
 
   if (station1) {
+    relayWaterDistanceValid = parseRelaySensorFloat(simpleField(line, 3), relayWaterDistanceCm);
+
     dashboardStation1.valid = true;
     dashboardStation1.sequence = seq;
     dashboardStation1.savedAtMs = now;
@@ -1401,6 +1575,8 @@ void updateDashboardSnapshot(const String &line, bool station1, uint32_t seq) {
     dashboardStation1.batteryVoltageV = dashboardWireText(simpleField(line, 9));
     dashboardStation1.batteryPercent = dashboardWireText(simpleField(line, 10));
   } else {
+    relaySoilPhValid = parseRelaySensorFloat(simpleField(line, 10), relaySoilPh);
+
     dashboardStation2.valid = true;
     dashboardStation2.sequence = seq;
     dashboardStation2.savedAtMs = now;
@@ -1417,6 +1593,9 @@ void updateDashboardSnapshot(const String &line, bool station1, uint32_t seq) {
     dashboardStation2.batteryVoltageV = dashboardWireText(simpleField(line, 11));
     dashboardStation2.batteryPercent = dashboardWireText(simpleField(line, 12));
   }
+
+  // Evaluate the new physical limits to trigger relays immediately
+  updateStatusOutputs();
 }
 
 void markDashboardStationSeen(bool station1) {
@@ -1439,7 +1618,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     .gateway{display:flex;gap:10px;flex-wrap:wrap}.pill{border:1px solid var(--line);background:rgba(13,33,25,.75);padding:9px 12px;border-radius:999px;font-size:13px;color:#cde5d7}
     .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.card{background:linear-gradient(180deg,rgba(16,43,32,.95),rgba(9,27,20,.97));border:1px solid var(--line);border-radius:22px;padding:20px;box-shadow:0 18px 50px rgba(0,0,0,.22)}
     .cardhead{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:17px}.station{font-size:21px;font-weight:800}.desc{font-size:13px;color:var(--muted);margin-top:3px}.state{font-size:12px;padding:7px 10px;border-radius:999px;font-weight:750}.online{color:#b7ffd0;background:rgba(94,226,143,.13);border:1px solid rgba(94,226,143,.4)}.offline{color:#ffd7a3;background:rgba(255,209,102,.10);border:1px solid rgba(255,209,102,.35)}
-    .metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.metric{padding:13px;border-radius:15px;background:rgba(4,18,13,.55);border:1px solid rgba(32,74,56,.68);min-height:76px}.label{font-size:12px;color:var(--muted);margin-bottom:7px}.value{font-size:20px;font-weight:800;word-break:break-word}.unit{font-size:11px;color:#91b5a3;margin-left:4px;font-weight:600}
+.metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.metric{padding:13px;border-radius:15px;background:rgba(4,18,13,.55);border:1px solid rgba(32,74,56,.68);min-height:76px}.label{font-size:12px;color:var(--muted);margin-bottom:7px}.value{font-size:20px;font-weight:800;word-break:break-word}.unit{font-size:11px;color:#91b5a3;margin-left:4px;font-weight:600}
     .foot{margin-top:14px;padding-top:13px;border-top:1px solid rgba(32,74,56,.65);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:12px}.empty{padding:42px 12px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:16px}
     @media(max-width:760px){.grid{grid-template-columns:1fr}h1{font-size:28px}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
     @media(max-width:430px){.metrics{grid-template-columns:1fr}}
@@ -1461,7 +1640,7 @@ const metric=(l,v,u='')=>`<div class="metric"><div class="label">${l}</div><div 
 const age=t=>t===null?'chưa có':t<2?'vừa xong':t<60?`${t} giây trước`:`${Math.floor(t/60)} phút trước`;
 function state(id,on){const e=document.getElementById(id);e.textContent=on?'ONLINE':'CHỜ DỮ LIỆU';e.className='state '+(on?'online':'offline')}
 async function refresh(){try{const r=await fetch('/api/status',{cache:'no-store'});const d=await r.json();document.getElementById('gw').innerHTML=`Uptime: <b>${d.uptime_s}s</b> · Client: <b>${d.clients}</b>`;
- const a=d.station1; state('s1state',a.online); if(a.valid){document.getElementById('s1body').className='metrics';document.getElementById('s1body').innerHTML=metric('Khoảng cách',a.distance_cm,'cm')+metric('Mực nước',a.water_level_cm,'cm')+metric('EC',a.ec_ms_cm,'mS/cm')+metric('Nhiệt độ nước',a.temperature_c,'°C')+metric('TDS',a.tds_ppm,'ppm')+metric('Độ mặn',a.salinity_ppt,'ppt')+metric('Điện áp pin',a.battery_voltage_v,'V')+metric('Pin',a.battery_percent,'%');document.getElementById('s1foot').innerHTML=`<span>Sequence <b>${a.sequence}</b></span><span>Nhận ${age(a.age_s)}</span>`}
+const a=d.station1; state('s1state',a.online); if(a.valid){document.getElementById('s1body').className='metrics';document.getElementById('s1body').innerHTML=metric('Khoảng cách',a.distance_cm,'cm')+metric('Mực nước',a.water_level_cm,'cm')+metric('EC',a.ec_ms_cm,'mS/cm')+metric('Nhiệt độ nước',a.temperature_c,'°C')+metric('TDS',a.tds_ppm,'ppm')+metric('Độ mặn',a.salinity_ppt,'ppt')+metric('Điện áp pin',a.battery_voltage_v,'V')+metric('Pin',a.battery_percent,'%');document.getElementById('s1foot').innerHTML=`<span>Sequence <b>${a.sequence}</b></span><span>Nhận ${age(a.age_s)}</span>`}
  const b=d.station2; state('s2state',b.online); if(b.valid){document.getElementById('s2body').className='metrics';document.getElementById('s2body').innerHTML=metric('Nhiệt độ không khí',b.air_temp_c,'°C')+metric('Độ ẩm không khí',b.air_humidity_pct,'%')+metric('Nhiệt độ đất',b.soil_temp_c,'°C')+metric('Độ ẩm đất',b.soil_moisture_pct,'%')+metric('EC đất',b.soil_ec_ms_cm,'mS/cm')+metric('Độ mặn đất',b.soil_salinity,'')+metric('TDS đất',b.soil_tds,'')+metric('pH đất',b.soil_ph,'')+metric('Điện áp pin',b.battery_voltage_v,'V')+metric('Pin',b.battery_percent,'%');document.getElementById('s2foot').innerHTML=`<span>Sequence <b>${b.sequence}</b></span><span>Nhận ${age(b.age_s)}</span>`}
 }catch(e){console.log(e)}}
 refresh();setInterval(refresh,2500);
@@ -1492,7 +1671,7 @@ String dashboardStation1Json() {
 }
 
 String dashboardStation2Json() {
-  const uint32_t now = millis();
+const uint32_t now = millis();
   const uint32_t ageMs = dashboardStation2.valid ? now - dashboardStation2.savedAtMs : 0;
   const uint32_t seenAgeMs = dashboardStation2.valid ? now - dashboardStation2.lastSeenMs : 0;
   const bool online = dashboardStation2.valid && seenAgeMs <= DASHBOARD_ONLINE_WINDOW_MS;
@@ -1547,7 +1726,7 @@ void setupWifiDashboard() {
 
   dashboardServer.on("/", HTTP_GET, handleDashboardRoot);
   dashboardServer.on("/api/status", HTTP_GET, handleDashboardApi);
-  dashboardServer.on("/favicon.ico", HTTP_GET, []() { dashboardServer.send(204); });
+dashboardServer.on("/favicon.ico", HTTP_GET, []() { dashboardServer.send(204); });
   dashboardServer.onNotFound([]() { dashboardServer.sendHeader("Location", "/", true); dashboardServer.send(302, "text/plain", ""); });
   dashboardServer.begin();
   Serial.println("[WEB] Dashboard: http://192.168.4.1");
@@ -1615,7 +1794,7 @@ String simplePacketToStationJson(const String &line, bool station1, uint32_t seq
     json += ",\"ec_us_cm\":"; json += scaledWireNumber(ecMs, 1000.0f, 0);
     json += ",\"temperature_c\":"; json += jsonNumberOrNullFromWire(temp);
     json += ",\"tds_ppm\":"; json += jsonNumberOrNullFromWire(tds);
-    json += ",\"salinity_ppt\":"; json += jsonNumberOrNullFromWire(salPpt);
+json += ",\"salinity_ppt\":"; json += jsonNumberOrNullFromWire(salPpt);
     json += ",\"salinity_ppm\":"; json += scaledWireNumber(salPpt, 1000.0f, 0);
     json += ",\"battery_voltage_v\":"; json += jsonNumberOrNullFromWire(batV);
     json += ",\"battery_percent\":"; json += jsonNumberOrNullFromWire(batP);
@@ -1655,6 +1834,123 @@ String simplePacketToStationJson(const String &line, bool station1, uint32_t seq
   return json;
 }
 
+void stagePairedUpload(const String &payload, bool station1) {
+  // Do not overwrite a payload that already belongs to an active batch. Newer
+  // readings are still ACKed/displayed and will form the next batch after this one.
+  if (pairedBatchTriggered) {
+    Serial.printf("[BATCH] Dang gui cap hien tai -> %s moi se doi cap tiep theo\n",
+                  station1 ? "S1" : "S2");
+    return;
+  }
+
+  if (station1) {
+    pendingUploadStation1 = payload;
+    pendingStation1Ready = true;
+  } else {
+    pendingUploadStation2 = payload;
+    pendingStation2Ready = true;
+  }
+
+  if (!pairedBatchTriggered && pairWaitStartedMs == 0) {
+    pairWaitStartedMs = millis();
+  }
+
+  Serial.printf("[BATCH] da_co_S1=%s da_co_S2=%s\n",
+                pendingStation1Ready ? "YES" : "NO",
+                pendingStation2Ready ? "YES" : "NO");
+
+  if (pendingStation1Ready && pendingStation2Ready) {
+    pairedBatchTriggered = true;
+    batchStation1Uploaded = false;
+batchStation2Uploaded = false;
+    lastBatchUploadAttemptMs = 0;
+    Serial.println("[BATCH] DU S1 + S2 -> se bat 4G va upload 2 goi");
+  }
+}
+
+void finishPairedBatchIfDone() {
+  if (!pairedBatchTriggered) return;
+  if (!batchStation1Uploaded || !batchStation2Uploaded) return;
+
+  pendingUploadStation1 = "";
+  pendingUploadStation2 = "";
+  pendingStation1Ready = false;
+  pendingStation2Ready = false;
+  pairedBatchTriggered = false;
+  pairWaitStartedMs = 0;
+  batchStation1Uploaded = false;
+  batchStation2Uploaded = false;
+  completedBatchCount += 1;
+  Serial.printf("[BATCH] HOAN TAT cap #%lu -> quay lai LoRa-only\n",
+                static_cast<unsigned long>(completedBatchCount));
+}
+
+void servicePairedBatchUpload() {
+  if (!MODEM_ENABLED || modemHttpBusy) return;
+
+  if (!pairedBatchTriggered &&
+      (pendingStation1Ready || pendingStation2Ready) &&
+      pairWaitStartedMs != 0 &&
+      millis() - pairWaitStartedMs >= PAIR_WAIT_TIMEOUT_MS) {
+    pairedBatchTriggered = true;
+    // Mark the absent station as already complete so the existing uploader
+    // sends only the station that arrived instead of an empty payload.
+    batchStation1Uploaded = !pendingStation1Ready;
+    batchStation2Uploaded = !pendingStation2Ready;
+    lastBatchUploadAttemptMs = 0;
+    Serial.println("[BATCH] Het cua so doi cap -> upload tram dang co, khong cho vo han");
+  }
+
+  if (!pairedBatchTriggered) return;
+  if (loraSerial.available() > 0) return;
+  if (lastSimpleLoRaActivityMs != 0 && millis() - lastSimpleLoRaActivityMs < BATCH_LORA_SETTLE_MS) return;
+  if (lastBatchUploadAttemptMs != 0 && millis() - lastBatchUploadAttemptMs < BATCH_UPLOAD_RETRY_MS) return;
+
+  lastBatchUploadAttemptMs = millis();
+  modemHttpBusy = true;
+
+  Serial.println("[BATCH] ===== BAT 4G SAU KHI DA NHAN DU S1 + S2 =====");
+  powerOnModem();
+  lastModemInitAttemptMs = 0;  // this is an intentional fresh power-up
+  modemReady = initModem();
+
+  if (!modemReady) {
+    Serial.println("[BATCH] Modem khoi tao that bai -> tat 4G, giu cap du lieu de thu lai");
+    powerOffModem();
+    modemHttpBusy = false;
+    return;
+  }
+
+  if (!batchStation1Uploaded) {
+    Serial.println("[BATCH] Upload STATION_01...");
+    batchStation1Uploaded = httpPostJson(pendingUploadStation1);
+    Serial.printf("[BATCH] S1 upload=%s\n", batchStation1Uploaded ? "OK" : "FAIL");
+  }
+
+  // Give LoRa parser a chance between the two HTTP transactions.
+  readSimpleLoRaUart();
+
+  if (!batchStation2Uploaded) {
+    Serial.println("[BATCH] Upload STATION_02...");
+    batchStation2Uploaded = httpPostJson(pendingUploadStation2);
+    Serial.printf("[BATCH] S2 upload=%s\n", batchStation2Uploaded ? "OK" : "FAIL");
+  }
+
+  Serial.println("[BATCH] Tat 4G sau phien upload");
+  powerOffModem();
+  modemHttpBusy = false;
+
+  if (batchStation1Uploaded && batchStation2Uploaded) {
+    finishPairedBatchIfDone();
+    lastBatchUploadAttemptMs = 0;
+  } else {
+    Serial.printf("[BATCH] Con loi S1=%s S2=%s -> giu du lieu, thu lai sau %lus\n",
+                  batchStation1Uploaded ? "OK" : "PENDING",
+                  batchStation2Uploaded ? "OK" : "PENDING",
+                  static_cast<unsigned long>(BATCH_UPLOAD_RETRY_MS / 1000UL));
+  }
+}
+
 void handleSimpleLoRaLine(String line) {
   line.trim();
   if (line.length() < 8) return;
@@ -1671,8 +1967,10 @@ void handleSimpleLoRaLine(String line) {
     Serial.printf("[LORA] CRC/khung loi, bo: %s\n", line.c_str());
     return;
   }
-
-  const uint32_t seq = static_cast<uint32_t>(simpleField(line, 1).toInt());
+const uint32_t seq = static_cast<uint32_t>(simpleField(line, 1).toInt());
+  loraLastGoodFrameMs = millis();
+  loraGarbageBadWindows = 0;
+  lastSimpleLoRaActivityMs = millis();
   sendSimpleAck(station1, seq);  // ACK before any HTTP work.
   markDashboardStationSeen(station1);
 
@@ -1699,10 +1997,8 @@ void handleSimpleLoRaLine(String line) {
   Serial.print("[GATEWAY] Du lieu dong goi: ");
   Serial.println(gatewayPayload);
 
-  if (MODEM_ENABLED && httpPostJson(gatewayPayload)) {
-    Serial.println("[HTTP] Da gui len webserver");
-  } else if (MODEM_ENABLED) {
-    Serial.println("[HTTP] Gui that bai");
+  if (MODEM_ENABLED) {
+    stagePairedUpload(gatewayPayload, station1);
   } else {
     Serial.println("[HTTP] Modem dang tat, LoRa da ACK thanh cong");
   }
@@ -1721,6 +2017,9 @@ static uint32_t simpleFastCompletedFrames = 0;
 static uint32_t simpleLastFrameByteMs = 0;
 static uint8_t simplePipeCount = 0;
 static uint8_t simpleExpectedPipeCount = 0;
+static uint32_t simpleS1MarkerStarts = 0;
+static uint32_t simpleS2MarkerStarts = 0;
+static uint32_t simpleCrcRejectCount = 0;
 
 bool simpleIsHex(char c) {
   return (c >= '0' && c <= '9') ||
@@ -1744,6 +2043,8 @@ void startSimpleFrame(const String &marker) {
   simpleLastFrameByteMs = millis();
   simplePipeCount = 1;  // marker S1| / S2| already contains one separator.
   simpleExpectedPipeCount = marker.startsWith("S1|") ? 11 : 13;
+  if (marker.startsWith("S1|")) simpleS1MarkerStarts += 1;
+  else simpleS2MarkerStarts += 1;
 }
 
 void searchSimpleFrameMarker(char c) {
@@ -1756,8 +2057,7 @@ void searchSimpleFrameMarker(char c) {
     }
     return;
   }
-
-  if (simpleMarkerProbe == "S") {
+if (simpleMarkerProbe == "S") {
     if (c == '1' || c == '2') {
       simpleMarkerProbe += c;
     } else if (c == 'S') {
@@ -1817,6 +2117,7 @@ bool tryCompleteSimpleFrameNow() {
 
     // Four CRC characters arrived but CRC is wrong: the frame is corrupted.
     // Drop it immediately so the next retry can be acquired cleanly.
+    simpleCrcRejectCount += 1;
     simpleAbortedFrames += 1;
     resetSimpleStreamCapture();
     return true;
@@ -1867,7 +2168,7 @@ void consumeSimpleLoRaByte(char c) {
   simpleRxLine += c;
   if (c == '|') {
     simplePipeCount += 1;
-    if (simplePipeCount > simpleExpectedPipeCount) {
+if (simplePipeCount > simpleExpectedPipeCount) {
       simpleAbortedFrames += 1;
       resetSimpleStreamCapture();
       return;
@@ -1901,11 +2202,74 @@ void consumeSimpleLoRaByte(char c) {
   (void)tryCompleteSimpleFrameNow();
 }
 
+void restartLoRaUartFromGarbageStorm() {
+  const uint32_t now = millis();
+  if (loraLastUartRestartMs != 0 && now - loraLastUartRestartMs < LORA_UART_RESTART_COOLDOWN_MS) return;
+
+  Serial.printf("[LORA RECOVERY] UART ngap rac -> restart UART1. AUX=%s lan=%lu\n",
+                digitalRead(LORA_AUX_PIN) == HIGH ? "HIGH" : "LOW",
+                static_cast<unsigned long>(loraUartRestartCount + 1));
+  loraSerial.end();
+  resetSimpleStreamCapture();
+  pinMode(LORA_UART_RX_PIN, INPUT_PULLUP);
+  pinMode(LORA_UART_TX_PIN, OUTPUT);
+  digitalWrite(LORA_UART_TX_PIN, HIGH);
+  watchdogDelay(250);
+
+  pinMode(LORA_AUX_PIN, INPUT_PULLUP);
+  loraSerial.setRxBufferSize(LORA_RX_BUFFER_BYTES);
+  loraSerial.begin(LORA_UART_BAUD, SERIAL_8N1, LORA_UART_RX_PIN, LORA_UART_TX_PIN);
+  gpio_pullup_en(static_cast<gpio_num_t>(LORA_UART_RX_PIN));
+  gpio_pulldown_dis(static_cast<gpio_num_t>(LORA_UART_RX_PIN));
+  watchdogDelay(120);
+  while (loraSerial.available() > 0) (void)loraSerial.read();
+
+  loraUartRestartCount += 1;
+  loraLastUartRestartMs = millis();
+  loraGarbageBadWindows = 0;
+  loraHealthWindowStartedMs = millis();
+  loraHealthPrevGarbageBytes = simpleGarbageBytes;
+  loraHealthPrevGoodFrames = simpleFastCompletedFrames;
+  Serial.printf("[LORA RECOVERY] UART1 san sang RX=%d TX=%d AUX=%s\n",
+                LORA_UART_RX_PIN, LORA_UART_TX_PIN,
+                digitalRead(LORA_AUX_PIN) == HIGH ? "HIGH" : "LOW");
+}
+
+void serviceLoRaRxHealth() {
+  const uint32_t now = millis();
+  if (loraHealthWindowStartedMs == 0) {
+    loraHealthWindowStartedMs = now;
+    loraHealthPrevGarbageBytes = simpleGarbageBytes;
+    loraHealthPrevGoodFrames = simpleFastCompletedFrames;
+    return;
+  }
+  if (now - loraHealthWindowStartedMs < LORA_RX_HEALTH_WINDOW_MS) return;
+
+  const uint32_t garbageDelta = simpleGarbageBytes - loraHealthPrevGarbageBytes;
+  const uint32_t goodDelta = simpleFastCompletedFrames - loraHealthPrevGoodFrames;
+  const uint32_t noGoodFor = loraLastGoodFrameMs == 0 ? now : (now - loraLastGoodFrameMs);
+const bool storm = garbageDelta >= LORA_GARBAGE_STORM_BYTES_PER_WINDOW &&
+                     goodDelta == 0 && noGoodFor >= LORA_NO_GOOD_FRAME_BEFORE_RESTART_MS;
+  if (storm) {
+    if (loraGarbageBadWindows < 255) loraGarbageBadWindows += 1;
+    Serial.printf("[LORA WARN] rac=%lu/%lus (~%lu B/s) AUX=%s bad=%u/%u\n",
+                  static_cast<unsigned long>(garbageDelta),
+                  static_cast<unsigned long>(LORA_RX_HEALTH_WINDOW_MS / 1000UL),
+                  static_cast<unsigned long>((garbageDelta * 1000UL) / LORA_RX_HEALTH_WINDOW_MS),
+                  digitalRead(LORA_AUX_PIN) == HIGH ? "HIGH" : "LOW",
+                  loraGarbageBadWindows,
+                  LORA_GARBAGE_BAD_WINDOWS_BEFORE_RESTART);
+  } else {
+    loraGarbageBadWindows = 0;
+  }
+  loraHealthWindowStartedMs = now;
+  loraHealthPrevGarbageBytes = simpleGarbageBytes;
+  loraHealthPrevGoodFrames = simpleFastCompletedFrames;
+  if (loraGarbageBadWindows >= LORA_GARBAGE_BAD_WINDOWS_BEFORE_RESTART) restartLoRaUartFromGarbageStorm();
+}
+
 void readSimpleLoRaUart() {
   bool gotByte = false;
-
-  // A valid SIMPLE frame at 9600 baud arrives far quicker than this.
-  // If a partial frame goes silent, release it so a new retry can sync immediately.
   if (simpleCapturingFrame && simpleLastFrameByteMs != 0 &&
       millis() - simpleLastFrameByteMs > SIMPLE_FRAME_IDLE_TIMEOUT_MS) {
     simpleAbortedFrames += 1;
@@ -1915,17 +2279,27 @@ void readSimpleLoRaUart() {
   while (loraSerial.available() > 0) {
     serviceWatchdog();
     gotByte = true;
+    loraPhysicalRxBytes += 1;
+    lastSimpleLoRaActivityMs = millis();
     consumeSimpleLoRaByte(static_cast<char>(loraSerial.read()));
   }
 
+  serviceLoRaRxHealth();
   if (!gotByte && millis() - lastLoraWaitLogMs >= LORA_WAIT_LOG_INTERVAL_MS) {
     lastLoraWaitLogMs = millis();
-    Serial.printf("[LORA] Dang nghe... rac=%lu hong=%lu bat_lai=%lu fast_ok=%lu uart_avail=%d\n",
+    Serial.printf("[LORA] rx=%lu rac=%lu hong=%lu crc_fail=%lu fast_ok=%lu markerS1=%lu markerS2=%lu AUX=%s restart=%lu S1=%s S2=%s batch=%s\n",
+                  static_cast<unsigned long>(loraPhysicalRxBytes),
                   static_cast<unsigned long>(simpleGarbageBytes),
                   static_cast<unsigned long>(simpleAbortedFrames),
-                  static_cast<unsigned long>(simpleRecoveredStarts),
+                  static_cast<unsigned long>(simpleCrcRejectCount),
                   static_cast<unsigned long>(simpleFastCompletedFrames),
-                  loraSerial.available());
+                  static_cast<unsigned long>(simpleS1MarkerStarts),
+                  static_cast<unsigned long>(simpleS2MarkerStarts),
+                  digitalRead(LORA_AUX_PIN) == HIGH ? "HIGH" : "LOW",
+                  static_cast<unsigned long>(loraUartRestartCount),
+                  pendingStation1Ready ? "YES" : "NO",
+                  pendingStation2Ready ? "YES" : "NO",
+                  pairedBatchTriggered ? "READY" : "WAIT");
   }
 }
 
@@ -1935,20 +2309,19 @@ void setup() {
 
   setupWatchdog();
   setupStatusOutputs();
-  selfTestStatusOutputs();
+  // BO self-test relay luc boot: tranh xung dong/noise lam LoRa khoi dong sai.
 
   Serial.println();
   Serial.println("[HORIZON] Gateway dang khoi dong");
   Serial.printf("[HORIZON] Gateway: %s\n", GATEWAY_ID);
   Serial.printf("[STATUS] green=%d yellow=%d red=%d buzzer=%d active=%s\n",
-                STATUS_GREEN_PIN,
-                STATUS_YELLOW_PIN,
-                STATUS_RED_PIN,
-                BUZZER_PIN,
-                MOSFET_ACTIVE_LEVEL == HIGH ? "HIGH" : "LOW");
+                RELAY_GREEN_PIN,
+                RELAY_YELLOW_PIN,
+                RELAY_RED_PIN,
+                BUZZER_RELAY_PIN,
+                RELAY_ACTIVE_LOW ? "LOW" : "HIGH");
   Serial.printf("[STATUS] Nut tat coi IO%d, nhan xuong GND\n", BUZZER_MUTE_BUTTON_PIN);
-
-  loraSerial.setRxBufferSize(LORA_RX_BUFFER_BYTES);
+loraSerial.setRxBufferSize(LORA_RX_BUFFER_BYTES);
   loraSerial.begin(LORA_UART_BAUD, SERIAL_8N1, LORA_UART_RX_PIN, LORA_UART_TX_PIN);
   gpio_pullup_en(static_cast<gpio_num_t>(LORA_UART_RX_PIN));
   gpio_pulldown_dis(static_cast<gpio_num_t>(LORA_UART_RX_PIN));
@@ -1957,17 +2330,35 @@ void setup() {
                 static_cast<unsigned long>(LORA_UART_BAUD),
                 static_cast<unsigned int>(LORA_RX_BUFFER_BYTES));
   Serial.printf("[DEBUG] lora_raw_uart=%s\n", DEBUG_LORA_RAW_UART ? "on" : "off");
-  Serial.println("[LORA] SIMPLE QoS1 RX BOOST V4: marker S1/S2 + CRC hoan tat som + ACK x3");
+  pinMode(LORA_AUX_PIN, INPUT_PULLUP);
+  Serial.println("[LORA] RX PRIORITY: HTTP/403 FIX GIU NGUYEN, ACK ngan de nghe 2 tram");
+  Serial.printf("[LORA] AUX IO%d=%s\n", LORA_AUX_PIN, digitalRead(LORA_AUX_PIN) == HIGH ? "HIGH" : "LOW");
+  Serial.printf("[CONFIG] runtime_poll=%s (server hien dang tra 403)\n", CONFIG_POLL_ENABLED ? "BAT" : "TAT");
 
   Serial.println("[FLASH] Gateway khong dung SPIFFS/SD");
 
   setupWifiDashboard();
 
   if (MODEM_ENABLED) {
-    powerOnModem();
-    modemReady = initModem();
+    // V11 policy: keep 4G physically off, but leave its UART pins untouched /
+    // high-impedance so modem handling cannot disturb LoRa RX at boot.
+    modemReady = false;
+    activeModemBaud = 0;
+    modemSerial.end();
+    if (MODEM_PEN_PIN >= 0) {
+      pinMode(MODEM_PEN_PIN, OUTPUT);
+      digitalWrite(MODEM_PEN_PIN, LOW);
+    }
+    pinMode(MODEM_RX_PIN, INPUT);
+    pinMode(MODEM_TX_PIN, INPUT);
+    gpio_pullup_dis(static_cast<gpio_num_t>(MODEM_RX_PIN));
+    gpio_pulldown_dis(static_cast<gpio_num_t>(MODEM_RX_PIN));
+    gpio_pullup_dis(static_cast<gpio_num_t>(MODEM_TX_PIN));
+    gpio_pulldown_dis(static_cast<gpio_num_t>(MODEM_TX_PIN));
+    Serial.printf("[MODEM] CHO CAP S1+S2; PEN LOW, UART modem high-Z TX=%d RX=%d PEN=%d\n", MODEM_TX_PIN, MODEM_RX_PIN, MODEM_PEN_PIN);
+  } else {
+    Serial.println("[MODEM] MODEM_ENABLED=false");
   }
-  Serial.printf("[MODEM] %s TX=%d RX=%d PEN=%d\n", modemReady ? "san_sang" : "dang_tat_hoac_chua_san_sang", MODEM_TX_PIN, MODEM_RX_PIN, MODEM_PEN_PIN);
 }
 
 void loop() {
@@ -1982,7 +2373,10 @@ void loop() {
   }
   readSimpleLoRaUart();
 
-  pollRuntimeConfigs();
+  // Only after one fresh packet from BOTH stations do we power 4G and upload.
+  servicePairedBatchUpload();
+  // Runtime CONFIG GET remains disabled while the endpoint returns 403.
+  if (CONFIG_POLL_ENABLED) pollRuntimeConfigs();
   maybeEnterGatewaySleep();
   updateStatusOutputs();
   watchdogDelay(10);

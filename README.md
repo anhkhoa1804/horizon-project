@@ -79,7 +79,8 @@ admin-auth variables.
 ## Current status
 
 Backend and frontend are live against a real Supabase project (migrations
-001–025 applied). Three GitHub Actions workflows
+27 tracked migrations applied, including the additive 024/025 gateway and
+timezone follow-ups). Three GitHub Actions workflows
 exist under `.github/workflows/` (validation on every PR/push, a weekly
 live-integration smoke test, and a tag-triggered release/deploy pipeline)
 — and the current token-authenticated gateway route retains real observation

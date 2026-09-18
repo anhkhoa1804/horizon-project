@@ -26,7 +26,7 @@ an honest record of what was actually true at each point.
 | Item | Files | Risk | Test strategy | Hardware? | Live Supabase? | GCP? |
 |---|---|---|---|---|---|---|
 | ~~Provision a real Supabase project~~ **DONE** | `infra/supabase/*` | — | Confirmed live and reachable (`edhcnccvbwuffiwzywfm`) | No | Yes | No |
-| ~~Apply migrations 001→025 in order~~ **DONE** | same | — | All 25 applied; verified via live RLS reads and typed-record promotion | No | Yes | No |
+| ~~Apply tracked migrations in order~~ **DONE** | same | — | All 27 applied; verified via live RLS reads and typed-record promotion | No | Yes | No |
 | ~~Add `soil_readings` repository method and UI wiring~~ **DONE** | `apps/web/lib/repositories/readingRepository.ts`, Observatory builder | Low — typed soil history is promoted from retained gateway observations | Unit + live persistence checks | No | Yes | No |
 | ~~Deploy and live-test `edge-ingest`~~ **DONE** | `infra/supabase/functions/edge-ingest/*` | — | `LIVE_SUPABASE_INTEGRATION=1 npm run test:integration` passed 4/4 on 2026-09-18 against the real Function | No | Yes | No |
 | Add CI check that `bundle.mjs` matches a fresh `npm run build:edge` output | `services/edge-ingestion/package.json`, new CI config | Low | Diff bundle.mjs before/after rebuild in CI | No | No | Possibly, if CI runs on GCP-hosted infra — otherwise no |

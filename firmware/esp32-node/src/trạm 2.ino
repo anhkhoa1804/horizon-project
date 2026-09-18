@@ -1,9 +1,9 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <SPI.h>
-#include <SPIFFS.h>
 #include <esp_sleep.h>
 #include <esp_task_wdt.h>
+#include <driver/gpio.h>
 #include <string.h>
 
 /*
@@ -12,21 +12,20 @@
   Hardware:
   - ES-SM-THEC-01 soil temperature / moisture / EC / salinity / TDS sensor, RS485 Modbus RTU.
   - ES-PH-SOIL-01 soil pH sensor, RS485 Modbus RTU.
-  - SHT31 ambient temperature / humidity sensor, I2C.
+  - SHT30 ambient temperature / humidity sensor, I2C.
   - CJMCU-226 / INA226 battery monitor, I2C.
   - SX1278 LoRa UART module, sends readings to the gateway.
-  - SPIFFS flash logging.
 
   Proposed pins, kept close to Station 1:
   - INA226 I2C: SDA IO19, SCL IO20.
-  - SHT31 I2C: SDA IO8, SCL IO9.
+  - SHT30 I2C: SDA IO8, SCL IO9.
   - RS485 auto-direction module: ESP32 TX IO17 -> module RX/DI, ESP32 RX IO18 <- module TX/RO.
   - LoRa UART: ESP32 RX IO16 <- LoRa TX, ESP32 TX IO15 -> LoRa RX.
 
   RS485 soil bus:
   - Connect A with A and B with B for both soil sensors on the same RS485 bus.
-  - ES-SM-THEC-01 slave ID = 1.
-  - ES-PH-SOIL-01 slave ID = 2.
+  - ES-SM-THEC-01 slave ID = 2.
+  - ES-PH-SOIL-01 slave ID = 1.
   - Baudrate = 4800, 8 data bits, 1 stop bit, no parity.
 
   Battery:
@@ -34,35 +33,35 @@
 */
 
 static const char *STATION_ID = "STATION_02";
-static const char *FIRMWARE_VERSION = "station2-grapefruit-soil-0.4.2-lora-ping-5s-test";
+static const char *FIRMWARE_VERSION = "station2-grapefruit-soil-0.6.7-simple-qos1-dual-rs485-sht30-io8-io9";
 
 static const uint32_t DEBUG_BAUD = 115200;
 static const uint32_t RS485_BAUD = 4800;
 static const uint32_t LORA_UART_BAUD = 9600;
-static const uint32_t I2C_CLOCK_HZ = 100000;
+static const uint32_t I2C_CLOCK_HZ = 25000;
 
-static const int INA226_SDA_PIN = 19;
-static const int INA226_SCL_PIN = 20;
+static const int INA226_SDA_PIN = 4;
+static const int INA226_SCL_PIN = 5;
+static const int SHT30_SDA_PIN = 8;
+static const int SHT30_SCL_PIN = 9;
+static const uint8_t SHT30_I2C_ADDRESS = 0x44;
 
-static const int SHT31_SDA_PIN = 8;
-static const int SHT31_SCL_PIN = 9;
 
-static const int RS485_TX_PIN = 17;
-static const int RS485_RX_PIN = 18;
+static const int RS485_TX_PIN = 6;
+static const int RS485_RX_PIN = 7;
 static const int RS485_DE_RE_PIN = -1;  // Current module is assumed auto-direction like Station 1.
 
-static const int LORA_UART_RX_PIN = 16;
-static const int LORA_UART_TX_PIN = 15;
+static const int LORA_UART_RX_PIN = 15;
+static const int LORA_UART_TX_PIN = 16;
 static const int LORA_M0_PIN = -1;   // Tie M0 to GND for normal transparent mode.
 static const int LORA_M1_PIN = -1;   // Tie M1 to GND for normal transparent mode.
 static const int LORA_AUX_PIN = -1;  // Recommended later: connect AUX to an input GPIO, e.g. IO10.
 
-static const uint8_t SHT31_I2C_ADDR = 0x44;
 static const uint8_t INA226_ADDRESS = 0x40;
 static const uint8_t LIFEPO4_CELL_COUNT = 4;
 
-static const uint8_t SOIL_THEC_SLAVE_ID = 1;
-static const uint8_t SOIL_PH_SLAVE_ID = 2;
+static const uint8_t SOIL_THEC_SLAVE_ID = 2;
+static const uint8_t SOIL_PH_SLAVE_ID = 1;
 
 static const uint16_t THEC_START_REG = 0x0000;
 static const uint16_t THEC_REG_COUNT = 5;
@@ -74,34 +73,37 @@ static const uint32_t PH_BAUD_CANDIDATES[] = {2400, 4800, 9600};
 static const uint8_t INA226_REG_CONFIG = 0x00;
 static const uint8_t INA226_REG_BUS_VOLTAGE = 0x02;
 
-static const bool LORA_TEST_FAST_SEND = true;
-static const bool LORA_TEST_SHORT_PACKET = true;
+static const bool LORA_TEST_FAST_SEND = false;
+static const bool LORA_TEST_SHORT_PACKET = false;
 static const bool DEBUG_DISABLE_LORA_UART = false;
 static const uint8_t RAW_SAMPLES_PER_MINUTE = LORA_TEST_FAST_SEND ? 1 : 8;
 static const uint8_t MIN_VALID_RAW_SAMPLES = LORA_TEST_FAST_SEND ? 1 : 3;
 static const uint8_t MINUTE_RECORDS_PER_PACKET = LORA_TEST_FAST_SEND ? 1 : 5;
 static const uint32_t SAMPLE_INTERVAL_MS = LORA_TEST_FAST_SEND ? 5UL * 1000UL : 60UL * 1000UL;
 static const uint32_t RAW_SAMPLE_GAP_MS = 450;
-static const uint32_t RS485_INTER_REQUEST_GAP_MS = 120;
-static const uint32_t SOIL_THEC_TIMEOUT_MS = 1000;
-static const uint32_t SOIL_PH_TIMEOUT_MS = 1200;
-static const uint32_t LORA_ACK_TIMEOUT_MS = 8000;
-static const uint32_t DEFAULT_SLEEP_INTERVAL_MS = 0;
+static const uint32_t RS485_INTER_REQUEST_GAP_MS = 500;
+static const uint32_t SOIL_THEC_TIMEOUT_MS = 1500;
+static const uint8_t SOIL_THEC_READ_RETRIES = 4;
+static const uint32_t SOIL_THEC_RETRY_GAP_MS = 250;
+static const uint32_t SOIL_PH_TIMEOUT_MS = 1500;
+static const uint8_t SOIL_PH_READ_RETRIES = 4;
+static const uint32_t SOIL_PH_RETRY_GAP_MS = 250;
+// Controlled burst: one poll can produce several copies of the SAME message_id.
+static const uint8_t LORA_TX_BURST_COUNT = 5;
+static const uint32_t LORA_ACK_TIMEOUT_MS = 1700;
+static const uint32_t LORA_REPLY_GUARD_MS = 700;
+static const uint32_t LORA_TX_RETRY_GAP_MS = 220;
+static const uint32_t DEFAULT_SLEEP_INTERVAL_MS = 60UL * 1000UL;
 static const uint32_t WATCHDOG_TIMEOUT_MS = 60000;
-static const size_t MINUTE_LOG_MAX_FILE_BYTES = 1200UL * 1024UL;
-static const size_t PACKET_LOG_MAX_FILE_BYTES = 96UL * 1024UL;
-static const bool DEBUG_RAW_SENSOR_SAMPLES = false;
-static const bool DEBUG_SHT31_I2C_SCAN = true;
-static const bool DEBUG_PH_ADDRESS_SETUP_MODE = false;
+static const bool DEBUG_RAW_SENSOR_SAMPLES = true;
+static const uint8_t SHT30_READ_RETRIES = 3;
+static const uint32_t SHT30_MEASUREMENT_DELAY_MS = 20;
+static const bool DEBUG_PH_ADDRESS_SETUP_MODE = false;  // LUON false trong firmware chay binh thuong.
 static const bool DEBUG_SKIP_PH_SENSOR = false;
-static const char *MINUTE_LOG_PATH = "/station2_min.log";
-static const char *MINUTE_OLD_LOG_PATH = "/station2_min.old";
-static const char *PACKET_LOG_PATH = "/station2_pkt.log";
-static const char *PACKET_OLD_LOG_PATH = "/station2_pkt.old";
 
 HardwareSerial rs485Serial(2);
 HardwareSerial loraSerial(1);
-TwoWire sht31Wire = TwoWire(1);
+TwoWire sht30Wire = TwoWire(1);
 
 struct SensorValue {
   bool ok;
@@ -109,7 +111,7 @@ struct SensorValue {
   const char *status;
 };
 
-struct Sht31Reading {
+struct Sht30Reading {
   SensorValue airTempC;
   SensorValue airHumidityPct;
 };
@@ -172,6 +174,7 @@ struct AggregateReading {
 };
 
 RTC_DATA_ATTR static uint32_t sequenceNumber = 0;
+RTC_DATA_ATTR static uint32_t pendingSequence = 0;
 RTC_DATA_ATTR static uint8_t aggregateCount = 0;
 RTC_DATA_ATTR static float aggregateAirTempC[MINUTE_RECORDS_PER_PACKET] = {};
 RTC_DATA_ATTR static float aggregateAirHumidityPct[MINUTE_RECORDS_PER_PACKET] = {};
@@ -184,12 +187,12 @@ RTC_DATA_ATTR static float aggregateSoilTds[MINUTE_RECORDS_PER_PACKET] = {};
 RTC_DATA_ATTR static float aggregateSoilPh[MINUTE_RECORDS_PER_PACKET] = {};
 RTC_DATA_ATTR static float aggregateBatteryVoltageV[MINUTE_RECORDS_PER_PACKET] = {};
 RTC_DATA_ATTR static float aggregateBatteryPercent[MINUTE_RECORDS_PER_PACKET] = {};
-static bool spiffsReady = false;
 static bool ina226Ready = false;
-static bool sht31Ready = false;
-static uint8_t activeSht31Address = SHT31_I2C_ADDR;
+static bool sht30Ready = false;
 static uint8_t activeSoilPhSlaveId = SOIL_PH_SLAVE_ID;
 static uint32_t activeSoilPhBaud = RS485_BAUD;
+static uint16_t lastSoilPhRaw = 0;
+static bool lastSoilPhRawValid = false;
 static uint32_t currentRs485Baud = 0;
 static bool lastSoilThecRawOk = false;
 static uint16_t lastSoilThecRegs[THEC_REG_COUNT] = {};
@@ -197,6 +200,7 @@ static uint32_t lastRs485TransactionMs = 0;
 static uint32_t lastSampleMs = 0;
 static uint32_t configuredSleepIntervalMs = DEFAULT_SLEEP_INTERVAL_MS;
 static String loraCommandLine;
+static bool gatewayPollPending = false;
 
 String numberOrNull(float value, uint8_t decimals) {
   if (!isfinite(value)) {
@@ -210,7 +214,9 @@ const char *statusToVietnamese(const char *status) {
   if (strcmp(status, "disabled") == 0) return "tam_tat";
   if (strcmp(status, "timeout") == 0) return "qua_thoi_gian_cho";
   if (strcmp(status, "i2c_error") == 0) return "loi_i2c";
-  if (strcmp(status, "sht30_not_found") == 0) return "khong_tim_thay_sht30";
+  if (strcmp(status, "sht30_timeout") == 0) return "sht30_khong_phan_hoi";
+  if (strcmp(status, "sht30_crc_error") == 0) return "sht30_loi_crc";
+  if (strcmp(status, "sht30_out_of_range") == 0) return "sht30_ngoai_khoang_do";
   if (strcmp(status, "checksum_error") == 0) return "loi_kiem_tra";
   if (strcmp(status, "modbus_error") == 0) return "loi_modbus";
   if (strcmp(status, "out_of_range") == 0) return "ngoai_khoang_do";
@@ -255,68 +261,6 @@ void ensureRs485Baud(uint32_t baud) {
   delay(20);
 }
 
-void rotateLogIfNeeded(const char *path, const char *oldPath, size_t maxBytes) {
-  if (!spiffsReady || !SPIFFS.exists(path)) {
-    return;
-  }
-
-  File file = SPIFFS.open(path, "r");
-  if (!file) {
-    return;
-  }
-  const size_t size = file.size();
-  file.close();
-
-  if (size < maxBytes) {
-    return;
-  }
-
-  if (SPIFFS.exists(oldPath)) {
-    SPIFFS.remove(oldPath);
-  }
-  SPIFFS.rename(path, oldPath);
-}
-
-void appendToSpiffs(const char *path, const char *oldPath, const String &payload, size_t maxBytes) {
-  if (!spiffsReady) {
-    return;
-  }
-
-  rotateLogIfNeeded(path, oldPath, maxBytes);
-
-  File file = SPIFFS.open(path, "a");
-  if (!file) {
-    Serial.println("[SPIFFS] Khong mo duoc file log cua tram 2");
-    return;
-  }
-
-  file.println(payload);
-  file.close();
-}
-
-bool setupSpiffs() {
-  Serial.println("[SPIFFS] Dang gan bo nho...");
-
-  if (SPIFFS.begin(false)) {
-    Serial.printf("[SPIFFS] Da san sang tong=%lu da_dung=%lu\n",
-                  static_cast<unsigned long>(SPIFFS.totalBytes()),
-                  static_cast<unsigned long>(SPIFFS.usedBytes()));
-    return true;
-  }
-
-  Serial.println("[SPIFFS] Gan bo nho loi, thu format lai...");
-
-  if (SPIFFS.begin(true)) {
-    Serial.printf("[SPIFFS] Da format va san sang tong=%lu da_dung=%lu\n",
-                  static_cast<unsigned long>(SPIFFS.totalBytes()),
-                  static_cast<unsigned long>(SPIFFS.usedBytes()));
-    return true;
-  }
-
-  Serial.println("[SPIFFS] Khong kha dung - kiem tra cau hinh phan vung flash");
-  return false;
-}
-
 uint32_t extractUintField(const String &json, const char *field, uint32_t fallback) {
   String key = "\"";
   key += field;
@@ -345,15 +289,60 @@ bool configTargetsThisStation(const String &json) {
   return json.indexOf("\"type\":\"config\"") >= 0 && json.indexOf(stationKey) >= 0;
 }
 
+bool pollTargetsThisStation(const String &json) {
+  String stationKey = "\"station_id\":\"";
+  stationKey += STATION_ID;
+  stationKey += "\"";
+  return json.indexOf("\"type\":\"poll\"") >= 0 && json.indexOf(stationKey) >= 0;
+}
+
 void applyConfigCommand(const String &json) {
   if (!configTargetsThisStation(json)) {
     return;
   }
 
-  const uint32_t sleepSeconds = extractUintField(json, "sleep_interval_seconds", configuredSleepIntervalMs / 1000UL);
+  const uint32_t sleepSeconds = extractUintField(
+    json,
+    "sleep_interval_seconds",
+    configuredSleepIntervalMs / 1000UL
+  );
   configuredSleepIntervalMs = min<uint32_t>(86400UL, sleepSeconds) * 1000UL;
-
   Serial.printf("[CONFIG] ngu=%lu giay\n", configuredSleepIntervalMs / 1000UL);
+}
+
+void sendNoDataStatus() {
+  String status;
+  status.reserve(120);
+  status += "{\"type\":\"station_status\",\"station_id\":\"";
+  status += STATION_ID;
+  status += "\",\"status\":\"no_data\",\"aggregate_count\":";
+  status += String(aggregateCount);
+  status += "}";
+
+  delay(LORA_REPLY_GUARD_MS);
+  loraSerial.println(status);
+  loraSerial.flush();
+  Serial.print("[POLL] Chua du du lieu, phan hoi gateway: ");
+  Serial.println(status);
+}
+
+void handleGatewayCommand(const String &json) {
+  if (configTargetsThisStation(json)) {
+    applyConfigCommand(json);
+    return;
+  }
+
+  if (!pollTargetsThisStation(json)) {
+    return;
+  }
+
+  if (aggregateCount >= MINUTE_RECORDS_PER_PACKET) {
+    gatewayPollPending = true;
+    Serial.printf("[POLL] Gateway goi %s - du lieu san sang, cho phep TX\n", STATION_ID);
+  } else {
+    gatewayPollPending = false;
+    sendNoDataStatus();
+  }
 }
 
 void readLoRaCommands() {
@@ -366,7 +355,7 @@ void readLoRaCommands() {
     if (c == '\n') {
       loraCommandLine.trim();
       if (loraCommandLine.length() > 0) {
-        applyConfigCommand(loraCommandLine);
+        handleGatewayCommand(loraCommandLine);
       }
       loraCommandLine = "";
     } else if (c != '\r') {
@@ -389,67 +378,14 @@ void maybeEnterConfiguredSleep() {
   esp_deep_sleep_start();
 }
 
-bool i2cAddressPresent(TwoWire &bus, uint8_t address) {
-  bus.beginTransmission(address);
-  return bus.endTransmission() == 0;
-}
+// ============================================================
+// SHT30 AMBIENT SENSOR - I2C SDA IO8, SCL IO9
+// ============================================================
 
-void scanI2cBus(TwoWire &bus, const char *label) {
-  if (!DEBUG_SHT31_I2C_SCAN) {
-    return;
-  }
-
-  uint8_t foundCount = 0;
-
-  Serial.print(label);
-  Serial.print(" dang_quet:");
-
-  for (uint8_t address = 1; address < 127; address += 1) {
-    serviceWatchdog();
-
-    if (i2cAddressPresent(bus, address)) {
-      Serial.print(" 0x");
-      if (address < 0x10) {
-        Serial.print('0');
-      }
-      Serial.print(address, HEX);
-      foundCount += 1;
-    }
-
-    delay(1);
-  }
-
-  if (foundCount == 0) {
-    Serial.print(" khong_tim_thay");
-  }
-
-  Serial.println();
-}
-
-bool detectSht31Address() {
-  scanI2cBus(sht31Wire, "[SHT30/SHT31 I2C]");
-
-  if (i2cAddressPresent(sht31Wire, 0x44)) {
-    activeSht31Address = 0x44;
-    Serial.println("[SHT30/SHT31 I2C] Tim thay dia_chi=0x44");
-    return true;
-  }
-
-  if (i2cAddressPresent(sht31Wire, 0x45)) {
-    activeSht31Address = 0x45;
-    Serial.println("[SHT30/SHT31 I2C] Tim thay dia_chi=0x45");
-    return true;
-  }
-
-  activeSht31Address = SHT31_I2C_ADDR;
-  Serial.println("[SHT30/SHT31 I2C] Khong tim thay tai 0x44/0x45");
-  return false;
-}
-
-uint8_t crc8Sht31(const uint8_t *data, size_t len) {
+uint8_t sht30Crc8(const uint8_t *data, size_t length) {
   uint8_t crc = 0xFF;
-  for (size_t i = 0; i < len; i += 1) {
-    crc ^= data[i];
+  for (size_t index = 0; index < length; index += 1) {
+    crc ^= data[index];
     for (uint8_t bit = 0; bit < 8; bit += 1) {
       crc = (crc & 0x80) ? static_cast<uint8_t>((crc << 1) ^ 0x31) : static_cast<uint8_t>(crc << 1);
     }
@@ -457,39 +393,65 @@ uint8_t crc8Sht31(const uint8_t *data, size_t len) {
   return crc;
 }
 
-Sht31Reading readSht31() {
-  if (!sht31Ready) {
-    return {{false, NAN, "sht30_not_found"}, {false, NAN, "sht30_not_found"}};
+Sht30Reading readSht30() {
+  const char *lastError = "sht30_timeout";
+
+  for (uint8_t attempt = 1; attempt <= SHT30_READ_RETRIES; attempt += 1) {
+    sht30Wire.beginTransmission(SHT30_I2C_ADDRESS);
+    sht30Wire.write(0x24);
+    sht30Wire.write(0x00);
+    if (sht30Wire.endTransmission() != 0) {
+      lastError = "i2c_error";
+      delay(10);
+      continue;
+    }
+
+    delay(SHT30_MEASUREMENT_DELAY_MS);
+    if (sht30Wire.requestFrom(SHT30_I2C_ADDRESS, static_cast<uint8_t>(6)) != 6) {
+      lastError = "sht30_timeout";
+      delay(10);
+      continue;
+    }
+
+    uint8_t raw[6] = {};
+    for (uint8_t index = 0; index < 6; index += 1) {
+      raw[index] = static_cast<uint8_t>(sht30Wire.read());
+    }
+
+    if (sht30Crc8(raw, 2) != raw[2] || sht30Crc8(raw + 3, 2) != raw[5]) {
+      lastError = "sht30_crc_error";
+      Serial.printf("[SHT30] Doc lan %u/%u loi CRC\n",
+                    static_cast<unsigned int>(attempt),
+                    static_cast<unsigned int>(SHT30_READ_RETRIES));
+      continue;
+    }
+
+    const uint16_t rawTemperature = (static_cast<uint16_t>(raw[0]) << 8) | raw[1];
+    const uint16_t rawHumidity = (static_cast<uint16_t>(raw[3]) << 8) | raw[4];
+    const float temperatureC = -45.0f + 175.0f * rawTemperature / 65535.0f;
+    const float humidityPct = 100.0f * rawHumidity / 65535.0f;
+
+    if (!isfinite(temperatureC) || !isfinite(humidityPct) ||
+        temperatureC < -40.0f || temperatureC > 125.0f ||
+        humidityPct < 0.0f || humidityPct > 100.0f) {
+      lastError = "sht30_out_of_range";
+      continue;
+    }
+
+    sht30Ready = true;
+    Serial.printf("[SHT30] OK T=%.1f C H=%.1f %% SDA=IO%d SCL=IO%d\n",
+                  temperatureC, humidityPct, SHT30_SDA_PIN, SHT30_SCL_PIN);
+    return {
+      {true, temperatureC, "ok"},
+      {true, humidityPct, "ok"},
+    };
   }
 
-  sht31Wire.beginTransmission(activeSht31Address);
-  sht31Wire.write(0x24);
-  sht31Wire.write(0x00);
-  if (sht31Wire.endTransmission() != 0) {
-    return {{false, NAN, "i2c_error"}, {false, NAN, "i2c_error"}};
-  }
-
-  delay(20);
-
-  if (sht31Wire.requestFrom(static_cast<int>(activeSht31Address), 6) != 6) {
-    return {{false, NAN, "timeout"}, {false, NAN, "timeout"}};
-  }
-
-  uint8_t raw[6];
-  for (uint8_t i = 0; i < 6; i += 1) {
-    raw[i] = sht31Wire.read();
-  }
-
-  if (crc8Sht31(raw, 2) != raw[2] || crc8Sht31(raw + 3, 2) != raw[5]) {
-    return {{false, NAN, "checksum_error"}, {false, NAN, "checksum_error"}};
-  }
-
-  const uint16_t rawTemp = (static_cast<uint16_t>(raw[0]) << 8) | raw[1];
-  const uint16_t rawHum = (static_cast<uint16_t>(raw[3]) << 8) | raw[4];
-  const float tempC = -45.0f + 175.0f * (static_cast<float>(rawTemp) / 65535.0f);
-  const float humidityPct = 100.0f * (static_cast<float>(rawHum) / 65535.0f);
-
-  return {{true, tempC, "ok"}, {true, humidityPct, "ok"}};
+  sht30Ready = false;
+  return {
+    {false, NAN, lastError},
+    {false, NAN, lastError},
+  };
 }
 
 uint16_t crc16Modbus(const uint8_t *data, size_t len) {
@@ -648,7 +610,25 @@ SoilThecReading readSoilThec() {
   ensureRs485Baud(RS485_BAUD);
 
   uint16_t regs[THEC_REG_COUNT] = {};
-  if (!readHoldingRegisters(SOIL_THEC_SLAVE_ID, THEC_START_REG, THEC_REG_COUNT, regs, SOIL_THEC_TIMEOUT_MS)) {
+  bool readOk = false;
+
+  for (uint8_t attempt = 1; attempt <= SOIL_THEC_READ_RETRIES; ++attempt) {
+    for (uint8_t i = 0; i < THEC_REG_COUNT; ++i) regs[i] = 0;
+
+    if (readHoldingRegisters(SOIL_THEC_SLAVE_ID, THEC_START_REG, THEC_REG_COUNT, regs, SOIL_THEC_TIMEOUT_MS)) {
+      readOk = true;
+      break;
+    }
+
+    if (attempt < SOIL_THEC_READ_RETRIES) {
+      Serial.printf("[THEC] Doc Modbus lan %u/%u that bai, thu lai...\n",
+                    static_cast<unsigned int>(attempt),
+                    static_cast<unsigned int>(SOIL_THEC_READ_RETRIES));
+      delay(SOIL_THEC_RETRY_GAP_MS);
+    }
+  }
+
+  if (!readOk) {
     lastSoilThecRawOk = false;
     return {
       {false, NAN, "modbus_error"},
@@ -662,6 +642,13 @@ SoilThecReading readSoilThec() {
   lastSoilThecRawOk = true;
   for (uint8_t i = 0; i < THEC_REG_COUNT; i += 1) {
     lastSoilThecRegs[i] = regs[i];
+  }
+
+  Serial.printf("[THEC RAW] 0000=%u 0001=%u 0002=%u 0003=%u 0004=%u\n",
+                regs[0], regs[1], regs[2], regs[3], regs[4]);
+
+  if (regs[0] > 0 && regs[1] == 0 && regs[2] == 0 && regs[3] == 0 && regs[4] == 0) {
+    Serial.println("[THEC] CANH BAO: Modbus OK nhung chi do_am co gia_tri; temp/EC/salinity/TDS deu RAW=0");
   }
 
   const float moisturePct = regs[0] / 10.0f;
@@ -684,16 +671,44 @@ SensorValue readSoilPh() {
   ensureRs485Baud(activeSoilPhBaud);
 
   uint16_t regs[PH_REG_COUNT] = {};
-  if (!readHoldingRegisters(activeSoilPhSlaveId, PH_START_REG, PH_REG_COUNT, regs, SOIL_PH_TIMEOUT_MS)) {
-    return {false, NAN, "modbus_error"};
+  for (uint8_t attempt = 1; attempt <= SOIL_PH_READ_RETRIES; attempt += 1) {
+    if (readHoldingRegisters(activeSoilPhSlaveId, PH_START_REG, PH_REG_COUNT, regs, SOIL_PH_TIMEOUT_MS)) {
+      lastSoilPhRaw = regs[0];
+      lastSoilPhRawValid = true;
+      Serial.printf("[PH RAW] ID=%u baud=%lu 0000=%u -> pH=%.1f (lan %u/%u)\n",
+                    activeSoilPhSlaveId,
+                    static_cast<unsigned long>(activeSoilPhBaud),
+                    regs[0],
+                    regs[0] / 10.0f,
+                    attempt,
+                    static_cast<unsigned int>(SOIL_PH_READ_RETRIES));
+
+      const float ph = regs[0] / 10.0f;
+      if (ph < 0.0f || ph > 14.0f) {
+        return {false, ph, "out_of_range"};
+      }
+      return {true, ph, "ok"};
+    }
+    if (attempt < SOIL_PH_READ_RETRIES) delay(SOIL_PH_RETRY_GAP_MS);
   }
 
-  const float ph = regs[0] / 10.0f;
-  if (ph < 0.0f || ph > 14.0f) {
-    return {false, ph, "out_of_range"};
-  }
+  lastSoilPhRawValid = false;
+  Serial.printf("[PH RAW] ID=%u baud=%lu KHONG_PHAN_HOI sau %u lan\n",
+                activeSoilPhSlaveId,
+                static_cast<unsigned long>(activeSoilPhBaud),
+                static_cast<unsigned int>(SOIL_PH_READ_RETRIES));
+  return {false, NAN, "modbus_error"};
+}
 
-  return {true, ph, "ok"};
+bool diagnosePhAddressRegister() {
+  ensureRs485Baud(activeSoilPhBaud);
+  uint16_t addrReg[1] = {};
+  if (!readHoldingRegisters(activeSoilPhSlaveId, PH_DEVICE_ADDRESS_REG, 1, addrReg, 900)) {
+    Serial.printf("[PH DIAG] ID=%u khong doc duoc thanh ghi 07D0H - co the sai ID/baud hoac khong phai module pH\n", activeSoilPhSlaveId);
+    return false;
+  }
+  Serial.printf("[PH DIAG] ID dang doc=%u | thanh ghi 07D0H tra ve=%u\n", activeSoilPhSlaveId, addrReg[0]);
+  return addrReg[0] == activeSoilPhSlaveId;
 }
 
 void setupPhAddressIfRequested() {
@@ -907,7 +922,7 @@ MinuteReading collectMinuteReading() {
   for (uint8_t i = 0; i < RAW_SAMPLES_PER_MINUTE; i += 1) {
     serviceWatchdog();
 
-    const Sht31Reading ambient = readSht31();
+    const Sht30Reading ambient = readSht30();
     if (ambient.airTempC.ok && ambient.airHumidityPct.ok) {
       airTempC[ambientCount] = ambient.airTempC.value;
       airHumidityPct[ambientCount] = ambient.airHumidityPct.value;
@@ -998,11 +1013,10 @@ MinuteReading collectMinuteReading() {
   const BatteryReading battery = readBattery();
 
   if (!ambientOk) {
-    Serial.printf("[KHI HAU] SHT30/SHT31 loi=%s dia_chi=0x%02X SDA=%d SCL=%d\n",
+    Serial.printf("[KHI HAU] SHT30 loi=%s SDA=IO%d SCL=IO%d\n",
                   statusToVietnamese(ambientStatus),
-                  activeSht31Address,
-                  SHT31_SDA_PIN,
-                  SHT31_SCL_PIN);
+            SHT30_SDA_PIN,
+            SHT30_SCL_PIN);
   }
 
   const float filteredMoisture = soilOk ? filteredAverage(soilMoisturePct, soilCount) : NAN;
@@ -1222,34 +1236,225 @@ void sendAggregateIfReady() {
     return;
   }
 
+  if (!gatewayPollPending) {
+    return;
+  }
+  gatewayPollPending = false;
+
   if (DEBUG_DISABLE_LORA_UART) {
-    Serial.println("[LORA] Dang tat de kiem tra nhiet module - khong gui goi tong hop");
-    aggregateCount = 0;
+    Serial.println("[LORA] UART dang tat - giu goi tong hop de gui lai");
     return;
   }
 
-  sequenceNumber += 1;
+  if (pendingSequence == 0) {
+    sequenceNumber += 1;
+    pendingSequence = sequenceNumber;
+  }
+
   char messageId[48];
-  snprintf(messageId, sizeof(messageId), "%s-%lu", STATION_ID, static_cast<unsigned long>(sequenceNumber));
+  snprintf(
+    messageId,
+    sizeof(messageId),
+    "%s-%lu",
+    STATION_ID,
+    static_cast<unsigned long>(pendingSequence)
+  );
 
   const AggregateReading aggregate = buildAggregateReading();
-  const String payload = LORA_TEST_SHORT_PACKET ? buildLoraTestPayload(messageId) : buildAggregatePayload(aggregate, messageId);
-  Serial.printf("[LORA] Dang gui goi tong hop ve cong gateway %s\n", messageId);
+  const String payload = LORA_TEST_SHORT_PACKET
+    ? buildLoraTestPayload(messageId)
+    : buildAggregatePayload(aggregate, messageId);
+
+  Serial.printf("[LORA] Gateway poll -> bat dau BURST %u lan cho %s\n",
+                LORA_TX_BURST_COUNT,
+                messageId);
   Serial.println(payload);
-  loraSerial.println(payload);
-  const bool ackOk = waitForAck(messageId, LORA_ACK_TIMEOUT_MS);
-  Serial.printf("[LORA] Phan hoi cong gateway %s: %s\n", messageId, ackOk ? "da_nhan" : "chua_nhan_duoc");
+
+  delay(LORA_REPLY_GUARD_MS);
+
+  // Remove stale poll/garbage bytes before the first data transmission.
+  while (loraSerial.available() > 0) {
+    (void)loraSerial.read();
+  }
+
+  bool ackOk = false;
+  uint8_t sentCopies = 0;
+
+  for (uint8_t attempt = 1; attempt <= LORA_TX_BURST_COUNT; attempt += 1) {
+    sentCopies = attempt;
+
+    Serial.printf("[LORA-TX] %s lan %u/%u, bytes=%u\n",
+                  messageId,
+                  attempt,
+                  LORA_TX_BURST_COUNT,
+                  static_cast<unsigned int>(payload.length()));
+
+    loraSerial.println(payload);
+    loraSerial.flush();
+
+    ackOk = waitForAck(messageId, LORA_ACK_TIMEOUT_MS);
+    if (ackOk) {
+      Serial.printf("[LORA] ACK thanh cong sau lan TX %u/%u\n",
+                    attempt,
+                    LORA_TX_BURST_COUNT);
+      break;
+    }
+
+    if (attempt < LORA_TX_BURST_COUNT) {
+      Serial.printf("[LORA] Chua ACK %s -> gui lai sau %lu ms\n",
+                    messageId,
+                    static_cast<unsigned long>(LORA_TX_RETRY_GAP_MS));
+      delay(LORA_TX_RETRY_GAP_MS);
+    }
+  }
+
+  Serial.printf("[LORA] Ket qua %s: %s, da_gui=%u\n",
+                messageId,
+                ackOk ? "da_nhan" : "chua_nhan_duoc",
+                sentCopies);
 
   String packetLog = payload;
-  packetLog.remove(packetLog.length() - 1);
+  if (packetLog.endsWith("}")) {
+    packetLog.remove(packetLog.length() - 1);
+  }
   packetLog += ",\"ack_ok\":";
   packetLog += ackOk ? "true" : "false";
+  packetLog += ",\"tx_copies\":";
+  packetLog += String(sentCopies);
   packetLog += "}";
-  appendToSpiffs(PACKET_LOG_PATH, PACKET_OLD_LOG_PATH, packetLog, PACKET_LOG_MAX_FILE_BYTES);
-  Serial.println(packetLog);
+  Serial.printf("[LOG-PACKET] %s\n", packetLog.c_str());
 
-  aggregateCount = 0;
-  maybeEnterConfiguredSleep();
+  if (ackOk) {
+    aggregateCount = 0;
+    pendingSequence = 0;
+    Serial.println("[LORA] Gateway da ACK - xoa aggregate va cho chu ky moi");
+    maybeEnterConfiguredSleep();
+  } else {
+    Serial.println("[LORA] Het burst van khong ACK - GIU aggregate + message_id cho poll sau");
+  }
+}
+
+
+// ============================================================
+// SIMPLE LORA QoS1 WIRE PROTOCOL
+// ============================================================
+// No poll, no long JSON over LoRa.
+// Packet: S2|seq|minutes|airT|airH|soilT|moist|ec_ms|sal|tds|ph|bat_v|bat_pct|CRC16
+// ACK:    A2|seq
+// The same sequence is retried FOREVER until ACK is received.
+
+static uint32_t simpleNextTxMs = 0;
+static uint32_t simpleTxAttempts = 0;
+
+uint16_t simpleCrc16(const String &text) {
+  uint16_t crc = 0xFFFF;
+  for (size_t i = 0; i < text.length(); ++i) {
+    crc ^= static_cast<uint16_t>(static_cast<uint8_t>(text[i])) << 8;
+    for (uint8_t bit = 0; bit < 8; ++bit) {
+      crc = (crc & 0x8000) ? static_cast<uint16_t>((crc << 1) ^ 0x1021) : static_cast<uint16_t>(crc << 1);
+    }
+  }
+  return crc;
+}
+
+String simpleFloat(float value, uint8_t decimals) {
+  if (!isfinite(value)) return "x";
+  return String(value, static_cast<unsigned int>(decimals));
+}
+
+String buildSimpleLoRaPacket(const AggregateReading &r, uint32_t seq) {
+  String body;
+  body.reserve(170);
+  body += "S2|";
+  body += String(seq);
+  body += "|"; body += String(r.minuteCount);
+  body += "|"; body += simpleFloat(r.airTempC, 1);
+  body += "|"; body += simpleFloat(r.airHumidityPct, 1);
+  body += "|"; body += simpleFloat(r.soilTempC, 1);
+  body += "|"; body += simpleFloat(r.soilMoisturePct, 1);
+  body += "|"; body += simpleFloat(r.soilEcMsCm, 3);
+  body += "|"; body += simpleFloat(r.soilSalinity, 0);
+  body += "|"; body += simpleFloat(r.soilTds, 0);
+  body += "|"; body += simpleFloat(r.soilPh, 1);
+  body += "|"; body += simpleFloat(r.batteryVoltageV, 2);
+  body += "|"; body += simpleFloat(r.batteryPercent, 1);
+
+  char crcHex[5];
+  snprintf(crcHex, sizeof(crcHex), "%04X", simpleCrc16(body));
+  body += "|";
+  body += crcHex;
+  return body;
+}
+
+bool waitSimpleAck(uint32_t seq, uint32_t timeoutMs) {
+  String expected = "A2|" + String(seq);
+  String line;
+  const uint32_t started = millis();
+
+  while (millis() - started < timeoutMs) {
+    serviceWatchdog();
+    while (loraSerial.available() > 0) {
+      const char c = static_cast<char>(loraSerial.read());
+      if (c == '\n') {
+        line.trim();
+        if (line == expected) return true;
+        line = "";
+      } else if (c != '\r') {
+        line += c;
+        if (line.length() > 64) line = "";
+      }
+    }
+    delay(5);
+  }
+  return false;
+}
+
+void readLoRaCommandsSimple() {
+  // ACK is consumed synchronously by waitSimpleAck().
+}
+
+void sendAggregateIfReadySimple() {
+  // A minute record is still sent when THEC is unavailable. Its THEC fields
+  // remain unavailable in the packet; only aggregateCount controls batching.
+  if (aggregateCount < MINUTE_RECORDS_PER_PACKET || DEBUG_DISABLE_LORA_UART) return;
+
+  const uint32_t now = millis();
+  if (simpleNextTxMs != 0 && static_cast<int32_t>(now - simpleNextTxMs) < 0) return;
+
+  if (pendingSequence == 0) {
+    sequenceNumber += 1;
+    pendingSequence = sequenceNumber;
+    simpleTxAttempts = 0;
+    // Station 2 starts in a later window to reduce first-attempt collision.
+    simpleNextTxMs = millis() + 1100 + (esp_random() % 900);
+    return;
+  }
+
+  const AggregateReading aggregate = buildAggregateReading();
+  const String packet = buildSimpleLoRaPacket(aggregate, pendingSequence);
+
+  while (loraSerial.available() > 0) (void)loraSerial.read();
+  loraSerial.println(packet);
+  loraSerial.flush();
+  simpleTxAttempts += 1;
+
+  const bool ackOk = waitSimpleAck(pendingSequence, 1800);
+
+  String packetLog = packet;
+  packetLog += ackOk ? "|ACK" : "|NOACK";
+  Serial.printf("[LOG-PACKET] %s\n", packetLog.c_str());
+
+  if (ackOk) {
+    aggregateCount = 0;
+    pendingSequence = 0;
+    simpleTxAttempts = 0;
+    simpleNextTxMs = 0;
+    maybeEnterConfiguredSleep();
+    return;
+  }
+
+  // Never give up. Different random window from Station 1 reduces lock-step collisions.
+  simpleNextTxMs = millis() + 2200 + (esp_random() % 3000);
 }
 
 void setup() {
@@ -1267,12 +1472,17 @@ void setup() {
   Wire.setClock(I2C_CLOCK_HZ);
   ina226Ready = setupIna226();
 
-  sht31Wire.begin(SHT31_SDA_PIN, SHT31_SCL_PIN);
-  sht31Wire.setClock(I2C_CLOCK_HZ);
-  sht31Ready = detectSht31Address();
+  sht30Ready = sht30Wire.begin(SHT30_SDA_PIN, SHT30_SCL_PIN, I2C_CLOCK_HZ);
+  Serial.printf("[SHT30] SDA=IO%d SCL=IO%d dia_chi=0x%02X trang_thai=%s\n",
+                SHT30_SDA_PIN,
+                SHT30_SCL_PIN,
+                SHT30_I2C_ADDRESS,
+                sht30Ready ? "san_sang" : "khong_co");
 
   ensureRs485Baud(RS485_BAUD);
-  setupPhAddressIfRequested();
+  // Khong bao gio doi Modbus ID trong firmware chay thuong.
+  // Cau hinh da chot: pH=ID1, THEC=ID2, cung baud 4800.
+  diagnosePhAddressRegister();
 
   if (DEBUG_DISABLE_LORA_UART) {
     pinMode(LORA_UART_RX_PIN, INPUT);
@@ -1280,24 +1490,22 @@ void setup() {
     Serial.println("[LORA] Tam tat UART de kiem tra nhiet module");
   } else {
     loraSerial.begin(LORA_UART_BAUD, SERIAL_8N1, LORA_UART_RX_PIN, LORA_UART_TX_PIN);
+    Serial.println("[LORA] SIMPLE QoS1: goi ngan + retry vo han den khi ACK");
   }
-
-  spiffsReady = setupSpiffs();
 
   Serial.println();
   Serial.println("[HORIZON] Tram 2 do dat buoi dang khoi dong");
   Serial.printf("[HORIZON] Tram: %s\n", STATION_ID);
   Serial.printf("[HORIZON] Phien ban: %s\n", FIRMWARE_VERSION);
+  Serial.println("[RS485] BUS CHUNG: pH=ID1 | THEC=ID2 | baud=4800 | doc TUAN TU, khong ghi ID");
   Serial.printf("[PIN] SDA=%d SCL=%d dia_chi=0x%02X trang_thai=%s\n",
                 INA226_SDA_PIN,
                 INA226_SCL_PIN,
                 INA226_ADDRESS,
                 ina226Ready ? "san_sang" : "khong_co");
-  Serial.printf("[KHI HAU] SHT30/SHT31 SDA=%d SCL=%d dia_chi=0x%02X trang_thai=%s\n",
-                SHT31_SDA_PIN,
-                SHT31_SCL_PIN,
-                activeSht31Address,
-                sht31Ready ? "san_sang" : "khong_tim_thay");
+  Serial.printf("[KHI HAU] SHT30 SDA=IO%d SCL=IO%d trang_thai=cho_doc_lan_dau\n",
+                SHT30_SDA_PIN,
+                SHT30_SCL_PIN);
   Serial.printf("[DAT RS485] baud=%lu TX=%d RX=%d tu_dong_doi_chieu=%s THEC_ID=%u PH_ID=%u PH_BAUD=%lu\n",
                 static_cast<unsigned long>(RS485_BAUD),
                 RS485_TX_PIN,
@@ -1311,7 +1519,7 @@ void setup() {
                 LORA_UART_TX_PIN,
                 static_cast<unsigned long>(LORA_UART_BAUD),
                 DEBUG_DISABLE_LORA_UART ? "tam_tat_de_do_nhiet" : "san_sang");
-  Serial.printf("[SPIFFS] %s\n", spiffsReady ? "san_sang" : "khong_co");
+  Serial.println("[LOG] Luu du lieu flash: tat");
   Serial.printf("[KIEM THU] mau_tho=%s ph=%s\n",
                 DEBUG_RAW_SENSOR_SAMPLES ? "bat" : "tat",
                 DEBUG_SKIP_PH_SENSOR ? "tam_tat" : "bat");
@@ -1321,7 +1529,18 @@ void setup() {
 
 void loop() {
   serviceWatchdog();
-  readLoRaCommands();
+  readLoRaCommandsSimple();
+
+  // Reply immediately when this station is selected by the gateway.
+  sendAggregateIfReadySimple();
+
+  // Do not start another long sensor cycle while a five-minute packet is
+  // waiting for its ACK. This is especially important when sensors are
+  // disconnected and their Modbus reads consume several seconds.
+  if (pendingSequence != 0) {
+    delay(20);
+    return;
+  }
 
   const uint32_t now = millis();
   if (lastSampleMs != 0 && now - lastSampleMs < SAMPLE_INTERVAL_MS) {
@@ -1333,13 +1552,13 @@ void loop() {
   const MinuteReading minute = collectMinuteReading();
   const String minutePayload = buildMinutePayload(minute);
 
-  appendToSpiffs(MINUTE_LOG_PATH, MINUTE_OLD_LOG_PATH, minutePayload, MINUTE_LOG_MAX_FILE_BYTES);
-  Serial.println("[BAN GHI 1 PHUT - JSON]");
-  Serial.println(minutePayload);
+  Serial.printf("[LOG-MINUTE] %s\n", minutePayload.c_str());
 
   pushAggregateMinute(minute);
-  Serial.printf("[TONG HOP] %u/%u phut\n",
+  Serial.printf("[TONG HOP] %u/%u phut | THEC_mau_hop_le=%u | THEC_trang_thai=%s\n",
                 aggregateCount,
-                MINUTE_RECORDS_PER_PACKET);
-  sendAggregateIfReady();
+                MINUTE_RECORDS_PER_PACKET,
+                minute.validSoilSamples,
+                minute.soilStatus);
+  sendAggregateIfReadySimple();
 }

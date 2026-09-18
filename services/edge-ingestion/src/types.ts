@@ -23,6 +23,9 @@ export interface SoilMeasurements {
   soil_temp_c: number | null;
   soil_moisture_pct: number | null;
   soil_ec_ms_cm: number | null;
+  soil_ec_us_cm?: number | null;
+  soil_salinity?: number | null;
+  soil_tds?: number | null;
   soil_ph: number | null;
 }
 
@@ -42,10 +45,20 @@ export interface TelemetryPayloadV1 {
   timestamp: number;
   /** Required when reading_kind is "water" (the default); absent when "soil". */
   salinity?: number;
+  salinity_ppm?: number;
   water_level?: number;
+  sensor_height_cm?: number;
+  distance_cm?: number;
+  ec_ms_cm?: number;
+  ec_us_cm?: number;
+  temperature_c?: number;
+  tds_ppm?: number;
   sensor_status?: SensorStatus;
   /** Required when reading_kind is "soil"; absent when "water". */
   soil?: SoilMeasurements;
+  sequence?: number;
+  summary_minutes?: number;
+  crop?: string;
   fault_flags: number;
   /**
    * Optional: a LoRa-relayed station has no cellular modem of its own and a
@@ -54,10 +67,11 @@ export interface TelemetryPayloadV1 {
    * the field instead.
    */
   battery_voltage?: number;
+  battery_percent?: number;
   signal_strength_dbm?: number;
   firmware_version: string;
-  temperature_c?: number;
   calibration?: CalibrationInfo;
+  raw_station_payload?: Record<string, unknown>;
 }
 
 export interface IngestHeaders {
@@ -72,6 +86,7 @@ export interface IngestHeaders {
   "x-timestamp": string;
   "x-signature": string;
   "x-contract-version": string;
+  "x-gateway-token"?: string;
 }
 
 export interface IngestRequest {
@@ -116,11 +131,21 @@ export interface EnvironmentalReadingRow {
   message_id: string;
   station_id: string;
   salinity: number;
+  salinity_ppm?: number | null;
   water_level: number;
+  sensor_height_cm?: number | null;
+  distance_cm?: number | null;
+  ec_ms_cm?: number | null;
+  ec_us_cm?: number | null;
+  temperature_c?: number | null;
+  tds_ppm?: number | null;
+  sequence?: number | null;
+  summary_minutes?: number | null;
   fault_flags: number;
   ec_probe_status: SensorStatusValue;
   ultrasonic_status: SensorStatusValue;
   timestamp: number;
+  raw_station_payload?: Record<string, unknown> | null;
 }
 
 export interface SoilReadingRow {
@@ -131,9 +156,16 @@ export interface SoilReadingRow {
   soil_temp_c: number | null;
   soil_moisture_pct: number | null;
   soil_ec_ms_cm: number | null;
+  soil_ec_us_cm?: number | null;
+  soil_salinity?: number | null;
+  soil_tds?: number | null;
   soil_ph: number | null;
+  sequence?: number | null;
+  summary_minutes?: number | null;
+  crop?: string | null;
   fault_flags: number;
   timestamp: number;
+  raw_station_payload?: Record<string, unknown> | null;
 }
 
 export interface EnvironmentalEventRow {
@@ -148,6 +180,7 @@ export interface EnvironmentalEventRow {
 export interface StationHealthRow {
   station_id: string;
   battery_voltage: number | null;
+  battery_percent?: number | null;
   signal_strength_dbm: number | null;
   firmware_version: string;
   timestamp: number;

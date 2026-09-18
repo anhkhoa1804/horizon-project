@@ -119,7 +119,8 @@ design — see `TELEMETRY_STATE_MODEL.md` for the full correction and why.
 ## 10. Deployment architecture
 
 **Backend/frontend and the gateway HTTP ingestion path are live.** The
-Supabase project is provisioned and migrated through 025, and retained
+Supabase project has all 27 tracked migrations applied (through the additive
+024/025 follow-ups), and retained
 gateway observations demonstrate real water and soil payloads. On 2026-09-18,
 the separate signed Edge Function was also exercised against its live URL:
 valid telemetry accepted, duplicate ignored, stale/future replay rejected.
@@ -133,7 +134,7 @@ boundary.
 Updated — item (a) and (d) below are done; kept for the historical
 dependency ordering, not as an open list:
 
-(a) ~~a real Supabase project, with migrations 001–025 applied in order
+(a) ~~a real Supabase project, with all tracked migrations applied in order
 and tracked in git~~ **DONE**; (b) ~~`readWaterEc()` implemented against the
 configured EC registers~~ **DONE IN SOURCE; FIELD CALIBRATION PENDING**;
 (c) independently verify the physical installation and calibration records;
@@ -186,7 +187,7 @@ reasoning already captured in `ARCHITECTURE_DECISIONS.md`.
 ## 15. What requires live Supabase/GCP/hardware verification
 
 Everything about actual deployed behavior, listed precisely rather than
-waved at: whether migrations 001–025 apply cleanly in sequence against a
+waved at: whether all tracked migrations apply cleanly in sequence against a
 fresh Postgres instance; whether the anon-key RLS policies actually
 produce the intended row visibility under real traffic; whether the
 `getLatestForAllStations`/`getLatestHealthForAllStations` nested-

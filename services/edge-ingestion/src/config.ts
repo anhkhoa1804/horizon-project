@@ -8,5 +8,6 @@ export function resolveIngestConfig(env: Record<string, string | undefined> = pr
     salinityCriticalLevel: Number(env.SALINITY_CRITICAL_LEVEL ?? "1.8"),
     lowBatteryVoltage: Number(env.LOW_BATTERY_VOLTAGE ?? "3.6"),
     lowSignalStrengthDbm: Number(env.LOW_SIGNAL_STRENGTH_DBM ?? "-95"),
+    gatewayIngestToken: env.GATEWAY_INGEST_TOKEN,
   };
 }

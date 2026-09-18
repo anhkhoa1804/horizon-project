@@ -91,11 +91,21 @@ export class SupabaseDb implements DbPort {
       message_id: row.message_id,
       station_id: row.station_id,
       salinity: row.salinity,
+      salinity_ppm: row.salinity_ppm,
       water_level: row.water_level,
+      sensor_height_cm: row.sensor_height_cm,
+      distance_cm: row.distance_cm,
+      ec_ms_cm: row.ec_ms_cm,
+      ec_us_cm: row.ec_us_cm,
+      temperature_c: row.temperature_c,
+      tds_ppm: row.tds_ppm,
+      sequence: row.sequence,
+      summary_minutes: row.summary_minutes,
       fault_flags: row.fault_flags,
       ec_probe_status: row.ec_probe_status,
       ultrasonic_status: row.ultrasonic_status,
       timestamp: new Date(row.timestamp * 1000).toISOString(),
+      raw_station_payload: row.raw_station_payload,
     });
 
     if (result.ok) {
@@ -118,9 +128,16 @@ export class SupabaseDb implements DbPort {
       soil_temp_c: row.soil_temp_c,
       soil_moisture_pct: row.soil_moisture_pct,
       soil_ec_ms_cm: row.soil_ec_ms_cm,
+      soil_ec_us_cm: row.soil_ec_us_cm,
+      soil_salinity: row.soil_salinity,
+      soil_tds: row.soil_tds,
       soil_ph: row.soil_ph,
+      sequence: row.sequence,
+      summary_minutes: row.summary_minutes,
+      crop: row.crop,
       fault_flags: row.fault_flags,
       timestamp: new Date(row.timestamp * 1000).toISOString(),
+      raw_station_payload: row.raw_station_payload,
     });
 
     if (result.ok) {
@@ -163,6 +180,7 @@ export class SupabaseDb implements DbPort {
     const result = await this.request("station_health_logs", "POST", {
       station_id: row.station_id,
       battery_voltage: row.battery_voltage,
+      battery_percent: row.battery_percent,
       signal_strength_dbm: row.signal_strength_dbm,
       firmware_version: row.firmware_version,
       timestamp: new Date(row.timestamp * 1000).toISOString(),

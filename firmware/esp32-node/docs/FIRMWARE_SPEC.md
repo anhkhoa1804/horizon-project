@@ -5,6 +5,7 @@ Eco-Sense Con Ho field node firmware for ESP32 + LTE modem.
 ## References
 
 - Telemetry API: [`docs/API_CONTRACTS.md`](../../docs/API_CONTRACTS.md)
+- Gateway Supabase ingest: [`GATEWAY_SUPABASE_INGEST.md`](GATEWAY_SUPABASE_INGEST.md)
 - Store-and-forward queue: [`QUEUE_AND_FALLBACK.md`](QUEUE_AND_FALLBACK.md)
 - PlatformIO project: [`platformio.ini`](../platformio.ini)
 

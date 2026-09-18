@@ -12,6 +12,7 @@ node_modules/
 **/dist/
 **/.next/
 **/.supabase/
+supabase/.temp/
 **/infra/supabase/.temp/
 **/firmware/**/.pio/
 firmware/**/build/
