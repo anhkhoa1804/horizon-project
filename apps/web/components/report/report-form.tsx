@@ -6,11 +6,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  Camera,
   Check,
   Crosshair,
+  Mic,
   Pencil,
   Send,
   Sprout,
+  Trash2,
+  Video,
   Waves,
 } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
@@ -19,10 +23,10 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   DESCRIPTION_MAX,
   DESCRIPTION_MIN,
-  IMAGE_ACCEPT,
   REPORT_CATEGORIES,
   categoryLabel,
 } from "@/lib/reports/reportCategories";
+import { REPORT_MEDIA_MAX_FILES, validateReportMedia } from "@/lib/reports/media";
 import { REPORT_STATION_OPTIONS, resolveStationOption } from "@/lib/reports/reportStations";
 import { stationText } from "@/lib/stationProfile";
 import { cn } from "@/lib/utils";
@@ -34,17 +38,8 @@ import type { StationKind } from "@/lib/stationProfile";
 const KIND_ICON: Record<StationKind, typeof Waves> = { water: Waves, soil: Sprout, gateway: Send };
 
 /**
- * THREE STEPS, NOT FOUR.
- *
- * "Bằng chứng" (Evidence) is gone, because its only control was a photo
- * picker that never sent anything: there is no image handling in
- * /api/public/reports and no Supabase Storage bucket, so a selected file was
- * previewed in the browser and then discarded. The step existed to host a
- * capability the system does not have, and the UI apologised for that in
- * prose the reader had to read past ("Lưu ảnh chưa được bật…").
- *
- * Removing the control removes the apology with it. When image persistence
- * is actually built, this becomes a step again — with a control that works.
+ * Evidence now belongs in the final review step because the server persists
+ * each accepted attachment to private Storage alongside report_media metadata.
  */
 const STEPS = [
   { id: 1, key: "step1" },
@@ -222,6 +217,7 @@ export function ReportForm() {
   const [step, setStep] = useState<StepId>(presetStation ? 2 : 1);
   const [furthest, setFurthest] = useState<StepId>(presetStation ? 2 : 1);
   const [stationId, setStationId] = useState<string | null>(presetStation?.id ?? null);
+  const [locationChoice, setLocationChoice] = useState<string>(presetStation?.id ?? "");
   const [category, setCategory] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const [gps, setGps] = useState<{ lat: number; lng: number } | null>(null);
@@ -230,12 +226,21 @@ export function ReportForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SubmitResult | null>(null);
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [recording, setRecording] = useState(false);
+  const recorderRef = useRef<MediaRecorder | null>(null);
 
   const headingRef = useRef<HTMLHeadingElement | null>(null);
   const stepChangedRef = useRef(false);
 
   const station = useMemo(() => REPORT_STATION_OPTIONS.find((s) => s.id === stationId) ?? null, [stationId]);
   const trimmed = description.trim();
+  const attachmentUrls = useMemo(
+    () => attachments.map((file) => ({ file, url: URL.createObjectURL(file) })),
+    [attachments],
+  );
+
+  useEffect(() => () => attachmentUrls.forEach(({ url }) => URL.revokeObjectURL(url)), [attachmentUrls]);
 
   // Object URLs are not garbage-collected on their own — release the previous
 
@@ -254,7 +259,7 @@ export function ReportForm() {
   }, []);
 
   const stepValid: Record<StepId, boolean> = {
-    1: stationId !== null,
+    1: stationId !== null || gps !== null,
     2: category !== null && trimmed.length >= DESCRIPTION_MIN && trimmed.length <= DESCRIPTION_MAX,
     3: true,
   };
@@ -285,23 +290,64 @@ export function ReportForm() {
     }
   }
 
+  function addAttachments(next: FileList | null) {
+    if (!next) return;
+    setAttachments((current) => {
+      const accepted = Array.from(next).filter((file) => validateReportMedia(file));
+      return [...current, ...accepted].slice(0, REPORT_MEDIA_MAX_FILES);
+    });
+  }
+
+  async function toggleAudioRecording() {
+    if (recording && recorderRef.current) {
+      recorderRef.current.stop();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError(f.errAudioFailed);
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: BlobPart[] = [];
+      recorder.ondataavailable = (event) => event.data.size > 0 && chunks.push(event.data);
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        const file = new File([new Blob(chunks, { type: recorder.mimeType || "audio/webm" })], "field-note.webm", {
+          type: recorder.mimeType || "audio/webm",
+        });
+        addAttachments({ 0: file, length: 1, item: () => file } as unknown as FileList);
+        recorderRef.current = null;
+        setRecording(false);
+      };
+      recorderRef.current = recorder;
+      recorder.start();
+      setRecording(true);
+    } catch {
+      setError(f.errAudioFailed);
+    }
+  }
+
   async function handleSubmit() {
-    if (submitting || !station || !category) return;
+    if (submitting || !category || (!station && !gps)) return;
 
     setSubmitting(true);
     setError(null);
 
     try {
+      const form = new FormData();
+      form.set("category", category);
+      form.set("description", trimmed);
+      if (gps) {
+        form.set("lat", String(gps.lat));
+        form.set("lng", String(gps.lng));
+      }
+      if (station) form.set("stationId", station.id);
+      attachments.forEach((file) => form.append("media", file));
       const res = await fetch("/api/public/reports", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category,
-          description: trimmed,
-          lat: gps?.lat,
-          lng: gps?.lng,
-          stationId: station.id,
-        }),
+        body: form,
       });
 
       const payload = (await res.json().catch(() => ({}))) as { ok?: boolean; id?: string; demo?: boolean; error?: string };
@@ -314,7 +360,7 @@ export function ReportForm() {
       setResult({
         id: payload.id ?? "—",
         demo: payload.demo === true,
-        stationName: stationText(station.id, dict).name,
+        stationName: station ? stationText(station.id, dict).name : f.gpsDevice,
         categoryLabel: categoryLabel(category, dict),
         submittedAt: new Intl.DateTimeFormat("vi-VN", { dateStyle: "medium", timeStyle: "short" }).format(new Date()),
       });
@@ -328,12 +374,14 @@ export function ReportForm() {
   function resetForm() {
     setResult(null);
     setStationId(presetStation?.id ?? null);
+    setLocationChoice(presetStation?.id ?? "");
     setCategory(null);
     setDescription("");
     setGps(null);
     setGpsState("idle");
     setGpsNote(null);
     setError(null);
+    setAttachments([]);
     stepChangedRef.current = true;
     setStep(presetStation ? 2 : 1);
     setFurthest(presetStation ? 2 : 1);
@@ -350,7 +398,7 @@ export function ReportForm() {
       : null;
 
   const record = [
-    { label: f.station, value: station?.name ?? null },
+    { label: f.station, value: station?.name ?? (gps ? f.gpsDevice : null) },
     { label: f.condition, value: category ? categoryLabel(category, dict) : null },
     { label: f.location, value: locationSummary },
     { label: f.description, value: trimmed ? fmt(f.charCount, { n: trimmed.length }) : null },
@@ -406,12 +454,12 @@ export function ReportForm() {
                   not three form rows. Role name leads; the STATION_0n
                   identifier is kept but demoted to a footer, since it is what
                   the system calls the node, not what a person calls it. */}
-              <fieldset className="grid gap-3 sm:grid-cols-3">
+              <fieldset className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <legend className="sr-only">{f.legendStation}</legend>
                 {REPORT_STATION_OPTIONS.map((option) => {
                   const Icon = KIND_ICON[option.kind];
                   const text = stationText(option.id, dict);
-                  const active = stationId === option.id;
+                  const active = locationChoice === option.id;
                   return (
                     <label
                       key={option.id}
@@ -428,7 +476,7 @@ export function ReportForm() {
                         name="station"
                         value={option.id}
                         checked={active}
-                        onChange={() => setStationId(option.id)}
+                        onChange={() => { setLocationChoice(option.id); setStationId(option.id); }}
                         className="sr-only"
                       />
                       <span className="flex items-center justify-between gap-2">
@@ -455,6 +503,27 @@ export function ReportForm() {
                     </label>
                   );
                 })}
+                <label
+                  className={cn(
+                    "relative flex cursor-pointer flex-col gap-3 rounded-lg border p-5 transition-all duration-[var(--motion-base)]",
+                    "focus-within:ring-2 focus-within:ring-accent",
+                    locationChoice === "gps"
+                      ? "border-accent bg-accent/[0.07] shadow-[inset_0_0_0_1px_var(--color-accent)]"
+                      : "border-border hover:border-foreground-subtle hover:bg-wash-hover",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="station"
+                    value="gps"
+                    checked={locationChoice === "gps"}
+                    onChange={() => { setLocationChoice("gps"); setStationId(null); void handleLocate(); }}
+                    className="sr-only"
+                  />
+                  <span className="flex items-center justify-between gap-2"><Crosshair className="h-6 w-6 text-accent" aria-hidden />{gps ? <Check className="h-4 w-4 text-accent" aria-hidden /> : null}</span>
+                  <span className="min-w-0"><span className="block text-lg font-semibold tracking-tight">{f.myLocation}</span><span className="mt-0.5 block text-sm leading-snug text-muted">{gps ? f.locationReady : f.myLocationLead}</span></span>
+                  <span className="mt-auto text-[10px] uppercase tracking-[0.12em] text-foreground-subtle [font-family:var(--font-data)]">GPS</span>
+                </label>
               </fieldset>
 
               {/* GPS refinement belongs TO the station choice, not beside it.
@@ -574,6 +643,22 @@ export function ReportForm() {
           {/* 03 — Review */}
           {step === 3 ? (
             <div className="space-y-8">
+              <section className="space-y-4 rounded-lg border border-border bg-surface p-5" aria-labelledby="report-evidence-title">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-accent">{f.evidence}</p>
+                  <h3 id="report-evidence-title" className="mt-1 text-lg font-semibold">{f.evidenceLead}</h3>
+                  <p className="mt-1 text-xs text-muted">{f.evidenceLimit}</p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2.5 text-sm hover:bg-wash-hover"><Camera className="h-4 w-4 text-accent" aria-hidden />{f.addPhoto}<input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,image/heic" capture="environment" onChange={(e) => addAttachments(e.target.files)} /></label>
+                  <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2.5 text-sm hover:bg-wash-hover"><Video className="h-4 w-4 text-accent" aria-hidden />{f.addVideo}<input className="sr-only" type="file" accept="video/mp4,video/webm,video/quicktime" capture="environment" onChange={(e) => addAttachments(e.target.files)} /></label>
+                  <div className="flex gap-2"><label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2.5 text-sm hover:bg-wash-hover"><Mic className="h-4 w-4 text-accent" aria-hidden />{f.addAudio}<input className="sr-only" type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/webm,audio/ogg" onChange={(e) => addAttachments(e.target.files)} /></label><Button type="button" variant="outline" size="sm" onClick={toggleAudioRecording}>{recording ? f.stopAudio : f.recordAudio}</Button></div>
+                </div>
+                {attachmentUrls.length > 0 ? <ul className="grid gap-3 sm:grid-cols-3">{attachmentUrls.map(({ file, url }, index) => <li key={`${file.name}-${index}`} className="overflow-hidden rounded-md border border-border p-2"><div className="aspect-video bg-wash-sunken">{file.type.startsWith("image/") ? <>
+                  {/* eslint-disable-next-line @next/next/no-img-element -- local preview is a blob URL, not an optimisable remote image */}
+                  <img src={url} alt={file.name} className="h-full w-full object-cover" />
+                </> : file.type.startsWith("video/") ? <video src={url} controls className="h-full w-full" /> : <audio src={url} controls className="w-full pt-6" />}</div><div className="mt-2 flex items-center justify-between gap-2"><span className="truncate text-xs">{file.name}</span><button type="button" onClick={() => setAttachments((all) => all.filter((_, itemIndex) => itemIndex !== index))} className="text-critical"><Trash2 className="h-4 w-4" aria-label={f.removeEvidence} /></button></div></li>)}</ul> : null}
+              </section>
               <dl className="divide-y divide-border/50 border-y border-border/50">
                 {[
                   { label: f.station, value: station ? `${stationText(station.id, dict).name} · ${stationText(station.id, dict).location}` : "—", jump: 1 as StepId },
@@ -618,7 +703,7 @@ export function ReportForm() {
                             </Button>
             ) : null}
 
-            {step < 4 ? (
+            {step < 3 ? (
               <Button
                 type="button"
                 onClick={() => goto((step + 1) as StepId)}
@@ -629,7 +714,7 @@ export function ReportForm() {
                               <ArrowRight className="h-4 w-4" aria-hidden />
               </Button>
             ) : (
-              <Button type="button" onClick={handleSubmit} disabled={submitting} className="min-w-[160px]">
+              <Button type="button" onClick={handleSubmit} disabled={submitting || !stepValid[1]} className="min-w-[160px]">
                 {submitting ? f.sending : f.submit}
                 {submitting ? null : <Send className="h-4 w-4" aria-hidden />}
               </Button>

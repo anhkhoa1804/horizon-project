@@ -3,6 +3,7 @@ import { addDemoReport } from "@/lib/reports/demoReportStore";
 import { classifyInsertError } from "@/lib/reports/reportPersistence";
 import { clientIdentifier, consumeReportQuota } from "@/lib/reports/rateLimit";
 import { logger } from "@/lib/observability/logger";
+import { REPORT_MEDIA_BUCKET, REPORT_MEDIA_MAX_FILES, validateReportMedia } from "@/lib/reports/media";
 import { createServiceClient } from "@/lib/supabase/service";
 
 const CATEGORIES = [
@@ -18,19 +19,31 @@ const MIN_DESCRIPTION = 10;
 const MAX_DESCRIPTION = 2000;
 
 export async function POST(request: Request) {
-  let body: unknown;
+  let body: Record<string, unknown>;
+  let files: File[] = [];
 
   try {
-    body = await request.json();
+    const contentType = request.headers.get("content-type") ?? "";
+    if (contentType.includes("multipart/form-data")) {
+      const form = await request.formData();
+      body = {
+        category: form.get("category"),
+        description: form.get("description"),
+        lat: form.get("lat") ? Number(form.get("lat")) : undefined,
+        lng: form.get("lng") ? Number(form.get("lng")) : undefined,
+        stationId: form.get("stationId"),
+      };
+      files = form.getAll("media").filter((entry): entry is File => entry instanceof File);
+    } else {
+      const json = await request.json();
+      if (!json || typeof json !== "object") throw new Error("invalid payload");
+      body = json as Record<string, unknown>;
+    }
   } catch {
-    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
-  }
-
-  if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
   }
 
-  const { category, description, lat, lng, stationId } = body as Record<string, unknown>;
+  const { category, description, lat, lng, stationId } = body;
 
   if (
     typeof category !== "string" ||
@@ -45,6 +58,13 @@ export async function POST(request: Request) {
 
   if (description.length > MAX_DESCRIPTION) {
     return NextResponse.json({ error: "description_too_long" }, { status: 400 });
+  }
+
+  if (files.length > REPORT_MEDIA_MAX_FILES) {
+    return NextResponse.json({ error: "too_many_media" }, { status: 400 });
+  }
+  if (files.some((file) => !validateReportMedia(file))) {
+    return NextResponse.json({ error: "invalid_media" }, { status: 400 });
   }
 
   // Created before the throttle check so the durable limiter (which shares
@@ -158,8 +178,50 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "insert_failed" }, { status: 502 });
   }
 
+  // A report is already useful without its evidence. Upload each attachment
+  // after the durable row exists; a failed object never rolls the report back
+  // and each failure is named so the client can offer a retry instead of
+  // silently pretending it was stored.
+  const media: { id: string; media_type: string }[] = [];
+  const mediaFailures: string[] = [];
+  for (const file of files) {
+    const rule = validateReportMedia(file);
+    if (!rule) {
+      mediaFailures.push(file.name || "attachment");
+      continue;
+    }
+    const storagePath = `reports/${data.id}/${crypto.randomUUID()}.${rule.extension}`;
+    const bytes = await file.arrayBuffer();
+    const { error: uploadError } = await supabase.storage
+      .from(REPORT_MEDIA_BUCKET)
+      .upload(storagePath, bytes, { contentType: file.type, upsert: false });
+    if (uploadError) {
+      mediaFailures.push(file.name || "attachment");
+      continue;
+    }
+    const { data: mediaRow, error: mediaError } = await supabase
+      .from("report_media")
+      .insert({
+        report_id: data.id,
+        storage_path: storagePath,
+        media_type: rule.type,
+        mime_type: file.type,
+        file_size: file.size,
+      })
+      .select("id, media_type")
+      .single();
+    if (mediaError || !mediaRow) {
+      await supabase.storage.from(REPORT_MEDIA_BUCKET).remove([storagePath]);
+      mediaFailures.push(file.name || "attachment");
+      continue;
+    }
+    media.push(mediaRow as { id: string; media_type: string });
+  }
+
   return NextResponse.json({
     ok: true,
     id: data.id,
+    media,
+    mediaFailures,
   });
 }

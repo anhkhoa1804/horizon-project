@@ -16,7 +16,6 @@ import {
   Sprout,
   Waves,
 } from "lucide-react";
-import { MapStation, StationNetworkMap } from "@/components/dashboard/station-network-map";
 import { GalleryStrip } from "@/components/about/gallery-strip";
 import { FieldNotesCarousel } from "@/components/home/field-notes-carousel";
 import { Hero } from "@/components/home/hero";
@@ -30,7 +29,6 @@ import { getGalleryItems } from "@/lib/content/gallery";
 import { getRecentPosts } from "@/lib/content/posts";
 import { getI18n } from "@/lib/i18n/server";
 import type { Dictionary } from "@/lib/i18n/vi";
-import { STATION_COORDS } from "@/lib/geo";
 import { getPublicRepositories } from "@/lib/publicRead";
 import { filterSnapshotsToPilotStations, OBSERVATORY_HREF, PILOT_STATION_IDS, type PilotStationId } from "@/lib/publicStations";
 import { stationProfiles, stationText, type StationKind } from "@/lib/stationProfile";
@@ -245,36 +243,6 @@ function NetworkFallback() {
 }
 
 // ---------------------------------------------------------------------------
-// Real positions
-// ---------------------------------------------------------------------------
-
-async function MapChapter() {
-  const data = await getObservatoryData();
-  const { dict } = await getI18n();
-
-  // Positions come from lib/geo, not from the snapshot rows. A station's
-  // surveyed coordinate is a fact about the installation; the database column
-  // is operational state that can be seeded, edited, or left at a 0,0 default
-  // — and 0,0 is a real place in the Gulf of Guinea.
-  const mapStations: MapStation[] = (data?.snapshots ?? []).map((snapshot) => {
-    const id = snapshot.station.id as PilotStationId;
-    return {
-      id,
-      name: stationText(id, dict).name,
-      lat: STATION_COORDS[id]?.lat ?? snapshot.station.lat,
-      lng: STATION_COORDS[id]?.lng ?? snapshot.station.lng,
-      freshness: freshnessStatus(latestTimestampFor(id, data)),
-    };
-  });
-
-  return <StationNetworkMap stations={mapStations} variant="observatory" />;
-}
-
-function MapFallback() {
-  return <Skeleton className="h-[420px] w-full rounded-lg sm:h-[480px] lg:h-[560px]" />;
-}
-
-// ---------------------------------------------------------------------------
 // What the system observes
 // ---------------------------------------------------------------------------
 
@@ -465,17 +433,13 @@ export default async function HomePage() {
               it rather than merely disclaim it — and again on the hardware
               chapter, which is where it actually bites. */}
           <Reveal stagger as="section" className="mx-auto max-w-[var(--width-reading)]">
-            <ChapterHeading eyebrow="01 · Đây là Cồn Hô" title="Một cù lao nông nghiệp giữa sông." />
-            <Prose>
-              <p>
-                Cồn Hô là nơi HORIZON bắt đầu: một dải đất canh tác nhỏ giữa các nhánh sông ở Vĩnh Long, nơi điều kiện
-                nước và đất thay đổi đủ gần để một bản tin cấp tỉnh không thể trả lời câu hỏi của từng khu vườn.
-              </p>
-              <p>
-                Đây không phải địa điểm minh họa dùng một lần. Nó là bối cảnh hiện trường đầu tiên để hạ tầng được xây,
-                kiểm tra và học cách trở nên hữu ích cho những bài toán khác.
-              </p>
-            </Prose>
+            <ChapterHeading eyebrow="01 · Đây là Cồn Hô" title="Cồn Hô là nơi chúng tôi bắt đầu." lead="Một cù lao canh tác ở Vĩnh Long. Nước, đất và không khí thay đổi theo từng vị trí trong ngày — nên phép đo cần ở ngay gần vườn." />
+          </Reveal>
+          <Reveal as="section" className="full-bleed">
+            <figure className="h-spatial relative overflow-hidden rounded-xl bg-wash-sunken">
+              <Image src="/assets/1911.du-lich-con-ho1.jpg" alt="Cồn Hô nhìn từ trên cao" fill sizes="100vw" className="object-cover" />
+              <figcaption className="absolute inset-x-0 bottom-0 flex flex-wrap gap-x-5 gap-y-1 bg-scrim px-5 py-3 text-sm text-white"><span>Cồn Hô · Vĩnh Long</span>{ISLAND_STATS.map((stat) => <span key={stat.label}>{stat.label} {stat.value}</span>)}</figcaption>
+            </figure>
           </Reveal>
           {/* MERGE NOTE (upstream 9d189a8): a `<LocalGatewayCard>` and an
               `<InstallPrompt>` were added here on origin/main. Neither is
@@ -494,24 +458,16 @@ export default async function HomePage() {
 
 
           {/* 02 — Where, and why here */}
-          <Reveal stagger as="section" className="mx-auto max-w-[var(--width-reading)]">
-            <ChapterHeading eyebrow="02 · Đây là HORIZON" title="Một hạ tầng quan trắc bắt đầu từ hiện trường." />
-            <Prose>
-              <p>
-                HORIZON kết nối cảm biến hiện trường, ESP32, LoRa, gateway, internet, Supabase và đài quan trắc công khai
-                thành một đường dữ liệu có thể lần ngược tới nguồn.
-              </p>
-              <p>
-                Ba vai trò, không phải ba bản sao: một trạm đọc nước, một trạm đọc đất, và một gateway gom dữ liệu rồi
-                chuyển về. Cồn Hô là lần triển khai đầu tiên; kiến trúc được xây để tái sử dụng, không phải để giả vờ đã
-                là một mạng lưới quy mô lớn.
-              </p>
-            </Prose>
+          <Reveal stagger as="section">
+            <ChapterHeading eyebrow="02 · Ba điểm, ba vai trò" title="Ba thiết bị ở ba vị trí khác nhau." lead="Mỗi điểm trả lời một câu hỏi rõ ràng: nước đang đổi thế nào, vùng rễ đang giữ nước ra sao, và dữ liệu có đi được về hệ thống không." />
+            <div className="mt-10 grid gap-px overflow-hidden rounded-xl border border-border bg-border md:grid-cols-3">
+              {HARDWARE_GROUPS.map((group) => <article key={group.station} className="bg-surface"><div className="relative aspect-[4/3]"><Image src={group.image} alt={group.imageAlt} fill sizes="(min-width:768px) 33vw,100vw" className="object-cover" /></div><div className="p-6"><p className="text-[11px] font-semibold tracking-[.14em] text-accent">{group.station}</p><h3 className="mt-2 text-2xl font-semibold">{group.domain}</h3><p className="mt-2 text-sm text-muted">{group.station === "STATION_01" ? "Nước ngoài vườn đang thay đổi thế nào?" : group.station === "STATION_02" ? "Vùng rễ đang giữ nước và thay đổi ra sao?" : "Dữ liệu có đi được từ cồn về hệ thống không?"}</p></div></article>)}
+            </div>
           </Reveal>
 
           <section className="full-bleed">
             <Reveal className="h-spatial">
-              <figure className="space-y-4">
+              <figure className="space-y-4" aria-label="Minh họa ba điểm quan trắc tại Cồn Hô">
                 {/* THE BRANDED NETWORK ILLUSTRATION.
                     Replaces con-ho-station-map.png, which had "TRẠM 1 / TRẠM 2
                     / TRẠM 3" baked into its pixels — obsolete station-number
@@ -533,81 +489,19 @@ export default async function HomePage() {
                   loading="lazy"
                   className="w-full rounded-lg"
                 />
-                <figcaption className="flex flex-wrap items-baseline justify-between gap-x-8 gap-y-2 text-sm text-muted">
-                  <span>Bản đồ minh họa, không phải ảnh vệ tinh — thể hiện vị trí tương đối của ba điểm quan trắc.</span>
-                  <span className="flex flex-wrap gap-x-5 [font-family:var(--font-data)]">
-                    {ISLAND_STATS.map((stat) => (
-                      <span key={stat.label}>
-                        {stat.label} {stat.value}
-                      </span>
-                    ))}
-                  </span>
-                </figcaption>
+                <figcaption className="text-sm text-muted">Minh họa dự án: ba điểm đo, không phải bản đồ vận hành. Bản đồ và trạng thái trạm nằm tại Quan trắc.</figcaption>
               </figure>
             </Reveal>
           </section>
 
-          <Reveal as="section">
-            <div className="full-bleed">
-              <div className="h-spatial">
-                <Suspense fallback={<MapFallback />}>
-                  <MapChapter />
-                </Suspense>
-              </div>
-            </div>
-          </Reveal>
-
-          {/* 03 — From sensing hardware to a traceable row.
-              This was a full hardware chapter: three image/text splits with a
-              definition list of every part. That is a good field note and a
-              bad homepage section — it tripled the page's length in the
-              middle, and a reader who wanted the project's story had to
-              scroll through a parts list to reach the rest of it. The detail
-              moved to /posts/phan-cung-cua-mot-tram-do intact; what stays is
-              the claim, the honest caveat, and one way in. */}
+          {/* 03 — The data path is a distinct story beat; the hardware roles
+              above stay visual while this chapter explains the hand-off. */}
           <Reveal stagger as="section">
             <ChapterHeading
-              eyebrow="03 · Từ cảm biến đến dữ liệu"
-              title="Thiết bị được chọn theo câu hỏi cần trả lời."
-              lead="Mỗi đầu dò trả lời một câu hỏi về nước, đất hoặc không khí; LoRa, gateway và Supabase giữ đường đi của phép đo có thể lần ngược."
+              eyebrow="03 · Một con đường dữ liệu"
+              title="Từ cảm biến tới Observatory."
+              lead="Sensor → ESP32 → LoRa → Gateway → cellular → Supabase → Observatory. Mỗi chặng giữ lại thời điểm và nguồn của phép đo."
             />
-            {/* Photographs of the actual built hardware, not diagrams. The
-                boards exist, are populated, and carry this project's own
-                Vietnamese silkscreen; the sensors are the exact part numbers
-                listed beneath each one. Until this pass the chapter rendered
-                no imagery at all and the page claimed no device photography
-                existed — which stopped being true the moment these were
-                supplied. */}
-            <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-3">
-              {HARDWARE_GROUPS.map((group) => (
-                <div key={group.domain} className="flex flex-col bg-background">
-                  <div className="relative aspect-[4/3] overflow-hidden bg-wash-sunken">
-                    <Image
-                      src={group.image}
-                      alt={group.imageAlt}
-                      fill
-                      sizes="(min-width: 768px) 33vw, 100vw"
-                      className="object-cover"
-                    />
-                  </div>
-                  <div className="space-y-4 p-6 md:p-7">
-                    <div className="flex items-baseline justify-between gap-3">
-                      <h3 className="text-lg font-semibold tracking-tight">{group.domain}</h3>
-                      <span className="text-[11px] uppercase tracking-[0.14em] text-muted [font-family:var(--font-data)]">
-                        {group.station}
-                      </span>
-                    </div>
-                    <ul className="space-y-1">
-                      {group.parts.map(({ part }) => (
-                        <li key={part} className="text-sm text-muted [font-family:var(--font-data)]">
-                          {part}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              ))}
-            </div>
             <p className="mt-6 text-sm leading-relaxed text-muted">
               Firmware hiện ghi EC nước và nhiệt độ nước cùng mực nước, TDS và độ mặn. Các đại lượng này được giữ riêng;
               HORIZON không dùng một hằng số tùy ý để đổi độ mặn ‰ thành dS/m.{" "}

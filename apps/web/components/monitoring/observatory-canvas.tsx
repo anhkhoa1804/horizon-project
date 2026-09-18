@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, CloudRain, Droplets, Send, Sprout, Thermometer, Waves, Wind } from "lucide-react";
+import { CloudRain, Droplets, Send, Sprout, Thermometer, Waves, Wind } from "lucide-react";
 import { MapStation, StationNetworkMap } from "@/components/dashboard/station-network-map";
 import { ObservationLog } from "@/components/monitoring/observation-log";
 import type { ExternalWeather } from "@/lib/external/weather";
@@ -20,7 +20,6 @@ import type {
   LocalGatewayReading,
   ObservationSeries,
   ObservatoryMetric,
-  ObservatoryReferenceItem,
   ObservatoryViewModel,
 } from "@/lib/monitoring/types";
 
@@ -381,7 +380,7 @@ function ObservatoryBento({
         className={cn(
           cell,
           padded,
-          regionSurface(primaryStatus),
+          primaryStatus ? regionSurface(primaryStatus) : "bg-[var(--h-domain-water)]",
           "col-start-1 col-end-5 row-start-1 row-end-3",
           "md:col-start-1 md:col-end-5 md:row-start-1 md:row-end-2",
           "lg:col-start-1 lg:col-end-3 lg:row-start-1 lg:row-end-2",
@@ -417,7 +416,7 @@ function ObservatoryBento({
       <div
         className={cn(
           cell,
-          "min-w-0 overflow-hidden bg-surface p-[var(--bento-pad)]",
+          "min-w-0 overflow-hidden bg-surface p-[var(--bento-pad)] ring-1 ring-[var(--h-domain-water)]",
           "col-start-1 col-end-5 row-start-3 row-end-7",
           "md:col-start-1 md:col-end-5 md:row-start-2 md:row-end-4",
           "lg:col-start-3 lg:col-end-6 lg:row-start-1 lg:row-end-3",
@@ -458,7 +457,7 @@ function ObservatoryBento({
         className={cn(
           cell,
           padded,
-          regionSurface(infraStatus),
+          infraStatus ? regionSurface(infraStatus) : "bg-[var(--h-domain-infrastructure)]",
           "col-start-1 col-end-5 row-start-10 row-end-12",
           "md:col-start-1 md:col-end-5 md:row-start-6 md:row-end-7",
           "lg:col-start-5 lg:col-end-7 lg:row-start-3 lg:row-end-4",
@@ -539,7 +538,7 @@ function ObservatoryBento({
           className={cn(
             cell,
             padded,
-            "gap-1 bg-surface",
+            "gap-1 bg-[var(--h-domain-weather)]",
             placement,
           )}
         >
@@ -562,7 +561,7 @@ function ObservatoryBento({
         className={cn(
           cell,
           padded,
-          "col-start-1 col-end-5 row-start-16 row-end-18 bg-surface",
+          "col-start-1 col-end-5 row-start-16 row-end-18 bg-[var(--h-domain-water)]",
           "md:col-start-1 md:col-end-5 md:row-start-8 md:row-end-9",
           "lg:col-start-1 lg:col-end-3 lg:row-start-4 lg:row-end-5",
         )}
@@ -577,7 +576,7 @@ function ObservatoryBento({
       <div
         className={cn(
           cell,
-          "col-start-1 col-end-5 row-start-18 row-end-22 flex flex-col bg-surface p-[var(--bento-pad)]",
+          "col-start-1 col-end-5 row-start-18 row-end-22 flex flex-col bg-[var(--h-domain-soil)] p-[var(--bento-pad)]",
           "md:col-start-1 md:col-end-5 md:row-start-9 md:row-end-11",
           "lg:col-start-3 lg:col-end-7 lg:row-start-4 lg:row-end-5",
         )}
@@ -590,98 +589,6 @@ function ObservatoryBento({
           <Value label={dict.metricLabels.temperature} metric={soilTemp} dict={dict} />
         </div>
       </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Reference
-// ---------------------------------------------------------------------------
-
-const STANDING_META: Record<
-  ObservatoryReferenceItem["standing"],
-  { key: "standingExternal" | "standingInternal" | "standingUnverified"; className: string }
-> = {
-  external: { key: "standingExternal", className: "bg-accent/10 text-accent" },
-  internal: { key: "standingInternal", className: "bg-muted/30 text-muted" },
-  unverified: { key: "standingUnverified", className: "bg-watch-bg text-watch" },
-};
-
-/**
- * The interpretation basis, as a stacked disclosure list.
- *
- * It was three side-by-side prose columns, which is the shape of a textbook
- * page rather than of a reference: each column ran to a paragraph plus a
- * threshold table plus a source line, so the section was the tallest and
- * densest thing on Monitoring and almost certainly the least read.
- *
- * Now every item shows its title, its standing and its numbers — the parts a
- * reader scans — and folds the prose behind a native `<details>`. Native
- * because it is keyboard-operable, findable by in-page search when open, and
- * announced correctly by screen readers without a line of JavaScript.
- *
- * The standing badge is deliberately NOT hidden: "Chưa xác minh" is the most
- * important word in this section, because it is the one that stops a
- * configured project number being read as a published standard.
- */
-function ReferencePanel({ reference, dict }: { reference: ObservatoryReferenceItem[]; dict: Dictionary }) {
-  return (
-    <div className="divide-y divide-border border-y border-border">
-      {reference.map((item) => {
-        const meta = STANDING_META[item.standing];
-        return (
-          <details key={item.title} className="group py-4">
-            <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-accent">
-              <ChevronDown
-                className="h-4 w-4 shrink-0 text-foreground-subtle transition-transform duration-[var(--motion-base)] group-open:rotate-180"
-                aria-hidden
-              />
-              <span className="min-w-0 flex-1 text-sm font-semibold">{item.title}</span>
-              <span
-                className={cn(
-                  "shrink-0 rounded-sm px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]",
-                  meta.className,
-                )}
-              >
-                {dict.monitoring[meta.key]}
-              </span>
-            </summary>
-
-            <div className="mt-4 space-y-3 pl-7">
-              {item.rows.length > 0 ? (
-                <dl className="space-y-1.5">
-                  {item.rows.map((row) => (
-                    <div key={row.range} className="flex items-baseline justify-between gap-4">
-                      <dt className="text-sm tabular-nums [font-family:var(--font-data)]">{row.range}</dt>
-                      <dd className="text-sm text-muted">{row.meaning}</dd>
-                    </div>
-                  ))}
-                </dl>
-              ) : null}
-
-              <p className="max-w-2xl text-sm leading-relaxed text-muted">{item.detail}</p>
-
-              {item.sourceLabel ? (
-                <p className="text-xs leading-relaxed text-muted">
-                  {dict.common.source}:{" "}
-                  {item.sourceUrl ? (
-                    <a
-                      href={item.sourceUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-accent underline-offset-2 hover:underline"
-                    >
-                      {item.sourceLabel}
-                    </a>
-                  ) : (
-                    item.sourceLabel
-                  )}
-                </p>
-              ) : null}
-            </div>
-          </details>
-        );
-      })}
     </div>
   );
 }
@@ -873,17 +780,12 @@ export function ObservatoryCanvas({
           </p>
           <h2 className="mt-2 text-xl font-semibold tracking-tight md:text-2xl">{dict.monitoring.referenceTitle}</h2>
         </div>
-        <ReferencePanel reference={model.reference} dict={dict} />
-
-        {/* The registry itself, printed publicly. The panel above is the
-            editorial explanation; this is the actual table of numbers the
-            system holds, each with its basis and whether it is currently
-            colouring anything. A reader should be able to check the claim
-            "every figure here is traceable" without an account. */}
+        {/* One registry, one disclosure grammar. Every public reference here
+            is attached to a quantity, quality condition or active device
+            interpretation — there is no separate editorial list with a
+            different authority signal. */}
         {thresholds.length > 0 ? (
-          <div className="border-t border-border pt-8">
-            <ThresholdTable rows={thresholds} soilModels={soilModels} />
-          </div>
+          <ThresholdTable rows={thresholds} soilModels={soilModels} />
         ) : null}
       </section>
     </div>

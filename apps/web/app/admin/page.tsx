@@ -65,6 +65,15 @@ interface CommunityReport {
   lng: number;
   timestamp: string;
   viewed_at: string | null;
+  media: ReportMedia[];
+}
+
+interface ReportMedia {
+  id: string;
+  media_type: "photo" | "video" | "audio";
+  mime_type: string;
+  file_size: number;
+  signed_url: string | null;
 }
 
 function stationStatusLabel(status: string): string {
@@ -211,7 +220,7 @@ async function loadAdminMetrics(
 async function loadCommunityReports(): Promise<CommunityReport[]> {
   const supabase = createServiceClient();
   if (!supabase) {
-    return listDemoReports();
+    return listDemoReports().map((report) => ({ ...report, media: [] }));
   }
 
   const { data, error } = await supabase
@@ -221,10 +230,9 @@ async function loadCommunityReports(): Promise<CommunityReport[]> {
     .limit(20);
 
   if (error) {
-    return listDemoReports();
+    return listDemoReports().map((report) => ({ ...report, media: [] }));
   }
-
-  return (data ?? []).map((row) => ({
+  const reports = (data ?? []).map((row) => ({
     id: row.id as string,
     description: (row.description as string | null) ?? null,
     status: row.status as string,
@@ -232,7 +240,30 @@ async function loadCommunityReports(): Promise<CommunityReport[]> {
     lng: Number(row.lng),
     timestamp: row.timestamp as string,
     viewed_at: (row.viewed_at as string | null) ?? null,
+    media: [] as ReportMedia[],
   }));
+  if (reports.length === 0) return reports;
+
+  const { data: mediaRows } = await supabase
+    .from("report_media")
+    .select("id, report_id, storage_path, media_type, mime_type, file_size")
+    .in("report_id", reports.map((report) => report.id))
+    .order("created_at");
+  const mediaByReport = new Map<string, ReportMedia[]>();
+  for (const row of mediaRows ?? []) {
+    const { data: signed } = await supabase.storage.from("report-evidence").createSignedUrl(row.storage_path as string, 60 * 30);
+    const item: ReportMedia = {
+      id: row.id as string,
+      media_type: row.media_type as ReportMedia["media_type"],
+      mime_type: row.mime_type as string,
+      file_size: Number(row.file_size),
+      signed_url: signed?.signedUrl ?? null,
+    };
+    const list = mediaByReport.get(row.report_id as string) ?? [];
+    list.push(item);
+    mediaByReport.set(row.report_id as string, list);
+  }
+  return reports.map((report) => ({ ...report, media: mediaByReport.get(report.id) ?? [] }));
 }
 
 async function updateRuntimeConfig(formData: FormData) {
@@ -719,6 +750,23 @@ export default async function AdminPage({
                     <p className="text-xs text-muted">
                       Vị trí: {report.lat.toFixed(5)}, {report.lng.toFixed(5)}
                     </p>
+                    {report.media.length > 0 ? (
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        {report.media.map((media) => (
+                          <div key={media.id} className="overflow-hidden rounded-md border border-border bg-wash-sunken p-2">
+                            {media.signed_url && media.media_type === "photo" ? (
+                              // eslint-disable-next-line @next/next/no-img-element -- expiring private Storage URL
+                              <img src={media.signed_url} alt="Bằng chứng ảnh của báo cáo" className="aspect-video w-full object-cover" />
+                            ) : null}
+                            {media.signed_url && media.media_type === "video" ? <video src={media.signed_url} controls className="aspect-video w-full" /> : null}
+                            {media.signed_url && media.media_type === "audio" ? <audio src={media.signed_url} controls className="w-full pt-4" /> : null}
+                            <p className="mt-2 text-[10px] uppercase tracking-[0.1em] text-muted">
+                              {media.media_type} · {Math.ceil(media.file_size / 1024)} KB
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                     {unread ? (
                       <form action={markReportViewed}>
                         <input type="hidden" name="report_id" value={report.id} />
@@ -762,9 +810,9 @@ export default async function AdminPage({
 
       <nav aria-label="Khu vực vận hành" className="sticky top-20 z-20 -mx-2 flex gap-1 overflow-x-auto rounded-lg border border-border bg-background/95 p-2 text-xs shadow-sm backdrop-blur">
         {[
-          ["network", "Network"], ["devices", "Devices"], ["thresholds", "Thresholds"],
-          ["profiles", "Application Profiles"], ["calibration", "Calibration"], ["maintenance", "Maintenance"],
-          ["reports", "Reports"], ["export", "Data Export"], ["audit", "Audit"], ["runtime", "Runtime Configuration"],
+          ["network", "Overview"], ["devices", "Devices"], ["thresholds", "Thresholds"],
+          ["profiles", "Applications"], ["calibration", "Calibration"], ["maintenance", "Maintenance"],
+          ["reports", "Reports"], ["export", "Data"], ["audit", "Audit"], ["runtime", "Configuration"],
         ].map(([id, label]) => <a key={id} href={`#${id}`} className="shrink-0 rounded-md px-3 py-2 hover:bg-muted/30">{label}</a>)}
       </nav>
 

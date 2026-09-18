@@ -39,13 +39,3 @@ export function categoryLabel(value: string, dict: Dictionary): string {
 /** Mirrors the route's own MIN/MAX so the UI can validate before a round-trip. */
 export const DESCRIPTION_MIN = 10;
 export const DESCRIPTION_MAX = 2000;
-
-/**
- * Local-only image constraints. Nothing is uploaded anywhere — there is no
- * Storage bucket, no policy, and no upload helper in this project, and
- * damage_logs.image_url is never written by the reports route. These bounds
- * exist so the in-session preview can't be handed a 200MB file or a PDF,
- * not because a server is going to accept the file.
- */
-export const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
-export const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/heic";
