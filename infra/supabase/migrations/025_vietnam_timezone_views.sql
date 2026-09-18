@@ -21,6 +21,15 @@ begin
   end loop;
 end $$;
 
+-- The telemetry tables gain additive fields over time. A prior `SELECT r.*`
+-- view can no longer be replaced in-place once its generated column order
+-- shifts, so rebuild these read-only convenience views before recreating them.
+drop view if exists public.environmental_readings_vn;
+drop view if exists public.soil_readings_vn;
+drop view if exists public.station_health_logs_vn;
+drop view if exists public.environmental_events_vn;
+drop view if exists public.ingestion_audit_logs_vn;
+
 create or replace view public.environmental_readings_vn
 with (security_invoker = true)
 as

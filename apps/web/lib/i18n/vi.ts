@@ -124,7 +124,6 @@ export const vi = {
     title: "Đài quan trắc",
     subtitle: "Toàn bộ chỉ số của mạng lưới trên một mặt canvas — kèm nguồn của từng con số.",
     sendReport: "Gửi báo cáo hiện trường",
-    aboutProject: "Về dự án",
 
     demoBannerTitle: "DỮ LIỆU MINH HỌA",
     demoBannerBody:
@@ -172,7 +171,7 @@ export const vi = {
     spaceTitle: "Vị trí các trạm",
 
     referenceEyebrow: "Tham chiếu",
-    referenceTitle: "Cơ sở diễn giải số liệu",
+    referenceTitle: "THAM CHIẾU & NGƯỠNG",
     standingExternal: "Nguồn quốc tế",
     standingInternal: "Cấu hình dự án",
     standingUnverified: "Chưa xác minh",
@@ -212,6 +211,8 @@ export const vi = {
     noObservationsBody:
       "Khi trạm gửi được số liệu trong khoảng thời gian này, biểu đồ sẽ xuất hiện ở đây. Không có đường nào được vẽ thay thế.",
     metrics: {
+      waterEc: "EC nước",
+      waterTemp: "Nhiệt độ nước",
       salinity: "Độ mặn",
       waterLevel: "Mực nước",
       soilMoisture: "Độ ẩm đất",
@@ -234,32 +235,17 @@ export const vi = {
        and stopping there. The clause about salt is what gives the reader a
        reason to keep reading, and it is a claim the project can stand
        behind. */
-    /* THE HERO TITLE.
-       Two lines on desktop in both languages — a hard constraint, met by
-       tuning the type and measure rather than by shortening the sentence
-       until it says nothing. The version before this ("Cù lao giữa sông,
-       nước mặn dần.") hit two lines by dropping to a fragment: four nouns and
-       no verb, which reads as a caption on a photograph rather than as a
-       claim the project is making.
-
-       This is a sentence. It names the place, says what is happening to it,
-       and says that someone is watching — which is the whole project in one
-       line. `--text-title-display` and the hero's measure were retuned to fit
-       it; see globals.css. */
-    title: "Nước quanh Cồn Hô đang mặn dần. Chúng tôi đang ghi lại điều đó.",
+    /* Identity statement: Cồn Hô is the first field context; HORIZON is the
+       reusable platform being built from it. */
+    title: "Đây là Cồn Hô.\nĐây là HORIZON.",
     /* A product statement, not a description of the website. The previous
        subtitle ended "...một trang công khai nói rõ mỗi con số đến từ đâu",
        which talks about the page the reader is already on. This talks about
        the network. */
     subtitle:
-      "Ba điểm đo nước, đất và không khí trên cù lao — xem mạng lưới đang ghi nhận gì, và biết mỗi con số đến từ đâu.",
+      "Một hạ tầng quan trắc đặt ngay trên cù lao — kết nối nước, đất, không khí và dữ liệu thành một cách nhìn có nguồn gốc.",
     ctaPrimary: "Xem mạng lưới quan trắc",
-    ctaSecondary: "Về dự án",
-    /* Anchor label for the in-page jump the secondary action now makes —
-       /about was merged into this page, so "Về dự án" scrolls rather than
-       navigates. */
-    storyAnchorLabel: "Câu chuyện dự án",
-    pilotNote: "Giai đoạn thí điểm · thiết bị chưa lắp đặt ngoài thực địa.",
+    pilotNote: "Hạ tầng hiện trường đang được hoàn thiện và kiểm chứng tại Cồn Hô.",
   },
 
   about: {
@@ -358,12 +344,24 @@ export const vi = {
       locating: "Đang định vị…",
       updateLocation: "Cập nhật lại vị trí",
       useCurrentLocation: "Dùng vị trí hiện tại",
+      myLocation: "Vị trí của tôi",
+      myLocationLead: "Dùng GPS của thiết bị",
+      locationReady: "Đã lấy vị trí",
       willUseGps: "Báo cáo sẽ dùng vị trí GPS này.",
       optionalGps: "Không bắt buộc. Nếu bỏ qua, báo cáo được gắn theo vị trí trạm bạn chọn.",
       gpsDevice: "GPS thiết bị",
       byStation: "Theo vị trí trạm đã chọn",
       sending: "Đang gửi…",
       submit: "Gửi báo cáo",
+      evidence: "Bằng chứng",
+      evidenceLead: "Ảnh, video hoặc ghi âm từ hiện trường.",
+      evidenceLimit: "Tối đa 3 tệp. Ảnh tối đa 8 MB, âm thanh 10 MB, video 20 MB.",
+      addPhoto: "Thêm ảnh",
+      addVideo: "Thêm video",
+      addAudio: "Thêm âm thanh",
+      recordAudio: "Ghi âm",
+      stopAudio: "Dừng",
+      removeEvidence: "Xóa tệp đính kèm",
 
       savedToDb: "Báo cáo đã được lưu vào cơ sở dữ liệu quan trắc.",
       savedLocally:
@@ -376,6 +374,7 @@ export const vi = {
       errSendFailed: "Không gửi được báo cáo. Vui lòng kiểm tra kết nối và thử lại.",
       errGeoUnsupported: "Thiết bị không hỗ trợ định vị. Báo cáo sẽ dùng vị trí trạm bạn chọn.",
       errGeoFailed: "Chưa lấy được vị trí. Báo cáo vẫn gửi được bằng vị trí trạm bạn chọn.",
+      errAudioFailed: "Chưa thể ghi âm trên thiết bị này. Bạn vẫn có thể đính kèm tệp âm thanh.",
 
       charsNeeded: "Cần ít nhất {min} ký tự — hiện có {n}.",
       charsOf: "{n} / {max} ký tự.",
@@ -636,7 +635,62 @@ export const vi = {
   },
 
 
+  /** The public threshold registry table under "Cơ sở diễn giải số liệu". */
+  thresholds: {
+    active: "Đang áp dụng",
+    referenceOnly: "Tham chiếu — không tạo cảnh báo",
+    source: "Nguồn",
+    scope: "Phạm vi",
+    soilTitle: "Ngưỡng tưới theo độ ẩm đất",
+    soilDerived: "Tính từ đất tại chỗ",
+    soilMissing: "Chưa có số liệu đất Cồn Hô",
+    soilExplain:
+      "Không có một con số phần trăm dùng chung. Ngưỡng tưới là hàm của chính loại đất: ngưỡng = FC − MAD × (FC − PWP) — với FC là độ ẩm ở sức chứa đồng ruộng, PWP là điểm héo vĩnh viễn, MAD là mức cho phép rút nước. Khi chưa đo được FC và PWP của đất Cồn Hô thì hệ thống không đặt ngưỡng, thay vì mượn một con số của nơi khác.",
+    soilSource:
+      "Nguồn: USDA/NRCS — sức chứa đồng ruộng, điểm héo vĩnh viễn và lượng nước hữu dụng. Mức MAD 50% là giả định quản lý khởi đầu khi chưa có số liệu địa phương, không phải hằng số sinh lý.",
+    irrigateAt: "tưới ở",
+    severity: {
+      normal: "Bình thường",
+      watch: "Theo dõi",
+      warning: "Cảnh báo",
+      critical: "Nghiêm trọng",
+      low_confidence: "Độ tin cậy thấp",
+    },
+    basis: {
+      FAO_REFERENCE: "FAO",
+      CITRUS_REFERENCE: "Tham chiếu cây có múi",
+      POMELO_MEKONG_REFERENCE: "Nghiên cứu bưởi ĐBSCL",
+      SENSOR_QUALITY: "Chất lượng phép đo",
+      DEVICE_HEALTH: "Kỹ thuật thiết bị",
+      SITE_CALIBRATED: "Hiệu chuẩn tại chỗ",
+      LEGACY_UNVALIDATED: "Chưa kiểm chứng",
+    },
+    validation: {
+      REFERENCE: "Tham chiếu",
+      PILOT: "Thí điểm",
+      OPERATIONAL: "Đang áp dụng",
+      SITE_VALIDATED: "Đã kiểm chứng tại chỗ",
+    },
+    quantity: {
+      water_ec: "EC nước tưới (ECw)",
+      water_ph: "pH nước",
+      water_salinity: "Độ mặn nước (‰)",
+      water_level: "Mực nước",
+      soil_ec_bulk: "EC đất tại chỗ (bulk)",
+      soil_ec_saturated_extract: "EC đất chiết bão hòa (ECe)",
+      soil_ph: "pH đất",
+      soil_moisture: "Độ ẩm đất",
+      soil_temp: "Nhiệt độ đất",
+      air_temp: "Nhiệt độ không khí",
+      air_humidity: "Độ ẩm không khí",
+      battery_voltage: "Điện áp pin",
+      signal_dbm: "Cường độ tín hiệu",
+    },
+  },
+
   metricLabels: {
+    waterEc: "EC nước",
+    waterTemp: "Nhiệt độ nước",
     salinity: "Độ mặn",
     waterLevel: "Mực nước",
     moisture: "Độ ẩm",
@@ -652,6 +706,8 @@ export const vi = {
 
   /** Measurement labels, sourced from the terminology contract so the two can never drift. */
   terms: {
+    water: "Nước",
+    soil: "Đất",
     salinity: TERMINOLOGY.salinity.vi,
     waterLevel: TERMINOLOGY.waterLevel.vi,
     soilEc: TERMINOLOGY.soilEc.vi,

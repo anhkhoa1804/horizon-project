@@ -653,27 +653,14 @@ describe("soil readings (reading_kind: soil)", () => {
 });
 
 /**
- * Characterization tests for the water-EC blocker.
- *
- * These document CURRENT behaviour, not desired behaviour. Station 1's
- * `readWaterEc()` (firmware/esp32-node/src/trạm 1.ino:279-296) is an
- * unimplemented placeholder that always returns
- * `{false, NAN, "pending_ec_protocol"}`, so the gateway relays
- * `"salinity": null` (gateway.ino:514-515) while still carrying a genuinely
- * measured `water_level`.
- *
- * The contract then discards the entire reading — including the valid water
- * level — via two independent gates. That is the single largest reason the
- * production observatory has no water telemetry.
- *
- * When the water-level-preservation change is approved, these tests should
- * FAIL and be rewritten to assert the new behaviour. They exist so the loss
- * is visible in the suite rather than only in an audit document.
+ * The signed v1 edge contract still treats salinity + water level as its
+ * required water pair. The active gateway HTTP path retains the richer raw
+ * Station 01 payload and promotes EC/temperature through the web route; these
+ * cases only pin validation at the older signed-contract boundary.
  */
-describe("water EC blocker (characterization — current behaviour, not desired)", () => {
+describe("signed v1 water payload validation", () => {
   it("discards a valid water_level when salinity is null, via MISSING_FIELD", async () => {
     const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
-    // Exactly what the gateway emits today when the EC probe is unimplemented.
     const payload = basePayload({
       message_id: "water-ec-blocker-001",
       salinity: undefined,
@@ -685,13 +672,12 @@ describe("water EC blocker (characterization — current behaviour, not desired)
 
     assert.equal(response.ok, false, "payload is rejected outright");
     if (!response.ok) {
-      // Rejected at ingest.ts:173 before the fault gate is even reached.
       assert.equal(response.error_code, "MISSING_FIELD");
-      assert.equal(response.retryable, false, "gateway will not retry — the reading is lost permanently");
+      assert.equal(response.retryable, false);
     }
 
     const snapshot = db.getSnapshot();
-    assert.equal(snapshot.environmentalReadings.length, 0, "the measured water level is not stored anywhere");
+    assert.equal(snapshot.environmentalReadings.length, 0, "an incomplete signed-v1 row is not stored");
     assert.equal(snapshot.auditLogs.at(-1)?.status, "missing_field");
   });
 
@@ -708,13 +694,11 @@ describe("water EC blocker (characterization — current behaviour, not desired)
 
     assert.equal(response.ok, false);
     if (!response.ok) {
-      // Second, independent gate — ingest.ts:250.
       assert.equal(response.error_code, "SENSOR_FAULT");
     }
 
     const snapshot = db.getSnapshot();
-    assert.equal(snapshot.environmentalReadings.length, 0, "water level lost a second way");
-    // A SENSOR_FAULT event IS recorded, so the fault itself is observable.
+    assert.equal(snapshot.environmentalReadings.length, 0, "a faulted signed-v1 row is not stored");
     assert.equal(snapshot.environmentalEvents.at(-1)?.event_type, "SENSOR_FAULT");
   });
 

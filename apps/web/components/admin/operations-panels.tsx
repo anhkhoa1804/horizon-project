@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import type {
   AlertConfig,
   AuditEvent,
@@ -370,5 +371,218 @@ export function AuditPanel({ events }: { events: AuditEvent[] }) {
         <p className="text-sm text-muted">Chưa có thao tác nào được ghi.</p>
       )}
     </SectionShell>
+  );
+}
+
+/**
+ * The threshold registry, as the operator sees it.
+ *
+ * The one thing this panel must make impossible to miss: which rows are
+ * ACTUALLY producing status and which are citations sitting inert. Reference
+ * and operational thresholds live in one table on purpose — so an operator can
+ * see published guidance beside what the system is doing with it — and that
+ * only works if the difference is loud.
+ *
+ * Provenance is not behind a tooltip. Basis, source, scope and validation
+ * status are on the row, because an operator deciding whether to activate a
+ * number needs to know it is a grapefruit yield-response reference point
+ * rather than a safety limit.
+ */
+export function ThresholdRegistryPanel({
+  rows,
+  soilModels,
+}: {
+  rows: import("@/lib/monitoring/thresholdTypes").ThresholdRow[];
+  soilModels: import("@/lib/monitoring/thresholdTypes").SoilWaterModel[];
+}) {
+  const active = rows.filter((r) => r.is_active);
+  const inert = rows.filter((r) => !r.is_active);
+
+  return (
+    <SectionShell
+      title="Sổ ngưỡng"
+      lead="Mọi ngưỡng hệ thống biết, kèm nguồn gốc. Một dòng có trích dẫn đầy đủ vẫn có thể không tô màu gì — đó là trạng thái bình thường của một giá trị tham chiếu. Chỉ dòng ĐANG ÁP DỤNG mới sinh ra trạng thái."
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-border p-4">
+          <p className="text-2xl font-semibold [font-family:var(--font-data)]">{active.length}</p>
+          <p className="text-sm text-muted">đang áp dụng — sinh ra trạng thái</p>
+        </div>
+        <div className="rounded-lg border border-border p-4">
+          <p className="text-2xl font-semibold [font-family:var(--font-data)]">{inert.length}</p>
+          <p className="text-sm text-muted">tham chiếu — không tạo cảnh báo</p>
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted">Sổ ngưỡng chưa có dòng nào.</p>
+      ) : (
+        <div className="divide-y divide-border border-y border-border">
+          {rows.map((r) => (
+            <div key={r.id} className="space-y-1 py-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <p className="font-medium">
+                  {r.quantity}{" "}
+                  <span className="text-sm text-muted [font-family:var(--font-data)]">
+                    {r.comparison === "between"
+                      ? `${r.threshold_value} – ${r.upper_value}`
+                      : r.comparison === "outside"
+                        ? `ngoài ${r.threshold_value} – ${r.upper_value}`
+                        : `${r.comparison === "above" ? ">" : "<"} ${r.threshold_value}`}{" "}
+                    {r.unit}
+                  </span>
+                </p>
+                <span
+                  className={cn(
+                    "shrink-0 rounded-sm px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]",
+                    r.is_active ? "bg-safe-bg text-safe" : "bg-neutral-bg text-muted",
+                  )}
+                >
+                  {r.is_active ? "Đang áp dụng" : "Tham chiếu"}
+                </span>
+              </div>
+              <p className="text-sm text-muted">
+                {r.severity} · {r.basis} · {r.validation_status}
+                {r.scope ? ` · ${r.scope}` : ""}
+              </p>
+              {r.source_title ? (
+                <p className="text-xs text-foreground-subtle">
+                  {r.source_title}
+                  {r.source_locator ? ` — ${r.source_locator}` : ""}
+                </p>
+              ) : null}
+              {r.notes ? <p className="text-xs leading-relaxed text-muted">{r.notes}</p> : null}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="space-y-2 border-t border-border pt-5">
+        <p className="text-sm font-medium">Mô hình nước trong đất</p>
+        {soilModels.length === 0 ? (
+          <p className="text-sm text-muted">
+            Chưa có. Ngưỡng tưới được tính từ FC/PWP/MAD của chính đất Cồn Hô — chưa đo được thì hệ
+            thống không đặt ngưỡng, thay vì mượn một con số phần trăm của nơi khác.
+          </p>
+        ) : (
+          <ul className="space-y-1 text-sm [font-family:var(--font-data)]">
+            {soilModels.map((m) => (
+              <li key={m.station_id}>
+                {m.station_id}: FC {m.field_capacity_pct}% · PWP {m.permanent_wilting_point_pct}% ·
+                MAD {m.management_allowed_depletion_pct}% → {Number(m.irrigation_trigger_pct).toFixed(1)}%
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </SectionShell>
+  );
+}
+
+export function ApplicationProfilesPanel({
+  profiles,
+}: {
+  profiles: import("@/lib/monitoring/thresholdTypes").ApplicationProfile[];
+}) {
+  return (
+    <SectionShell
+      title="Mô hình ứng dụng"
+      lead="Ba hướng mở rộng của cùng một hạ tầng. Danh sách tách rõ dữ liệu đã có khỏi dữ liệu, mô hình và kiểm chứng còn thiếu."
+    >
+      <div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border lg:grid-cols-3">
+        {profiles.map((profile) => (
+          <article key={profile.key} className="space-y-5 bg-background p-5">
+            <div>
+              <p className="text-[11px] font-semibold tracking-[0.14em] text-accent [font-family:var(--font-data)]">
+                {profile.key.replace("_", "–")}
+              </p>
+              <h3 className="mt-2 text-lg font-semibold">{profile.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted">{profile.description}</p>
+            </div>
+            <ProfileList label="Đang có" items={profile.available_metrics} />
+            <ProfileList label="Cần tiếp theo" items={profile.needed_metrics} />
+            <ProfileList label="Ngưỡng đang có" items={profile.available_thresholds} empty="Chưa có ngưỡng đã kiểm chứng." />
+            <ProfileList label="Chưa kiểm chứng" items={profile.unvalidated_thresholds} />
+            <p className="border-t border-border pt-3 text-xs font-semibold uppercase tracking-[0.12em] text-foreground-subtle">
+              {profile.maturity === "BUILDING_EVIDENCE" ? "Đang xây dựng bằng chứng" : profile.maturity === "PILOT" ? "Thí điểm" : "Tương lai"}
+            </p>
+          </article>
+        ))}
+      </div>
+    </SectionShell>
+  );
+}
+
+function ProfileList({ label, items, empty = "Chưa có." }: { label: string; items: string[]; empty?: string }) {
+  return (
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground-subtle">{label}</p>
+      <p className="mt-1 text-sm leading-relaxed text-muted">{items.length > 0 ? items.join(" · ") : empty}</p>
+    </div>
+  );
+}
+
+export function SiteModelsPanel({
+  soilModels,
+  waterContexts,
+  soilAction,
+  waterAction,
+}: {
+  soilModels: import("@/lib/monitoring/thresholdTypes").SoilWaterModel[];
+  waterContexts: import("@/lib/monitoring/thresholdTypes").WaterLevelContext[];
+  soilAction: (formData: FormData) => void;
+  waterAction: (formData: FormData) => void;
+}) {
+  const soil = soilModels.find((model) => model.station_id === "STATION_02");
+  const water = waterContexts.find((model) => model.station_id === "STATION_01");
+  return (
+    <SectionShell
+      title="Hiệu chuẩn bối cảnh tại chỗ"
+      lead="Mô hình tưới và mực nước chỉ có ý nghĩa khi gắn với đất và hình học lắp đặt thật. Các phép tính được lưu cùng đầu vào để có thể kiểm tra lại."
+    >
+      <div className="grid gap-8 lg:grid-cols-2">
+        <form action={soilAction} className="space-y-4">
+          <div>
+            <h3 className="font-semibold">Nước hữu dụng trong đất · STATION_02</h3>
+            <p className="mt-1 text-sm text-muted">AW = FC − PWP · trigger = FC − MAD × (FC − PWP)</p>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <NumberField id="field-capacity" name="field_capacity_pct" label="FC (%)" value={soil?.field_capacity_pct} />
+            <NumberField id="wilting-point" name="permanent_wilting_point_pct" label="PWP (%)" value={soil?.permanent_wilting_point_pct} />
+            <NumberField id="mad" name="management_allowed_depletion_pct" label="MAD (%)" value={soil?.management_allowed_depletion_pct} />
+          </div>
+          {soil ? (
+            <p className="rounded-md bg-neutral-bg p-3 text-sm [font-family:var(--font-data)]">
+              AW = {(soil.field_capacity_pct - soil.permanent_wilting_point_pct).toFixed(1)}% · ngưỡng tưới = {Number(soil.irrigation_trigger_pct).toFixed(1)}%
+            </p>
+          ) : <p className="text-sm text-muted">Chưa có số liệu FC/PWP tại chỗ; chưa đặt ngưỡng tưới.</p>}
+          <Input name="source_note" placeholder="Nguồn đo / phương pháp / ghi chú" defaultValue={soil?.source_note ?? ""} />
+          <Button type="submit">Lưu mô hình đất</Button>
+        </form>
+
+        <form action={waterAction} className="space-y-4">
+          <div>
+            <h3 className="font-semibold">Mốc cao độ nước · STATION_01</h3>
+            <p className="mt-1 text-sm text-muted">Không có quy tắc “ngập = 80 cm”. Ngưỡng tương lai phải suy ra từ cao độ lắp đặt đã khảo sát.</p>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <NumberField id="sensor-datum" name="sensor_datum_cm" label="Mốc cảm biến" value={water?.sensor_datum_cm} />
+            <NumberField id="bank-elevation" name="shore_bank_elevation_cm" label="Cao độ bờ" value={water?.shore_bank_elevation_cm} />
+            <NumberField id="critical-elevation" name="critical_infrastructure_elevation_cm" label="Hạ tầng trọng yếu" value={water?.critical_infrastructure_elevation_cm} />
+          </div>
+          <Input name="survey_note" placeholder="Mốc chuẩn, ngày khảo sát, phương pháp" defaultValue={water?.survey_note ?? ""} />
+          <Button type="submit">Lưu bối cảnh mực nước</Button>
+        </form>
+      </div>
+    </SectionShell>
+  );
+}
+
+function NumberField({ id, name, label, value }: { id: string; name: string; label: string; value?: number | null }) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input id={id} name={name} type="number" step="0.1" min="0" max="1000" defaultValue={value ?? ""} required />
+    </div>
   );
 }

@@ -27,6 +27,8 @@ import type { StationKind } from "@/lib/stationProfile";
 export type MetricLabelKey =
   | "salinity"
   | "waterLevel"
+  | "waterEc"
+  | "waterTemp"
   | "moisture"
   | "ec"
   | "ph"
@@ -126,6 +128,8 @@ export type TrendRange = "24h" | "7d" | "30d";
  * options that actually have values behind them.
  */
 export type TrendMetric =
+  | "waterEc"
+  | "waterTemp"
   | "salinity"
   | "waterLevel"
   | "soilMoisture"
@@ -144,6 +148,8 @@ export interface ObservationPoint {
   label: string;
   salinity: number | null;
   waterLevel: number | null;
+  waterEc: number | null;
+  waterTemp: number | null;
   soilMoisture: number | null;
   soilEc: number | null;
   soilPh: number | null;

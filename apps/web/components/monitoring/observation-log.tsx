@@ -20,6 +20,8 @@ const RANGES = [
  * time, so these scales never share an axis.
  */
 const METRICS: Record<TrendMetric, { unit: string; color: string; decimals: number }> = {
+  waterEc: { unit: "mS/cm", color: "var(--color-healthy)", decimals: 3 },
+  waterTemp: { unit: "°C", color: "var(--color-watch)", decimals: 1 },
   salinity: { unit: "‰", color: "var(--color-salinity)", decimals: 2 },
   waterLevel: { unit: "cm", color: "var(--color-water-level)", decimals: 0 },
   soilMoisture: { unit: "%", color: "var(--color-accent-2)", decimals: 1 },

@@ -204,8 +204,8 @@ Previous report's claim re-verified hop-by-hop, exact lines:
 
 | # | Hop | File:line | Result |
 |---|---|---|---|
-| 1 | `readWaterEc()` unconditionally returns `{ok:false, NAN, "pending_ec_protocol"}` | `trạm 1.ino:279-295` | Permanent stub, confirmed |
-| 2 | `collectReading()` calls it; `ec.ok` always false → on-wire `ec_status = "pending_ec_protocol"` | `trạm 1.ino:309,362` | Confirmed |
+| 1 | `readWaterEc()` reads the ES-EC-WT-01 path and returns EC, temperature, TDS and salinity | `trạm 1.ino` | Implemented; field calibration is a separate requirement |
+| 2 | `collectReading()` preserves the independent water quantities and status | `trạm 1.ino` | Confirmed in current source |
 | 3 | Gateway maps that string | `gateway.ino:965` | Confirmed |
 | 4 | `mapSensorStatus()` — not "ok"/"warn"/empty → falls through to `"fault"` | `gateway.ino:375-380` | Confirmed |
 | 5 | `anyFault = ecStatus=="fault" \|\| ...` → `fault_flags = 1` | `gateway.ino:973-974` | Confirmed |
@@ -467,7 +467,7 @@ from becoming a mock product full of unshippable features.**
 - One `whileInView`-style section reveal per marketing page, CSS-only
 
 ### C. BLOCKED BY BACKEND/HARDWARE
-- Any "live" claim for STATION_01 water/salinity until the EC probe is real and `readWaterEc()` is implemented (§4)
+- Any physical/site-validation claim for STATION_01 water/salinity until calibration evidence exists
 - Station health (battery/signal) as a real metric — structurally null for relayed stations by design
 - Historical range beyond 7 days
 - CSV/JSON export, public REST API, realtime/websocket

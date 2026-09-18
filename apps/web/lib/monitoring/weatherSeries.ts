@@ -31,6 +31,8 @@ function timeLabel(iso: string) {
 function blankPoint(label: string): ObservationPoint {
   return {
     label,
+    waterEc: null,
+    waterTemp: null,
     salinity: null,
     waterLevel: null,
     soilMoisture: null,

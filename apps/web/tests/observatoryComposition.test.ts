@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * Guards the Monitoring Bento's explicit 6×3 grid.
+ * Guards the Monitoring Bento's explicit 6×4 grid.
  *
  * This is the third composition this canvas has had: a computed per-metric
  * footprint algorithm, then four hand-authored surfaces (primary /
@@ -59,7 +59,7 @@ function extractPlacements(src: string, prefix: "" | "md:" | "lg:"): Placement[]
  * on the same cell or a hole opens in the canvas.
  */
 function assertTiling(placements: Placement[], cols: number, rows: number, label: string) {
-  assert.equal(placements.length, 8, `${label}: expected exactly eight explicitly-placed boxes`);
+  assert.equal(placements.length, 10, `${label}: expected exactly ten explicitly-placed boxes`);
 
   const covered = new Map<string, number>();
   for (const { colStart, colEnd, rowStart, rowEnd } of placements) {
@@ -79,22 +79,22 @@ function assertTiling(placements: Placement[], cols: number, rows: number, label
 }
 
 describe("observatory Bento grid", () => {
-  it("places eight boxes by explicit coordinates, not a computed algorithm", () => {
+  it("places ten grouped boxes by explicit coordinates, not a computed algorithm", () => {
     const src = source();
     assert.match(src, /function ObservatoryBento/, "the grid composition component is gone");
     assert.match(src, /lg:grid-cols-6/, "the 6-column track is missing");
-    assert.match(src, /lg:grid-rows-3/, "the 3-row track is missing");
-    assert.match(src, /aspect-\[2\/1\]/, "the container must be 2:1 so every base cell is square");
+    assert.match(src, /lg:grid-rows-4/, "the 4-row track is missing");
+    assert.match(src, /lg:aspect-\[3\/2\]/, "the container must be 3:2 so every desktop base cell is square");
 
     // The two arrangements BELOW lg are part of the same system, not a
     // fallback: the container has to declare a track count and a matching
     // aspect ratio at each, or the base cell stops being square and the
     // regions stop being whole multiples of it.
     assert.match(src, /grid-cols-4/, "the 4-column track for <lg is missing");
-    assert.match(src, /grid-rows-15/, "the 15-row track for <md is missing");
-    assert.match(src, /md:grid-rows-7/, "the 7-row track for md is missing");
-    assert.match(src, /aspect-\[4\/15\]/, "the <md container must be 4:15 to keep the base cell square");
-    assert.match(src, /md:aspect-\[4\/7\]/, "the md container must be 4:7 to keep the base cell square");
+    assert.match(src, /repeat\(21,minmax\(0,1fr\)\)/, "the 21-row track for <md is missing");
+    assert.match(src, /repeat\(10,minmax\(0,1fr\)\)/, "the 10-row track for md is missing");
+    assert.match(src, /aspect-\[4\/21\]/, "the <md container must be 4:21 to keep the base cell square");
+    assert.match(src, /md:aspect-\[2\/5\]/, "the md container must be 2:5 to keep the base cell square");
 
     // Neither earlier approach may quietly return.
     assert.ok(!/buildCanvasMetrics/.test(src), "the computed per-metric footprint system is back");
@@ -154,7 +154,7 @@ describe("observatory Bento grid", () => {
     const src = source();
     assert.match(src, /function RegionHeader/, "the region header is gone");
     const renders = (src.match(/<RegionHeader\b/g) || []).length;
-    assert.equal(renders, 2, "expected exactly the two status-bearing regions (water, infrastructure)");
+    assert.equal(renders, 4, "expected primary, infrastructure, water and soil region headers");
     assert.ok(!/<RegionStatus\b/.test(src), "the separate status line is back below the values");
   });
 
@@ -250,9 +250,9 @@ describe("observatory Bento grid", () => {
 
   it("tiles all three arrangements exactly once per cell, with no gap and no overlap", () => {
     const src = source();
-    assertTiling(extractPlacements(src, ""), 4, 15, "<md (4×15)");
-    assertTiling(extractPlacements(src, "md:"), 4, 7, "md (4×7)");
-    assertTiling(extractPlacements(src, "lg:"), 6, 3, "lg (6×3)");
+    assertTiling(extractPlacements(src, ""), 4, 21, "<md (4×21)");
+    assertTiling(extractPlacements(src, "md:"), 4, 10, "md (4×10)");
+    assertTiling(extractPlacements(src, "lg:"), 6, 4, "lg (6×4)");
   });
 
   it("keeps every region a whole multiple of the base cell at every breakpoint", () => {
@@ -263,9 +263,9 @@ describe("observatory Bento grid", () => {
     // the unit is exactly what stops a Bento reading as one grid.
     const src = source();
     for (const [label, prefix, cols, rows] of [
-      ["<md", "", 4, 15],
-      ["md", "md:", 4, 7],
-      ["lg", "lg:", 6, 3],
+      ["<md", "", 4, 21],
+      ["md", "md:", 4, 10],
+      ["lg", "lg:", 6, 4],
     ] as const) {
       for (const p of extractPlacements(src, prefix)) {
         const w = p.colEnd - p.colStart;
@@ -295,7 +295,7 @@ describe("observatory Bento grid", () => {
       ["md", "md:", 1],
       ["lg", "lg:", 1],
     ] as const) {
-      const context = extractPlacements(src, prefix).slice(-4);
+      const context = extractPlacements(src, prefix).slice(-6, -2);
       assert.equal(context.length, 4, `${label}: expected four context placements`);
       for (const p of context) {
         assert.equal(p.colEnd - p.colStart, unitSpan, `${label}: a context cell is not ${unitSpan} unit(s) wide`);
@@ -309,7 +309,7 @@ describe("observatory Bento grid", () => {
 
     // At md and above they must still be ONE row of four columns.
     for (const [label, prefix] of [["md", "md:"] , ["lg", "lg:"]] as const) {
-      const context = extractPlacements(src, prefix).slice(-4);
+      const context = extractPlacements(src, prefix).slice(-6, -2);
       if (label === "md") {
         assert.equal(new Set(context.map((p) => p.rowStart)).size, 1, "md: context cells must share one row");
         assert.equal(new Set(context.map((p) => p.colStart)).size, 4, "md: context cells must span four columns");

@@ -212,15 +212,9 @@ export function StationNetworkMap({
 
         const map = L.map(containerRef.current, {
           scrollWheelZoom: false,
-          // No in-map credit. Esri and OSM require their attribution to be
-          // DISPLAYED, not to be displayed inside the map frame — and the
-          // site footer already renders `footer.mapAttribution` on every
-          // page, this one included. The in-map control was therefore a
-          // second copy of a credit the page already carries, sitting across
-          // the bottom edge of the Bento's map cell as its most contrasty
-          // element. `attribution` stays set on the tile layer below so the
-          // string travels with the layer for any future consumer.
-          attributionControl: false,
+          // Attribution must stay with the map surface. It is compact Leaflet
+          // chrome, but it is visible wherever Esri/OSM tiles are displayed.
+          attributionControl: true,
           zoomControl: interactive,
           dragging: interactive,
           doubleClickZoom: interactive,

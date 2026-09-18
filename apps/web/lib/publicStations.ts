@@ -17,7 +17,7 @@ import type { SoilReading, Station, StationReadingSnapshot } from "@/types";
  * they leak into any public station list — the source of the "4/5 active"
  * discrepancy identified in the audit.
  *
- * Not yet wired into any live page (Foundation phase only) — call sites
+ * Shared by the live public Observatory and station routes — call sites
  * are added starting with the homepage/dashboard rebuild.
  */
 export const PILOT_STATION_IDS = ["STATION_01", "STATION_02", "STATION_03"] as const;

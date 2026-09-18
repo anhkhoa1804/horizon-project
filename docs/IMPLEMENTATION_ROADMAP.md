@@ -17,7 +17,7 @@ an honest record of what was actually true at each point.
 | Item | Files | Risk | Test strategy | Hardware? | Live Supabase? | GCP? |
 |---|---|---|---|---|---|---|
 | Commit migrations 018/019 to git | `infra/supabase/migrations/018_*.sql`, `019_*.sql` | Low — pure `git add`, no code change | `git log` shows the files tracked | No | No | No |
-| Fix `readWaterEc()` fault cascade blocking all water storage | `firmware/esp32-node/src/trạm 1.ino` | High if done wrong (a bad EC read could poison good water-level data the same way the stub currently does) | Unit-testable in isolation once the real sensor protocol is known; full validation needs the physical probe | **Yes** — needs the ES-EC-WT-01 datasheet/register map | No | No |
+| Validate the implemented `readWaterEc()` path in the field | `firmware/esp32-node/src/trạm 1.ino` | High — calibration claims require physical evidence | Contract tests plus probe calibration records | **Yes** — physical probe and reference solution | No | No |
 | Remove or repurpose `devices.device_secret_hash` | new migration | Low | Migration review; confirm nothing reads the column first (`grep device_secret_hash`) | No | Applied against a real DB to verify | No |
 | ~~Replace `StatusIndicator`'s conflated enum with the two-axis model~~ **DONE** | `apps/web/components/ui/status-indicator.tsx` | — | Confirmed live: `FreshnessState`/`QualityState` two-axis model in place, old 9-value enum gone | No | No | No |
 
@@ -26,9 +26,9 @@ an honest record of what was actually true at each point.
 | Item | Files | Risk | Test strategy | Hardware? | Live Supabase? | GCP? |
 |---|---|---|---|---|---|---|
 | ~~Provision a real Supabase project~~ **DONE** | `infra/supabase/*` | — | Confirmed live and reachable (`edhcnccvbwuffiwzywfm`) | No | Yes | No |
-| ~~Apply migrations 001→019 in order~~ **DONE** | same | — | All 19 applied via `npm run db:migrate`; verified via anon REST reads | No | Yes | No |
-| ~~Add `soil_readings` repository method~~ **DONE**, UI wiring still pending | `apps/web/lib/repositories/readingRepository.ts` | Low — the UI half (`station-detail.tsx`) is a separate, still-open item since `soil_readings` has zero live rows to display yet | Unit tests pass (`tests/soilReadingRepository.test.ts`) | No | No (table is real, just empty) | No |
-| Deploy `edge-ingest` as a real Edge Function | `infra/supabase/functions/edge-ingest/*` | Medium — first real deployment of a bundle that's only ever run under `tsx --test` | `services/edge-ingestion/tests/contract.test.ts` (already passing locally) + a real curl/Postman POST once deployed | No | Yes | No |
+| ~~Apply tracked migrations in order~~ **DONE** | same | — | All 27 applied; verified via live RLS reads and typed-record promotion | No | Yes | No |
+| ~~Add `soil_readings` repository method and UI wiring~~ **DONE** | `apps/web/lib/repositories/readingRepository.ts`, Observatory builder | Low — typed soil history is promoted from retained gateway observations | Unit + live persistence checks | No | Yes | No |
+| ~~Deploy and live-test `edge-ingest`~~ **DONE** | `infra/supabase/functions/edge-ingest/*` | — | `LIVE_SUPABASE_INTEGRATION=1 npm run test:integration` passed 4/4 on 2026-09-18 against the real Function | No | Yes | No |
 | Add CI check that `bundle.mjs` matches a fresh `npm run build:edge` output | `services/edge-ingestion/package.json`, new CI config | Low | Diff bundle.mjs before/after rebuild in CI | No | No | Possibly, if CI runs on GCP-hosted infra — otherwise no |
 
 ## P2 — firmware/gateway integration
@@ -62,16 +62,15 @@ an honest record of what was actually true at each point.
 | Item | Files | Risk | Test strategy | Hardware? | Live Supabase? | GCP? |
 |---|---|---|---|---|---|---|
 | Schedule `cleanup_horizon_data()`/rollup functions | `infra/supabase/migrations/004_*.sql`, `015_*.sql`, pg_cron or external scheduler | Low, deferred until real data volume exists | Manual invocation first, then scheduled | No | Yes | Depends on scheduler choice |
-| CI/CD pipeline | none exists today | Medium — greenfield | Start with typecheck/lint/test on push; add build/deploy once a real project exists | No | Eventually | Possibly, depending on host choice |
+| CI/CD hardening | Existing validation, live-smoke and release workflows need ongoing secret/configuration review | Medium | Keep typecheck/lint/test/build on push; validate protected secrets and release deployment from a controlled tag | No | Yes | Possibly, depending on host choice |
 | External monitoring/alerting | none exists today | Low, deferred — no production traffic to monitor yet | N/A until P1/P2 land | No | Yes | Possibly |
 | Device-secret rotation tooling | deferred per ADR §12 — manual is adequate at ~6 devices | Low | N/A | No | No | No |
 
 ## Sequencing note
 
 P0's git-commit and enum-fix items are safe to do immediately — no
-external dependency. Everything else in P0 (`readWaterEc()`) and all of
-P1/P2 are blocked on either the physical EC probe/datasheet or a real
-Supabase project, neither available in this environment. P3's admin
+external dependency. Physical validation of `readWaterEc()` and parts of
+P1/P2 still require the probe and field calibration evidence. P3's admin
 health table is blocked on P1 (needs a live project to have any data
 worth showing) but its code can be written and tested against mocked
 data in the meantime — a legitimate "write it now, verify it later"

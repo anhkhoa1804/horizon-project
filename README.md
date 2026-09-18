@@ -78,12 +78,14 @@ admin-auth variables.
 
 ## Current status
 
-Backend and frontend are live against a real Supabase project (all 19
-migrations applied, both tracked in git). Three GitHub Actions workflows
+Backend and frontend are live against a real Supabase project (migrations
+27 tracked migrations applied, including the additive 024/025 gateway and
+timezone follow-ups). Three GitHub Actions workflows
 exist under `.github/workflows/` (validation on every PR/push, a weekly
 live-integration smoke test, and a tag-triggered release/deploy pipeline)
-— the Edge Function has automation ready to deploy it but has never
-actually been triggered, and firmware has never been compiled or flashed.
+— and the current token-authenticated gateway route retains real observation
+envelopes and promotes their nested water/soil readings. Physical installation
+and field calibration are not established by the repository alone.
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#deployment-status-current-vs-future)
 for the exact current-vs-future boundary, and
 [`docs/EDGE_INGEST_READINESS.md`](docs/EDGE_INGEST_READINESS.md) for what's

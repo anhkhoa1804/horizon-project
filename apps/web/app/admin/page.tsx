@@ -4,11 +4,15 @@ import { revalidatePath } from "next/cache";
 import { NetworkOverview } from "@/components/admin/network-overview";
 import {
   AlertConfigPanel,
+  ApplicationProfilesPanel,
+  ThresholdRegistryPanel,
   AuditPanel,
   CalibrationPanel,
   DataExportPanel,
   MaintenancePanel,
+  SiteModelsPanel,
 } from "@/components/admin/operations-panels";
+import { loadApplicationProfiles, loadThresholdRegistry, loadSoilWaterModels, loadWaterLevelContexts } from "@/lib/monitoring/thresholds";
 import {
   asManagedStationId,
   loadAlertConfigs,
@@ -61,6 +65,15 @@ interface CommunityReport {
   lng: number;
   timestamp: string;
   viewed_at: string | null;
+  media: ReportMedia[];
+}
+
+interface ReportMedia {
+  id: string;
+  media_type: "photo" | "video" | "audio";
+  mime_type: string;
+  file_size: number;
+  signed_url: string | null;
 }
 
 function stationStatusLabel(status: string): string {
@@ -207,7 +220,7 @@ async function loadAdminMetrics(
 async function loadCommunityReports(): Promise<CommunityReport[]> {
   const supabase = createServiceClient();
   if (!supabase) {
-    return listDemoReports();
+    return listDemoReports().map((report) => ({ ...report, media: [] }));
   }
 
   const { data, error } = await supabase
@@ -217,10 +230,9 @@ async function loadCommunityReports(): Promise<CommunityReport[]> {
     .limit(20);
 
   if (error) {
-    return listDemoReports();
+    return listDemoReports().map((report) => ({ ...report, media: [] }));
   }
-
-  return (data ?? []).map((row) => ({
+  const reports = (data ?? []).map((row) => ({
     id: row.id as string,
     description: (row.description as string | null) ?? null,
     status: row.status as string,
@@ -228,7 +240,30 @@ async function loadCommunityReports(): Promise<CommunityReport[]> {
     lng: Number(row.lng),
     timestamp: row.timestamp as string,
     viewed_at: (row.viewed_at as string | null) ?? null,
+    media: [] as ReportMedia[],
   }));
+  if (reports.length === 0) return reports;
+
+  const { data: mediaRows } = await supabase
+    .from("report_media")
+    .select("id, report_id, storage_path, media_type, mime_type, file_size")
+    .in("report_id", reports.map((report) => report.id))
+    .order("created_at");
+  const mediaByReport = new Map<string, ReportMedia[]>();
+  for (const row of mediaRows ?? []) {
+    const { data: signed } = await supabase.storage.from("report-evidence").createSignedUrl(row.storage_path as string, 60 * 30);
+    const item: ReportMedia = {
+      id: row.id as string,
+      media_type: row.media_type as ReportMedia["media_type"],
+      mime_type: row.mime_type as string,
+      file_size: Number(row.file_size),
+      signed_url: signed?.signedUrl ?? null,
+    };
+    const list = mediaByReport.get(row.report_id as string) ?? [];
+    list.push(item);
+    mediaByReport.set(row.report_id as string, list);
+  }
+  return reports.map((report) => ({ ...report, media: mediaByReport.get(report.id) ?? [] }));
 }
 
 async function updateRuntimeConfig(formData: FormData) {
@@ -255,6 +290,14 @@ async function updateRuntimeConfig(formData: FormData) {
     sleep_interval_seconds: Math.max(0, Math.min(86400, Math.round(sleepInterval))),
     mode: ["normal", "rain_saver", "maintenance"].includes(mode) ? mode : "normal",
     updated_by: nullableUuid(user.id),
+  });
+
+  await recordAuditEvent({
+    actor: user.email,
+    action: "runtime.config.stored",
+    entity: "device_runtime_configs",
+    entityId: stationId,
+    metadata: { state: "stored_awaiting_device_poll", sampleInterval, sleepInterval, mode },
   });
 
   revalidatePath("/admin");
@@ -475,6 +518,60 @@ async function addCalibrationRecord(formData: FormData) {
   revalidatePath("/admin");
 }
 
+async function saveSoilWaterModel(formData: FormData) {
+  "use server";
+  const { user } = await requireAdmin();
+  const fieldCapacity = optionalNumber(formData.get("field_capacity_pct"));
+  const wiltingPoint = optionalNumber(formData.get("permanent_wilting_point_pct"));
+  const mad = optionalNumber(formData.get("management_allowed_depletion_pct"));
+  if (fieldCapacity === null || wiltingPoint === null || mad === null || wiltingPoint >= fieldCapacity) {
+    redirect("/admin?error=invalid-site-model");
+  }
+  const supabase = createServiceClient();
+  if (!supabase) redirect("/admin?error=missing-supabase");
+  await supabase.from("soil_water_models").upsert({
+    station_id: "STATION_02",
+    field_capacity_pct: fieldCapacity,
+    permanent_wilting_point_pct: wiltingPoint,
+    management_allowed_depletion_pct: mad,
+    source_note: optionalText(formData.get("source_note")),
+    updated_by: nullableUuid(user.id),
+  });
+  await recordAuditEvent({
+    actor: user.email,
+    action: "site.soil_water_model.saved",
+    entity: "soil_water_models",
+    entityId: "STATION_02",
+    metadata: { fieldCapacity, wiltingPoint, mad, availableWater: fieldCapacity - wiltingPoint },
+  });
+  revalidatePath("/admin");
+}
+
+async function saveWaterLevelContext(formData: FormData) {
+  "use server";
+  const { user } = await requireAdmin();
+  const supabase = createServiceClient();
+  if (!supabase) redirect("/admin?error=missing-supabase");
+  const row = {
+    station_id: "STATION_01",
+    sensor_datum_cm: optionalNumber(formData.get("sensor_datum_cm")),
+    shore_bank_elevation_cm: optionalNumber(formData.get("shore_bank_elevation_cm")),
+    critical_infrastructure_elevation_cm: optionalNumber(formData.get("critical_infrastructure_elevation_cm")),
+    survey_note: optionalText(formData.get("survey_note")),
+    validation_status: "PILOT",
+    updated_by: nullableUuid(user.id),
+  };
+  await supabase.from("water_level_contexts").upsert(row);
+  await recordAuditEvent({
+    actor: user.email,
+    action: "site.water_level_context.saved",
+    entity: "water_level_contexts",
+    entityId: "STATION_01",
+    metadata: { validationStatus: "PILOT", geometryRecorded: true },
+  });
+  revalidatePath("/admin");
+}
+
 async function resolveReport(formData: FormData) {
   "use server";
 
@@ -559,6 +656,8 @@ function adminErrorMessage(error?: string): string | null {
       return "Email gốc trong ADMIN_ALLOWED_EMAILS không thể thu hồi từ giao diện.";
     case "missing-supabase":
       return "Supabase chưa cấu hình đủ nên chưa thể lưu thay đổi.";
+    case "invalid-site-model":
+      return "Mô hình đất chưa hợp lệ: PWP phải nhỏ hơn FC và mọi giá trị phải là số.";
     default:
       return null;
   }
@@ -586,12 +685,17 @@ export default async function AdminPage({
   // STATION_02 records its time on soil_readings, not environmental_readings —
   // reading only the snapshot would report the soil node as silent while it is
   // in fact reporting. Same asymmetry the public page handles.
-  const [alertConfigs, maintenanceLogs, calibrationRecords, auditEvents] = await Promise.all([
-    loadAlertConfigs(),
-    loadMaintenanceLogs(),
-    loadCalibrationRecords(),
-    loadAuditEvents(),
-  ]);
+  const [alertConfigs, maintenanceLogs, calibrationRecords, auditEvents, thresholds, soilModels, applicationProfiles, waterContexts] =
+    await Promise.all([
+      loadAlertConfigs(),
+      loadMaintenanceLogs(),
+      loadCalibrationRecords(),
+      loadAuditEvents(),
+      loadThresholdRegistry(),
+      loadSoilWaterModels(),
+      loadApplicationProfiles(),
+      loadWaterLevelContexts(),
+    ]);
   const soilTimestamp = repos
     ? await repos.readings
         .getLatestSoilReadingByStation("STATION_02", scope)
@@ -646,6 +750,23 @@ export default async function AdminPage({
                     <p className="text-xs text-muted">
                       Vị trí: {report.lat.toFixed(5)}, {report.lng.toFixed(5)}
                     </p>
+                    {report.media.length > 0 ? (
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        {report.media.map((media) => (
+                          <div key={media.id} className="overflow-hidden rounded-md border border-border bg-wash-sunken p-2">
+                            {media.signed_url && media.media_type === "photo" ? (
+                              // eslint-disable-next-line @next/next/no-img-element -- expiring private Storage URL
+                              <img src={media.signed_url} alt="Bằng chứng ảnh của báo cáo" className="aspect-video w-full object-cover" />
+                            ) : null}
+                            {media.signed_url && media.media_type === "video" ? <video src={media.signed_url} controls className="aspect-video w-full" /> : null}
+                            {media.signed_url && media.media_type === "audio" ? <audio src={media.signed_url} controls className="w-full pt-4" /> : null}
+                            <p className="mt-2 text-[10px] uppercase tracking-[0.1em] text-muted">
+                              {media.media_type} · {Math.ceil(media.file_size / 1024)} KB
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                     {unread ? (
                       <form action={markReportViewed}>
                         <input type="hidden" name="report_id" value={report.id} />
@@ -676,6 +797,7 @@ export default async function AdminPage({
         </>
       }
     >
+      <span id="reports" className="scroll-mt-36" aria-hidden />
       {errorMessage ? <Alert tone="critical">{errorMessage}</Alert> : null}
 
       {isDemoMode ? (
@@ -686,22 +808,40 @@ export default async function AdminPage({
         </Alert>
       ) : null}
 
+      <nav aria-label="Khu vực vận hành" className="sticky top-20 z-20 -mx-2 flex gap-1 overflow-x-auto rounded-lg border border-border bg-background/95 p-2 text-xs shadow-sm backdrop-blur">
+        {[
+          ["network", "Overview"], ["devices", "Devices"], ["thresholds", "Thresholds"],
+          ["profiles", "Applications"], ["calibration", "Calibration"], ["maintenance", "Maintenance"],
+          ["reports", "Reports"], ["export", "Data"], ["audit", "Audit"], ["runtime", "Configuration"],
+        ].map(([id, label]) => <a key={id} href={`#${id}`} className="shrink-0 rounded-md px-3 py-2 hover:bg-muted/30">{label}</a>)}
+      </nav>
+
       {/* The operator's first question — is the network up, and which node is
           not? Above the settings forms, because "what is wrong right now" is
           needed before "what can I configure". */}
-      <NetworkOverview snapshots={snapshots} soilTimestamp={soilTimestamp} />
+      <div id="network" className="scroll-mt-36"><NetworkOverview snapshots={snapshots} soilTimestamp={soilTimestamp} /></div>
 
       {/* Operator workflows, all persisted by migration 022. Each panel states
           in its own lead what its rows do and do not mean — none of them
           reaches a device, because the firmware has no command or
           acknowledgement path. */}
-      <AlertConfigPanel configs={alertConfigs} action={saveAlertConfig} />
-      <MaintenancePanel logs={maintenanceLogs} action={addMaintenanceLog} />
-      <CalibrationPanel records={calibrationRecords} action={addCalibrationRecord} />
-      <DataExportPanel />
-      <AuditPanel events={auditEvents} />
+      {/* The registry first: what the system believes, and what it is actually
+          acting on. The operator's own thresholds below are a smaller thing and
+          read better after it. */}
+      <div id="thresholds" className="scroll-mt-36 space-y-4">
+        <ThresholdRegistryPanel rows={thresholds} soilModels={soilModels} />
+        <AlertConfigPanel configs={alertConfigs} action={saveAlertConfig} />
+      </div>
+      <div id="profiles" className="scroll-mt-36"><ApplicationProfilesPanel profiles={applicationProfiles} /></div>
+      <div id="calibration" className="scroll-mt-36 space-y-4">
+        <SiteModelsPanel soilModels={soilModels} waterContexts={waterContexts} soilAction={saveSoilWaterModel} waterAction={saveWaterLevelContext} />
+        <CalibrationPanel records={calibrationRecords} action={addCalibrationRecord} />
+      </div>
+      <div id="maintenance" className="scroll-mt-36"><MaintenancePanel logs={maintenanceLogs} action={addMaintenanceLog} /></div>
+      <div id="export" className="scroll-mt-36"><DataExportPanel /></div>
+      <div id="audit" className="scroll-mt-36"><AuditPanel events={auditEvents} /></div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div id="devices" className="grid scroll-mt-36 gap-4 sm:grid-cols-2">
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2">
@@ -811,7 +951,7 @@ export default async function AdminPage({
           </Card>
         </div>
 
-        <Card>
+        <Card id="runtime" className="scroll-mt-36">
           <CardHeader>
             <CardTitle>Cấu hình vận hành</CardTitle>
             <CardDescription>

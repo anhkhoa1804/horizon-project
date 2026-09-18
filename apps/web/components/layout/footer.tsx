@@ -9,15 +9,12 @@ import { PRIMARY_NAV_LINKS } from "@/lib/publicNav";
  * A project footer, not a marketing footer.
  *
  * ONE ROW on desktop. It carries five facts — brand, place, navigation,
- * copyright, and the basemap credit — and five facts do not justify the
+ * copyright — and four facts do not justify the
  * stacked block this replaced, which spent two rows and a hairline on them
  * and made the end of every page feel heavier than the page.
  *
- * The map attribution is here rather than inside the map itself. Esri and OSM
- * require the credit be DISPLAYED, not that it sit in the map frame; printing
- * it once at the foot of the document satisfies that while keeping it out of
- * the most visually expensive cell on the Monitoring canvas. It is the
- * quietest thing in the footer, and deliberately the last.
+ * Map attribution belongs to the map control itself, where the tile services
+ * are actually being displayed.
  *
  * No "project/technical links" column: this repository has no verified public
  * URL to point at, and inventing one would violate the same data-honesty rule
@@ -58,10 +55,6 @@ export function Footer() {
               {dict.footer.copyright}
             </p>
           </div>
-
-          <p className="mt-5 text-[11px] leading-relaxed text-foreground-subtle">
-            {dict.footer.mapAttribution}
-          </p>
         </div>
       </div>
     </footer>

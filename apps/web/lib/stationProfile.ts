@@ -208,6 +208,8 @@ export function sensorStatusLabel(status?: SensorStatus | null): string {
       return "Cần chú ý";
     case "fault":
       return "Cần kiểm tra cảm biến";
+    case "unknown":
+      return "Không có trạng thái cảm biến";
     default:
       return "Chưa có dữ liệu";
   }
@@ -216,7 +218,10 @@ export function sensorStatusLabel(status?: SensorStatus | null): string {
 export function qualityFor(profile: StationProfile, reading: EnvironmentalReading | null): QualityState {
   if (profile.kind !== "water" || !reading) return "valid";
   const hasFault = reading.fault_flags > 0 || reading.ec_probe_status === "fault" || reading.ultrasonic_status === "fault";
-  return hasFault ? "error" : "valid";
+  if (hasFault) return "error";
+  return reading.ec_probe_status === "unknown" || reading.ultrasonic_status === "unknown"
+    ? "estimated"
+    : "valid";
 }
 
 /**

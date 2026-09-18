@@ -54,6 +54,101 @@ function summarizeGatewayPayload(payload: Record<string, unknown>) {
   };
 }
 
+function finiteNumber(payload: Record<string, unknown>, ...keys: string[]): number | null {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+function stationPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const nested = payload.raw_station_payload;
+  return nested && typeof nested === "object" && !Array.isArray(nested)
+    ? (nested as Record<string, unknown>)
+    : payload;
+}
+
+function observationTimestamp(payload: Record<string, unknown>, fallback: string): string {
+  const raw = finiteNumber(payload, "timestamp");
+  if (raw === null) return fallback;
+  const millis = raw > 10_000_000_000 ? raw : raw * 1000;
+  const parsed = new Date(millis);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : fallback;
+}
+
+/**
+ * Promote the gateway's authenticated field payload into the typed telemetry
+ * tables used by the observatory. The raw row remains the audit source. A
+ * partial payload is never padded with plausible values: if the required
+ * station fields are absent, only the raw observation is retained.
+ */
+async function writeTypedObservation(payload: Record<string, unknown>, receivedAt: string) {
+  const supabase = createServiceClient();
+  if (!supabase) return;
+  const stationId = typeof payload.station_id === "string" ? payload.station_id : "";
+  const messageId = typeof payload.message_id === "string" ? payload.message_id : "";
+  if (!messageId) return;
+
+  if (stationId === "STATION_01") {
+    const salinity = finiteNumber(payload, "salinity_ppt", "salinity");
+    const waterLevel = finiteNumber(payload, "water_level_cm", "water_level");
+    const rawEcStatus = payload.ec_status ?? payload.ec_probe_status;
+    const rawUltrasonicStatus = payload.ultrasonic_status;
+    const ecStatus = ["ok", "warn", "fault"].includes(String(rawEcStatus))
+      ? String(rawEcStatus)
+      : "unknown";
+    const ultrasonicStatus = ["ok", "warn", "fault"].includes(String(rawUltrasonicStatus))
+      ? String(rawUltrasonicStatus)
+      : "unknown";
+    if (
+      salinity === null ||
+      waterLevel === null
+    ) return;
+
+    const { error } = await supabase.from("environmental_readings").upsert(
+      {
+        message_id: messageId,
+        station_id: stationId,
+        salinity,
+        water_level: waterLevel,
+        water_ec_ms_cm: finiteNumber(payload, "ec_ms_cm"),
+        water_temp_c: finiteNumber(payload, "temperature_c"),
+        fault_flags: finiteNumber(payload, "fault_flags") ?? 0,
+        ec_probe_status: ecStatus,
+        ultrasonic_status: ultrasonicStatus,
+        timestamp: observationTimestamp(payload, receivedAt),
+      },
+      { onConflict: "message_id", ignoreDuplicates: true },
+    );
+    if (error) console.error("[gateway-ingest] typed water write failed:", error);
+    return;
+  }
+
+  if (stationId === "STATION_02") {
+    const row = {
+      air_temp_c: finiteNumber(payload, "air_temp_c"),
+      air_humidity_pct: finiteNumber(payload, "air_humidity_pct"),
+      soil_temp_c: finiteNumber(payload, "soil_temp_c"),
+      soil_moisture_pct: finiteNumber(payload, "soil_moisture_pct"),
+      soil_ec_ms_cm: finiteNumber(payload, "soil_ec_ms_cm"),
+      soil_ph: finiteNumber(payload, "soil_ph"),
+    };
+    if (Object.values(row).every((value) => value === null)) return;
+    const { error } = await supabase.from("soil_readings").upsert(
+      {
+        message_id: messageId,
+        station_id: stationId,
+        ...row,
+        fault_flags: finiteNumber(payload, "fault_flags") ?? 0,
+        timestamp: observationTimestamp(payload, receivedAt),
+      },
+      { onConflict: "message_id", ignoreDuplicates: true },
+    );
+    if (error) console.error("[gateway-ingest] typed soil write failed:", error);
+  }
+}
+
 async function readLatestGatewayObservation() {
   const supabase = createServiceClient();
   if (!supabase) return null;
@@ -71,10 +166,11 @@ async function readLatestGatewayObservation() {
   }
 
   const payload = data.raw_payload as Record<string, unknown>;
+  const station = stationPayload(payload);
   return {
     ...payload,
     receivedAt: data.received_at,
-    summary: summarizeGatewayPayload(payload),
+    summary: summarizeGatewayPayload(station),
   };
 }
 
@@ -82,9 +178,10 @@ async function writeGatewayObservation(payload: Record<string, unknown>, receive
   const supabase = createServiceClient();
   if (!supabase) return false;
 
+  const station = stationPayload(payload);
   const { error } = await supabase.from("gateway_observations").insert({
     gateway_id: typeof payload.gateway_id === "string" ? payload.gateway_id : "UNKNOWN_GATEWAY",
-    station_id: typeof payload.station_id === "string" ? payload.station_id : "UNKNOWN_STATION",
+    station_id: typeof station.station_id === "string" ? station.station_id : "UNKNOWN_STATION",
     sequence: typeof payload.sequence === "number" ? payload.sequence : null,
     transport: typeof payload.transport === "string" ? payload.transport : "4g_http",
     raw_payload: payload,
@@ -168,9 +265,11 @@ export async function POST(request: Request) {
     }
 
     const candidate = body as Record<string, unknown>;
+    const station = stationPayload(candidate);
     const receivedAt = new Date().toISOString();
-    const summary = summarizeGatewayPayload(candidate);
+    const summary = summarizeGatewayPayload(station);
     const storedInSupabase = await writeGatewayObservation(candidate, receivedAt);
+    if (storedInSupabase) await writeTypedObservation(station, receivedAt);
 
     if (!storedInSupabase) {
       if (isProduction) {

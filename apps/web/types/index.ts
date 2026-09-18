@@ -1,7 +1,7 @@
 export type StationStatus = "active" | "inactive" | "maintenance";
 export type AlertSeverity = "info" | "warning" | "critical";
 export type EventType = "HIGH_SALINITY" | "SENSOR_FAULT" | "LOW_BATTERY" | "OFFLINE";
-export type SensorStatus = "ok" | "warn" | "fault";
+export type SensorStatus = "ok" | "warn" | "fault" | "unknown";
 
 export interface Station {
   id: string;
@@ -18,6 +18,10 @@ export interface EnvironmentalReading {
   station_id: string;
   salinity: number;
   water_level: number;
+  /** Raw water conductivity reported by Station 01. Never inferred from salinity. */
+  water_ec_ms_cm?: number | null;
+  /** Water temperature reported by the EC probe. */
+  water_temp_c?: number | null;
   fault_flags: number;
   ec_probe_status: SensorStatus;
   ultrasonic_status: SensorStatus;
@@ -81,6 +85,8 @@ export interface DailyComparisonPoint {
   date: string;
   tideLevel: number | null;
   salinity: number | null;
+  waterEc: number | null;
+  waterTemp: number | null;
   soilEc: number | null;
   readingCount: number;
 }
@@ -97,6 +103,8 @@ export interface TrendPoint {
   timestamp: string;
   salinity: number;
   water_level: number;
+  water_ec_ms_cm: number | null;
+  water_temp_c: number | null;
 }
 
 /**

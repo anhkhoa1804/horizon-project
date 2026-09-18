@@ -113,8 +113,8 @@ question, no conflict found here.
 
 1. **Freshness** (`LIVE`/`RECENT`/`STALE`/`OFFLINE`/`NEVER_CONNECTED`) —
    derived purely from the latest reading's timestamp, per metric-source
-   (a station can be freshness-`LIVE` for water and simultaneously have
-   no soil source at all once that repository gap is fixed).
+   (water and soil keep independent timestamps because they are separate
+   stations and measurement domains).
 2. **Availability** (`UNAVAILABLE`) — structural, not time-based; this
    metric has no data source for this station, independent of freshness.
 3. **Quality** (`VALID`/`ESTIMATED`/`ERROR`) — per-value, independent of

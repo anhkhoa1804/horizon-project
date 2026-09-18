@@ -160,7 +160,7 @@ export function PageHero({
           </p>
 
           <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-3">
-            <h1 className={cn("font-semibold tracking-tight", TITLE_SIZE[scale])}>{title}</h1>
+            <h1 className={cn("whitespace-pre-line font-semibold tracking-tight", TITLE_SIZE[scale])}>{title}</h1>
             {aside}
           </div>
 

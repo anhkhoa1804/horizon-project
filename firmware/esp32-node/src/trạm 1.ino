@@ -1,109 +1,218 @@
 #include <Arduino.h>
-#include <Wire.h>
+
 #include <SPI.h>
+#include <Wire.h>
 #include <esp_sleep.h>
 #include <esp_task_wdt.h>
-#include <driver/gpio.h>
+#include <math.h>
 #include <string.h>
 
+// USB CDC is used for diagnostics. UART0 remains dedicated to A02YYUW through
+// ultrasonicSerial, so Serial output does not share the sensor input stream.
+
 /*
-  HORIZON - Station 2, grapefruit soil node
+  ============================================================
+  HORIZON - Station 1, upstream water node
+  ============================================================
 
-  Hardware:
-  - ES-SM-THEC-01 soil temperature / moisture / EC / salinity / TDS sensor, RS485 Modbus RTU.
-  - ES-PH-SOIL-01 soil pH sensor, RS485 Modbus RTU.
-  - SHT30 ambient temperature / humidity sensor, I2C.
-  - CJMCU-226 / INA226 battery monitor, I2C.
-  - SX1278 LoRa UART module, sends readings to the gateway.
+  Sensors:
+  - A02YYUW ultrasonic UART
+  - ES-EC-WT-01 EC/salinity sensor via RS485 Modbus RTU
+  - SX1278 LoRa transparent UART
 
-  Proposed pins, kept close to Station 1:
-  - INA226 I2C: SDA IO19, SCL IO20.
-  - SHT30 I2C: SDA IO8, SCL IO9.
-  - RS485 auto-direction module: ESP32 TX IO17 -> module RX/DI, ESP32 RX IO18 <- module TX/RO.
-  - LoRa UART: ESP32 RX IO16 <- LoRa TX, ESP32 TX IO15 -> LoRa RX.
+  Operation:
+  - Every ~1 minute:
+      + 8 ultrasonic samples
+      + 8 EC samples
+      + filtered average
 
-  RS485 soil bus:
-  - Connect A with A and B with B for both soil sensors on the same RS485 bus.
-  - ES-SM-THEC-01 slave ID = 2.
-  - ES-PH-SOIL-01 slave ID = 1.
-  - Baudrate = 4800, 8 data bits, 1 stop bit, no parity.
+  - Every 5 minutes:
+      + build aggregate
+      + send through LoRa
+      + wait for ACK
+      + if ACK OK -> clear aggregate
+      + if ACK fails -> keep aggregate for retry
 
-  Battery:
-  - Station 2 uses 4S1P LiFePO4. Percent is estimated from 4S pack voltage.
+  - Optional deep sleep:
+      + controlled by LoRa config command
+      + configuredSleepIntervalMs = 0 means no deep sleep
+
+  ============================================================
 */
 
-static const char *STATION_ID = "STATION_02";
-static const char *FIRMWARE_VERSION = "station2-grapefruit-soil-0.6.7-simple-qos1-dual-rs485-sht30-io8-io9";
 
-static const uint32_t DEBUG_BAUD = 115200;
-static const uint32_t RS485_BAUD = 4800;
-static const uint32_t LORA_UART_BAUD = 9600;
-static const uint32_t I2C_CLOCK_HZ = 25000;
+// ============================================================
+// STATION INFORMATION
+// ============================================================
 
-static const int INA226_SDA_PIN = 4;
-static const int INA226_SCL_PIN = 5;
-static const int SHT30_SDA_PIN = 47;
-static const int SHT30_SCL_PIN = 48;
-static const uint8_t SHT30_I2C_ADDRESS = 0x44;
+static const char *STATION_ID = "STATION_01";
+static const char *FIRMWARE_VERSION = "station1-water-0.6.0-simple-qos1";
 
 
-static const int RS485_TX_PIN = 6;
-static const int RS485_RX_PIN = 7;
-static const int RS485_DE_RE_PIN = -1;  // Current module is assumed auto-direction like Station 1.
+// ============================================================
+// ULTRASONIC GEOMETRY
+// ============================================================
 
-static const int LORA_UART_RX_PIN = 15;
-static const int LORA_UART_TX_PIN = 16;
-static const int LORA_M0_PIN = -1;   // Tie M0 to GND for normal transparent mode.
-static const int LORA_M1_PIN = -1;   // Tie M1 to GND for normal transparent mode.
-static const int LORA_AUX_PIN = -1;  // Recommended later: connect AUX to an input GPIO, e.g. IO10.
+// Distance from A02YYUW sensor face to water reference line.
+static const float SENSOR_HEIGHT_CM = 350.0f;
+
+static const float A02YYUW_MIN_CM = 3.0f;
+static const float A02YYUW_MAX_CM = 450.0f;
+
+
+// ============================================================
+// SAMPLING
+// ============================================================
+
+static const uint32_t I2C_CLOCK_HZ = 100000;
+
+// Production wiring restored to the original Station 1 pinout.
+// USB CDC/debug is not used in this build.
+static const int I2C_SDA_PIN = 4;
+static const int I2C_SCL_PIN = 5;
 
 static const uint8_t INA226_ADDRESS = 0x40;
 static const uint8_t LIFEPO4_CELL_COUNT = 4;
-
-static const uint8_t SOIL_THEC_SLAVE_ID = 2;
-static const uint8_t SOIL_PH_SLAVE_ID = 1;
-
-static const uint16_t THEC_START_REG = 0x0000;
-static const uint16_t THEC_REG_COUNT = 5;
-static const uint16_t PH_START_REG = 0x0000;
-static const uint16_t PH_REG_COUNT = 1;
-static const uint16_t PH_DEVICE_ADDRESS_REG = 0x07D0;
-static const uint32_t PH_BAUD_CANDIDATES[] = {2400, 4800, 9600};
-
 static const uint8_t INA226_REG_CONFIG = 0x00;
+static const uint8_t INA226_REG_SHUNT_VOLTAGE = 0x01;
 static const uint8_t INA226_REG_BUS_VOLTAGE = 0x02;
+static const float INA226_SHUNT_OHMS = 0.1f;
+static const bool DEBUG_BATTERY_READING = false;
 
 static const bool LORA_TEST_FAST_SEND = false;
-static const bool LORA_TEST_SHORT_PACKET = false;
-static const bool DEBUG_DISABLE_LORA_UART = false;
 static const uint8_t RAW_SAMPLES_PER_MINUTE = LORA_TEST_FAST_SEND ? 1 : 8;
 static const uint8_t MIN_VALID_RAW_SAMPLES = LORA_TEST_FAST_SEND ? 1 : 3;
-static const uint8_t MINUTE_RECORDS_PER_PACKET = LORA_TEST_FAST_SEND ? 1 : 5;
-static const uint32_t SAMPLE_INTERVAL_MS = LORA_TEST_FAST_SEND ? 5UL * 1000UL : 60UL * 1000UL;
-static const uint32_t RAW_SAMPLE_GAP_MS = 450;
-static const uint32_t RS485_INTER_REQUEST_GAP_MS = 500;
-static const uint32_t SOIL_THEC_TIMEOUT_MS = 1500;
-static const uint8_t SOIL_THEC_READ_RETRIES = 4;
-static const uint32_t SOIL_THEC_RETRY_GAP_MS = 250;
-static const uint32_t SOIL_PH_TIMEOUT_MS = 1500;
-static const uint8_t SOIL_PH_READ_RETRIES = 4;
-static const uint32_t SOIL_PH_RETRY_GAP_MS = 250;
-// Controlled burst: one poll can produce several copies of the SAME message_id.
-static const uint8_t LORA_TX_BURST_COUNT = 5;
-static const uint32_t LORA_ACK_TIMEOUT_MS = 1700;
-static const uint32_t LORA_REPLY_GUARD_MS = 700;
-static const uint32_t LORA_TX_RETRY_GAP_MS = 220;
-static const uint32_t DEFAULT_SLEEP_INTERVAL_MS = 60UL * 1000UL;
-static const uint32_t WATCHDOG_TIMEOUT_MS = 60000;
-static const bool DEBUG_RAW_SENSOR_SAMPLES = true;
-static const uint8_t SHT30_READ_RETRIES = 3;
-static const uint32_t SHT30_MEASUREMENT_DELAY_MS = 20;
-static const bool DEBUG_PH_ADDRESS_SETUP_MODE = false;  // LUON false trong firmware chay binh thuong.
-static const bool DEBUG_SKIP_PH_SENSOR = false;
 
-HardwareSerial rs485Serial(2);
-HardwareSerial loraSerial(1);
-TwoWire sht30Wire = TwoWire(1);
+static const uint8_t MINUTE_RECORDS_PER_PACKET = LORA_TEST_FAST_SEND ? 1 : 5;
+
+static const bool DEBUG_RAW_SENSOR_SAMPLES = false;
+static const bool DEBUG_SKIP_ULTRASONIC = false;
+static const bool DEBUG_SKIP_EC = false;
+static const bool DEBUG_MODBUS_FRAMES = false;
+static const bool DEBUG_EC_MODBUS_SCAN = true;  // Keep auto-detect; output is suppressed in production.
+static const bool DEBUG_PRINT_SENSOR_CYCLE = false;
+static const bool DEBUG_PRINT_MINUTE_PAYLOAD = false;
+static const bool DEBUG_PRINT_AGGREGATE_STATUS = false;
+
+// Minimum interval between completed measurement cycles.
+static const uint32_t SAMPLE_INTERVAL_MS = LORA_TEST_FAST_SEND ? 5UL * 1000UL : 60UL * 1000UL;
+
+// Gap between raw sensor samples.
+static const uint32_t RAW_SAMPLE_GAP_MS = 450;
+
+// Read a fresh A02YYUW frame instead of a stale frame already queued in UART.
+static const uint32_t A02YYUW_SAMPLE_TIMEOUT_MS = 600;
+
+// Reject one-off ultrasonic spikes while keeping normal river ripple.
+static const float A02YYUW_MAX_MEDIAN_DEVIATION_CM = 30.0f;
+
+// LoRa ACK timeout.
+// Controlled burst: one poll can produce several copies of the SAME message_id.
+static const uint8_t LORA_TX_BURST_COUNT = 3;
+static const uint32_t LORA_ACK_TIMEOUT_MS = 5000;
+static const uint32_t LORA_REPLY_GUARD_MS = 1000;
+static const uint32_t LORA_TX_RETRY_GAP_MS = 1200;
+static const uint32_t DEFAULT_SLEEP_INTERVAL_MS = 60UL * 1000UL;
+
+
+// ============================================================
+// SERIAL BAUD RATES
+// ============================================================
+
+static const uint32_t DEBUG_BAUD = 115200;
+
+static const uint32_t A02YYUW_BAUD = 9600;
+
+// ES-EC-WT-01 default.
+static const uint32_t EC_RS485_BAUD = 4800;
+static const uint8_t EC_RS485_SLAVE_ID = 1;
+
+static const uint32_t EC_SCAN_TIMEOUT_MS = 250;
+static const uint8_t EC_SCAN_MAX_SLAVE_ID = 10;
+static const uint32_t EC_SCAN_BAUDS[] = {
+  4800,
+  9600,
+  2400,
+  19200
+};
+
+static const uint32_t LORA_UART_BAUD = 9600;
+
+
+// ============================================================
+// A02YYUW UART
+// ============================================================
+
+// A02YYUW TX -> ESP32 RX
+static const int A02YYUW_RX_PIN = 14;
+
+
+// ============================================================
+// ES-EC-WT-01 + auto-direction TTL-RS485 module
+// ============================================================
+
+// This station has only one RS485 sensor module connected,
+// so the slave ID is handled directly in the Modbus calls.
+
+// ESP32 TX -> TTL-RS485 RXD
+static const int EC_RS485_TX_PIN = 6;
+
+// ESP32 RX <- TTL-RS485 TXD
+static const int EC_RS485_RX_PIN = 7;
+
+// Your SN74HC14 TTL-RS485 board is auto-direction and has no DE/RE pin.
+// Keep this at -1 for that board.
+static const int EC_RS485_DE_RE_PIN = -1;
+static const uint32_t EC_RS485_TURNAROUND_DELAY_MS = 2;
+static const uint32_t EC_RS485_INTER_REQUEST_GAP_MS = 100;
+static const uint32_t EC_RS485_AUTO_RX_SETTLE_US = 300;
+
+// ============================================================
+// LORA UART
+// ============================================================
+
+// SX1278 UART module
+static const int LORA_UART_RX_PIN = 15;
+static const int LORA_UART_TX_PIN = 16;
+
+// Debug is on USB CDC; all three hardware UARTs are dedicated:
+// UART0=A02YYUW, UART1=LoRa, UART2=EC RS485.
+static const bool DEBUG_DISABLE_LORA_UART = false;
+
+
+// ============================================================
+// WATCHDOG
+// ============================================================
+
+static const uint32_t WATCHDOG_TIMEOUT_MS = 60000;
+
+
+// ============================================================
+// MODBUS REGISTER MAP
+// ============================================================
+//
+// Float values are CDAB byte order.
+//
+
+static const uint16_t REG_EC_MSCM = 0x0000;
+static const uint16_t REG_RESISTIVITY_OHM_CM = 0x0002;
+static const uint16_t REG_TEMPERATURE_C = 0x0004;
+static const uint16_t REG_TDS_PPM = 0x0006;
+static const uint16_t REG_SALINITY_PPM = 0x0008;
+
+
+// ============================================================
+// SERIAL / SPI OBJECTS
+// ============================================================
+
+// Do not use Serial0 for debug. Serial is USB CDC because of the compile guard above.
+HardwareSerial ultrasonicSerial(0);  // UART0: A02YYUW RX only
+HardwareSerial ecSerial(2);          // UART2: EC RS485
+HardwareSerial loraSerial(1);        // UART1: LoRa
+
+// ============================================================
+// DATA STRUCTURES
+// ============================================================
 
 struct SensorValue {
   bool ok;
@@ -111,18 +220,23 @@ struct SensorValue {
   const char *status;
 };
 
-struct Sht30Reading {
-  SensorValue airTempC;
-  SensorValue airHumidityPct;
+
+struct WaterEcReading {
+  bool ok;
+
+  float ecMsCm;
+  float ecUsCm;
+
+  float temperatureC;
+
+  float tdsPpm;
+
+  float salinityPpm;
+  float salinityPpt;
+
+  const char *status;
 };
 
-struct SoilThecReading {
-  SensorValue soilMoisturePct;
-  SensorValue soilTempC;
-  SensorValue soilEcUsCm;
-  SensorValue soilSalinity;
-  SensorValue soilTds;
-};
 
 struct BatteryReading {
   bool ok;
@@ -131,156 +245,2203 @@ struct BatteryReading {
   const char *status;
 };
 
+
 struct MinuteReading {
-  bool ambientOk;
-  bool soilOk;
-  bool phOk;
+  bool waterOk;
+  bool ecOk;
+
+  float distanceCm;
+  float waterLevelCm;
+
+  float ecMsCm;
+  float ecUsCm;
+
+  float temperatureC;
+
+  float tdsPpm;
+
+  float salinityPpm;
+  float salinityPpt;
+
+  uint8_t validDistanceSamples;
+  uint8_t validEcSamples;
+
   bool batteryOk;
-  float airTempC;
-  float airHumidityPct;
-  float soilTempC;
-  float soilMoisturePct;
-  float soilEcUsCm;
-  float soilEcMsCm;
-  float soilSalinity;
-  float soilTds;
-  float soilPh;
   float batteryVoltageV;
   float batteryPercent;
-  uint8_t validAmbientSamples;
-  uint8_t validSoilSamples;
-  uint8_t validPhSamples;
-  const char *ambientStatus;
-  const char *soilStatus;
-  const char *phStatus;
+
+  const char *ultrasonicStatus;
+  const char *ecStatus;
   const char *batteryStatus;
-  const char *grapefruitAdvice;
 };
+
 
 struct AggregateReading {
-  float airTempC;
-  float airHumidityPct;
-  float soilTempC;
-  float soilMoisturePct;
-  float soilEcUsCm;
-  float soilEcMsCm;
-  float soilSalinity;
-  float soilTds;
-  float soilPh;
+  float distanceCm;
+  float waterLevelCm;
+
+  float ecMsCm;
+  float ecUsCm;
+
+  float temperatureC;
+
+  float tdsPpm;
+
+  float salinityPpm;
+  float salinityPpt;
+
   float batteryVoltageV;
   float batteryPercent;
+
   uint8_t minuteCount;
-  const char *grapefruitAdvice;
 };
 
+
+// ============================================================
+// RTC DATA
+// ============================================================
+//
+// These variables survive deep sleep.
+//
+
 RTC_DATA_ATTR static uint32_t sequenceNumber = 0;
-RTC_DATA_ATTR static uint32_t pendingSequence = 0;
+
 RTC_DATA_ATTR static uint8_t aggregateCount = 0;
-RTC_DATA_ATTR static float aggregateAirTempC[MINUTE_RECORDS_PER_PACKET] = {};
-RTC_DATA_ATTR static float aggregateAirHumidityPct[MINUTE_RECORDS_PER_PACKET] = {};
-RTC_DATA_ATTR static float aggregateSoilTempC[MINUTE_RECORDS_PER_PACKET] = {};
-RTC_DATA_ATTR static float aggregateSoilMoisturePct[MINUTE_RECORDS_PER_PACKET] = {};
-RTC_DATA_ATTR static float aggregateSoilEcUsCm[MINUTE_RECORDS_PER_PACKET] = {};
-RTC_DATA_ATTR static float aggregateSoilEcMsCm[MINUTE_RECORDS_PER_PACKET] = {};
-RTC_DATA_ATTR static float aggregateSoilSalinity[MINUTE_RECORDS_PER_PACKET] = {};
-RTC_DATA_ATTR static float aggregateSoilTds[MINUTE_RECORDS_PER_PACKET] = {};
-RTC_DATA_ATTR static float aggregateSoilPh[MINUTE_RECORDS_PER_PACKET] = {};
-RTC_DATA_ATTR static float aggregateBatteryVoltageV[MINUTE_RECORDS_PER_PACKET] = {};
-RTC_DATA_ATTR static float aggregateBatteryPercent[MINUTE_RECORDS_PER_PACKET] = {};
+
+RTC_DATA_ATTR static float aggregateWaterLevel[
+  MINUTE_RECORDS_PER_PACKET
+] = {};
+
+RTC_DATA_ATTR static float aggregateDistance[
+  MINUTE_RECORDS_PER_PACKET
+] = {};
+
+RTC_DATA_ATTR static float aggregateEcMsCm[
+  MINUTE_RECORDS_PER_PACKET
+] = {};
+
+RTC_DATA_ATTR static float aggregateEcUsCm[
+  MINUTE_RECORDS_PER_PACKET
+] = {};
+
+RTC_DATA_ATTR static float aggregateTempC[
+  MINUTE_RECORDS_PER_PACKET
+] = {};
+
+RTC_DATA_ATTR static float aggregateTdsPpm[
+  MINUTE_RECORDS_PER_PACKET
+] = {};
+
+RTC_DATA_ATTR static float aggregateSalinityPpm[
+  MINUTE_RECORDS_PER_PACKET
+] = {};
+
+RTC_DATA_ATTR static float aggregateSalinityPpt[
+  MINUTE_RECORDS_PER_PACKET
+] = {};
+
+RTC_DATA_ATTR static float aggregateBatteryVoltageV[
+  MINUTE_RECORDS_PER_PACKET
+] = {};
+
+RTC_DATA_ATTR static float aggregateBatteryPercent[
+  MINUTE_RECORDS_PER_PACKET
+] = {};
+
+
+// ============================================================
+// GLOBAL STATE
+// ============================================================
+
+static bool watchdogReady = false;
+
 static bool ina226Ready = false;
-static bool sht30Ready = false;
-static uint8_t activeSoilPhSlaveId = SOIL_PH_SLAVE_ID;
-static uint32_t activeSoilPhBaud = RS485_BAUD;
-static uint16_t lastSoilPhRaw = 0;
-static bool lastSoilPhRawValid = false;
-static uint32_t currentRs485Baud = 0;
-static bool lastSoilThecRawOk = false;
-static uint16_t lastSoilThecRegs[THEC_REG_COUNT] = {};
-static uint32_t lastRs485TransactionMs = 0;
+
+static bool loraReady = false;
+
+static const char *lastModbusStatus = "not_started";
+static size_t lastModbusBytesRead = 0;
+
+static uint32_t activeEcRs485Baud = EC_RS485_BAUD;
+static uint8_t activeEcSlaveId = EC_RS485_SLAVE_ID;
+
 static uint32_t lastSampleMs = 0;
+
 static uint32_t configuredSleepIntervalMs = DEFAULT_SLEEP_INTERVAL_MS;
+
 static String loraCommandLine;
 static bool gatewayPollPending = false;
 
-String numberOrNull(float value, uint8_t decimals) {
-  if (!isfinite(value)) {
-    return "null";
-  }
-  return String(value, static_cast<unsigned int>(decimals));
+// Sequence currently waiting for ACK.
+// 0 = no pending packet.
+RTC_DATA_ATTR static uint32_t pendingSequence = 0;
+
+
+// ============================================================
+// DEBUG
+// ============================================================
+
+void debugLine(const String &line) {
+  Serial.println(line);
 }
+
 
 const char *statusToVietnamese(const char *status) {
   if (strcmp(status, "ok") == 0) return "binh_thuong";
   if (strcmp(status, "disabled") == 0) return "tam_tat";
   if (strcmp(status, "timeout") == 0) return "qua_thoi_gian_cho";
-  if (strcmp(status, "i2c_error") == 0) return "loi_i2c";
-  if (strcmp(status, "sht30_timeout") == 0) return "sht30_khong_phan_hoi";
-  if (strcmp(status, "sht30_crc_error") == 0) return "sht30_loi_crc";
-  if (strcmp(status, "sht30_out_of_range") == 0) return "sht30_ngoai_khoang_do";
+  if (strcmp(status, "timeout_no_bytes") == 0) return "khong_co_du_lieu";
+  if (strcmp(status, "short_response") == 0) return "phan_hoi_thieu";
+  if (strcmp(status, "crc_error") == 0) return "loi_kiem_tra_crc";
+  if (strcmp(status, "wrong_slave") == 0) return "sai_dia_chi_cam_bien";
+  if (strcmp(status, "wrong_function") == 0) return "sai_lenh_modbus";
+  if (strcmp(status, "wrong_byte_count") == 0) return "sai_so_byte";
   if (strcmp(status, "checksum_error") == 0) return "loi_kiem_tra";
-  if (strcmp(status, "modbus_error") == 0) return "loi_modbus";
   if (strcmp(status, "out_of_range") == 0) return "ngoai_khoang_do";
   if (strcmp(status, "ina226_not_ready") == 0) return "cam_bien_pin_chua_san_sang";
   if (strcmp(status, "bus_read_error") == 0) return "loi_doc_dien_ap";
+  if (strcmp(status, "shunt_read_error") == 0) return "loi_doc_dong";
+  if (strcmp(status, "nan") == 0) return "du_lieu_khong_hop_le";
   if (strcmp(status, "no_valid_sample") == 0) return "khong_co_mau_hop_le";
+  if (strcmp(status, "not_started") == 0) return "chua_bat_dau";
   return status;
 }
 
-void setRs485Transmit(bool enabled) {
-  if (RS485_DE_RE_PIN < 0) {
-    (void)enabled;
-    delayMicroseconds(300);
-    return;
+
+// ============================================================
+// FLOAT -> JSON
+// ============================================================
+
+String numberOrNull(float value, uint8_t decimals) {
+
+  if (!isfinite(value)) {
+    return "null";
   }
-  digitalWrite(RS485_DE_RE_PIN, enabled ? HIGH : LOW);
-  delayMicroseconds(300);
+
+  return String(
+    value,
+    static_cast<unsigned int>(decimals)
+  );
 }
+
+
+// ============================================================
+// WATCHDOG
+// ============================================================
 
 void setupWatchdog() {
-  esp_task_wdt_config_t wdtConfig = {};
-  wdtConfig.timeout_ms = WATCHDOG_TIMEOUT_MS;
-  wdtConfig.idle_core_mask = (1 << portNUM_PROCESSORS) - 1;
-  wdtConfig.trigger_panic = true;
-  esp_task_wdt_init(&wdtConfig);
-  esp_task_wdt_add(NULL);
+
+  watchdogReady = false;
+
+  Serial.println(
+    "[WATCHDOG] Tam tat trong che do kiem thu"
+  );
 }
+
 
 void serviceWatchdog() {
-  esp_task_wdt_reset();
+  if (watchdogReady) {
+    esp_task_wdt_reset();
+  }
 }
 
-void ensureRs485Baud(uint32_t baud) {
-  if (currentRs485Baud == baud) {
+
+// ============================================================
+// SD LOG ROTATION
+// ============================================================
+
+// ============================================================
+// MODBUS CRC16
+// ============================================================
+
+uint16_t modbusCrc16(
+  const uint8_t *data,
+  size_t length
+) {
+
+  uint16_t crc = 0xFFFF;
+
+  for (size_t i = 0; i < length; i++) {
+
+    crc ^= data[i];
+
+    for (uint8_t bit = 0; bit < 8; bit++) {
+
+      if (crc & 0x0001) {
+
+        crc =
+          (crc >> 1) ^
+          0xA001;
+
+      } else {
+
+        crc >>= 1;
+      }
+    }
+  }
+
+  return crc;
+}
+
+
+// ============================================================
+// RS485 DIRECTION
+// ============================================================
+
+void setEcRs485Transmit(
+  bool transmit
+) {
+
+  if (EC_RS485_DE_RE_PIN < 0) {
+    (void)transmit;
+    delayMicroseconds(EC_RS485_AUTO_RX_SETTLE_US);
     return;
   }
 
-  rs485Serial.end();
-  delay(20);
-  rs485Serial.begin(baud, SERIAL_8N1, RS485_RX_PIN, RS485_TX_PIN);
-  currentRs485Baud = baud;
-  delay(20);
+  digitalWrite(
+    EC_RS485_DE_RE_PIN,
+    transmit ? HIGH : LOW
+  );
+
+  delay(
+    EC_RS485_TURNAROUND_DELAY_MS
+  );
 }
 
-uint32_t extractUintField(const String &json, const char *field, uint32_t fallback) {
+
+void debugHexBytes(
+  const char *label,
+  const uint8_t *data,
+  size_t length
+) {
+
+  if (!DEBUG_MODBUS_FRAMES) {
+    return;
+  }
+
+  Serial.print(label);
+  Serial.print(" do_dai=");
+  Serial.print(length);
+  Serial.print(" du_lieu=");
+
+  for (
+    size_t i = 0;
+    i < length;
+    i++
+  ) {
+
+    if (data[i] < 0x10) {
+      Serial.print('0');
+    }
+
+    Serial.print(
+      data[i],
+      HEX
+    );
+
+    if (i + 1 < length) {
+      Serial.print(' ');
+    }
+  }
+
+  Serial.println();
+}
+
+
+// ============================================================
+// READ MODBUS RESPONSE
+// ============================================================
+
+bool readModbusResponse(
+  uint8_t *buffer,
+  size_t expectedLength,
+  uint32_t timeoutMs
+) {
+
+  const uint32_t startedAt = millis();
+
+  size_t index = 0;
+  lastModbusBytesRead = 0;
+
+  while (
+    millis() - startedAt < timeoutMs &&
+    index < expectedLength
+  ) {
+
+    while (
+      ecSerial.available() > 0 &&
+      index < expectedLength
+    ) {
+
+      buffer[index++] =
+        static_cast<uint8_t>(
+          ecSerial.read()
+        );
+    }
+
+    serviceWatchdog();
+
+    delay(2);
+  }
+
+  lastModbusBytesRead = index;
+
+  return index == expectedLength;
+}
+
+
+// ============================================================
+// MODBUS READ HOLDING REGISTERS
+// ============================================================
+
+bool readHoldingRegisters(
+  uint8_t slaveId,
+  uint16_t startRegister,
+  uint16_t registerCount,
+  uint8_t *response,
+  size_t responseLength,
+  uint32_t timeoutMs = 900
+) {
+
+  lastModbusStatus = "ok";
+
+  // Give an auto-direction RS485 transceiver time to release the bus before
+  // starting the next request, especially after a previous timeout.
+  delay(EC_RS485_INTER_REQUEST_GAP_MS);
+
+  while (ecSerial.available() > 0) {
+    ecSerial.read();
+  }
+
+
+  uint8_t request[8] = {
+
+    slaveId,
+
+    0x03,
+
+    static_cast<uint8_t>(
+      startRegister >> 8
+    ),
+
+    static_cast<uint8_t>(
+      startRegister & 0xFF
+    ),
+
+    static_cast<uint8_t>(
+      registerCount >> 8
+    ),
+
+    static_cast<uint8_t>(
+      registerCount & 0xFF
+    ),
+
+    0,
+    0
+  };
+
+
+  const uint16_t crc =
+    modbusCrc16(request, 6);
+
+
+  request[6] =
+    static_cast<uint8_t>(
+      crc & 0xFF
+    );
+
+  request[7] =
+    static_cast<uint8_t>(
+      crc >> 8
+    );
+
+  debugHexBytes(
+    "[EC TX]",
+    request,
+    sizeof(request)
+  );
+
+
+  setEcRs485Transmit(true);
+
+  ecSerial.write(
+    request,
+    sizeof(request)
+  );
+
+  ecSerial.flush();
+
+  setEcRs485Transmit(false);
+
+  // RX
+  if (
+    !readModbusResponse(
+      response,
+      responseLength,
+      timeoutMs
+    )
+  ) {
+
+    lastModbusStatus =
+      lastModbusBytesRead == 0
+        ? "timeout_no_bytes"
+        : "short_response";
+
+    debugHexBytes(
+      "[EC RX]",
+      response,
+      lastModbusBytesRead
+    );
+
+    return false;
+  }
+
+  debugHexBytes(
+    "[EC RX]",
+    response,
+    responseLength
+  );
+
+
+  // CRC
+  const uint16_t responseCrc =
+    static_cast<uint16_t>(
+      response[responseLength - 1]
+    ) << 8 |
+    response[responseLength - 2];
+
+
+  const uint16_t expectedCrc =
+    modbusCrc16(
+      response,
+      responseLength - 2
+    );
+
+
+  if (responseCrc != expectedCrc) {
+    lastModbusStatus = "crc_error";
+    return false;
+  }
+
+
+  // Header validation
+  if (response[0] != slaveId) {
+    lastModbusStatus = "wrong_slave";
+    return false;
+  }
+
+  if (response[1] != 0x03) {
+    lastModbusStatus = "wrong_function";
+    return false;
+  }
+
+  if (
+    response[2] !=
+    registerCount * 2
+  ) {
+    lastModbusStatus = "wrong_byte_count";
+    return false;
+  }
+
+
+  return true;
+}
+
+
+// ============================================================
+// CDAB FLOAT DECODER
+// ============================================================
+
+float floatFromCdabBytes(
+  const uint8_t *raw
+) {
+
+  /*
+    Sensor:
+      C D A B
+
+    Convert:
+      A B C D
+
+    Example:
+      72 37 41 DB
+
+    -> 41 DB 72 37
+    -> 27.4
+  */
+
+  const uint32_t bits =
+
+    (static_cast<uint32_t>(
+      raw[2]
+    ) << 24) |
+
+    (static_cast<uint32_t>(
+      raw[3]
+    ) << 16) |
+
+    (static_cast<uint32_t>(
+      raw[0]
+    ) << 8) |
+
+    static_cast<uint32_t>(
+      raw[1]
+    );
+
+
+  float value;
+
+  memcpy(
+    &value,
+    &bits,
+    sizeof(value)
+  );
+
+  return value;
+}
+
+
+// ============================================================
+// READ ONE EC FLOAT REGISTER
+// ============================================================
+
+SensorValue readEcFloatRegister(
+  uint16_t reg
+) {
+
+  uint8_t response[9] = {};
+
+
+  if (
+    !readHoldingRegisters(
+      activeEcSlaveId,
+      reg,
+      2,
+      response,
+      sizeof(response)
+    )
+  ) {
+
+    return {
+      false,
+      NAN,
+      lastModbusStatus
+    };
+  }
+
+
+  const float value =
+    floatFromCdabBytes(
+      &response[3]
+    );
+
+
+  if (!isfinite(value)) {
+
+    return {
+      false,
+      NAN,
+      "nan"
+    };
+  }
+
+
+  return {
+    true,
+    value,
+    "ok"
+  };
+}
+
+
+bool scanEcModbus() {
+
+  if (!DEBUG_EC_MODBUS_SCAN) {
+    return false;
+  }
+
+  Serial.println(
+    "[EC SCAN] Dang tim baud va dia chi cam bien..."
+  );
+
+  const size_t baudCount =
+    sizeof(EC_SCAN_BAUDS) /
+    sizeof(EC_SCAN_BAUDS[0]);
+
+  for (
+    size_t baudIndex = 0;
+    baudIndex < baudCount;
+    baudIndex++
+  ) {
+
+    const uint32_t baud =
+      EC_SCAN_BAUDS[baudIndex];
+
+    ecSerial.updateBaudRate(baud);
+    delay(80);
+
+    for (
+      uint8_t slaveId = 1;
+      slaveId <= EC_SCAN_MAX_SLAVE_ID;
+      slaveId++
+    ) {
+
+      uint8_t response[9] = {};
+
+      const bool ok =
+        readHoldingRegisters(
+          slaveId,
+          REG_EC_MSCM,
+          2,
+          response,
+          sizeof(response),
+          EC_SCAN_TIMEOUT_MS
+        );
+
+      if (ok) {
+        activeEcRs485Baud = baud;
+        activeEcSlaveId = slaveId;
+
+        Serial.printf(
+          "[EC SCAN] Tim thay baud=%lu dia_chi=%u\n",
+          static_cast<unsigned long>(activeEcRs485Baud),
+          activeEcSlaveId
+        );
+
+        return true;
+      }
+
+      Serial.printf(
+        "[EC SCAN] baud=%lu dia_chi=%u trang_thai=%s so_byte=%u\n",
+        static_cast<unsigned long>(baud),
+        slaveId,
+        statusToVietnamese(lastModbusStatus),
+        static_cast<unsigned int>(lastModbusBytesRead)
+      );
+    }
+  }
+
+  ecSerial.updateBaudRate(EC_RS485_BAUD);
+  activeEcRs485Baud = EC_RS485_BAUD;
+  activeEcSlaveId = EC_RS485_SLAVE_ID;
+
+  Serial.println(
+    "[EC SCAN] Khong tim thay phan hoi Modbus"
+  );
+
+  return false;
+}
+
+
+// ============================================================
+// READ A02YYUW
+// ============================================================
+
+void clearUltrasonicBuffer() {
+
+  while (ultrasonicSerial.available() > 0) {
+    ultrasonicSerial.read();
+  }
+}
+
+
+SensorValue readA02yyuwDistanceCm(
+  uint32_t timeoutMs = A02YYUW_SAMPLE_TIMEOUT_MS
+) {
+
+  clearUltrasonicBuffer();
+
+  const uint32_t startedAt = millis();
+
+
+  while (
+    millis() - startedAt <
+    timeoutMs
+  ) {
+
+    if (
+      ultrasonicSerial.available() < 4
+    ) {
+
+      delay(5);
+
+      serviceWatchdog();
+
+      continue;
+    }
+
+
+    if (
+      ultrasonicSerial.read() != 0xFF
+    ) {
+
+      continue;
+    }
+
+
+    const uint8_t highByte =
+      ultrasonicSerial.read();
+
+    const uint8_t lowByte =
+      ultrasonicSerial.read();
+
+    const uint8_t checksum =
+      ultrasonicSerial.read();
+
+
+    const uint8_t expected =
+      static_cast<uint8_t>(
+        0xFF +
+        highByte +
+        lowByte
+      );
+
+
+    if (checksum != expected) {
+
+      return {
+        false,
+        NAN,
+        "checksum_error"
+      };
+    }
+
+
+    const uint16_t distanceMm =
+      (static_cast<uint16_t>(
+        highByte
+      ) << 8) |
+      lowByte;
+
+
+    const float distanceCm =
+      distanceMm / 10.0f;
+
+
+    if (
+      distanceCm <
+      A02YYUW_MIN_CM ||
+
+      distanceCm >
+      A02YYUW_MAX_CM
+    ) {
+
+      return {
+        false,
+        distanceCm,
+        "out_of_range"
+      };
+    }
+
+
+    return {
+      true,
+      distanceCm,
+      "ok"
+    };
+  }
+
+
+  return {
+    false,
+    NAN,
+    "timeout"
+  };
+}
+
+
+// ============================================================
+// READ WATER EC
+// ============================================================
+
+WaterEcReading readWaterEc() {
+
+  const SensorValue ec =
+    readEcFloatRegister(
+      REG_EC_MSCM
+    );
+
+
+  if (!ec.ok) {
+
+    return {
+      false,
+
+      NAN,
+      NAN,
+      NAN,
+      NAN,
+      NAN,
+      NAN,
+
+      ec.status
+    };
+  }
+
+
+  const SensorValue temperature =
+    readEcFloatRegister(
+      REG_TEMPERATURE_C
+    );
+
+
+  const SensorValue tds =
+    readEcFloatRegister(
+      REG_TDS_PPM
+    );
+
+
+  const SensorValue salinity =
+    readEcFloatRegister(
+      REG_SALINITY_PPM
+    );
+
+
+  const float ecMsCm =
+    ec.value;
+
+
+  const float salinityPpm =
+    salinity.ok
+      ? salinity.value
+      : NAN;
+
+
+  /*
+    If salinity register is unavailable,
+    estimate ppt from EC.
+
+    This is only an approximation.
+  */
+
+  const float salinityPpt =
+    isfinite(salinityPpm)
+      ? salinityPpm / 1000.0f
+      : ecMsCm * 0.64f;
+
+
+  return {
+
+    true,
+
+    ecMsCm,
+
+    ecMsCm * 1000.0f,
+
+    temperature.ok
+      ? temperature.value
+      : NAN,
+
+    tds.ok
+      ? tds.value
+      : NAN,
+
+    salinityPpm,
+
+    salinityPpt,
+
+    "ok"
+  };
+}
+
+
+// ============================================================
+// FILTERED AVERAGE
+// ============================================================
+//
+// For >=4 samples:
+// remove min + max, then average.
+//
+
+float filteredAverage(
+  float *values,
+  uint8_t count
+) {
+
+  if (count == 0) {
+    return NAN;
+  }
+
+
+  if (count < 4) {
+
+    float sum = 0.0f;
+
+    for (
+      uint8_t i = 0;
+      i < count;
+      i++
+    ) {
+
+      sum += values[i];
+    }
+
+    return sum / count;
+  }
+
+
+  float minValue = values[0];
+  float maxValue = values[0];
+
+  float sum = 0.0f;
+
+
+  for (
+    uint8_t i = 0;
+    i < count;
+    i++
+  ) {
+
+    minValue =
+      min(
+        minValue,
+        values[i]
+      );
+
+    maxValue =
+      max(
+        maxValue,
+        values[i]
+      );
+
+    sum += values[i];
+  }
+
+
+  return (
+    sum -
+    minValue -
+    maxValue
+  ) / (count - 2);
+}
+
+
+void sortSmallFloatArray(
+  float *values,
+  uint8_t count
+) {
+
+  for (
+    uint8_t i = 1;
+    i < count;
+    i++
+  ) {
+
+    const float current =
+      values[i];
+
+    int8_t j =
+      static_cast<int8_t>(i) - 1;
+
+    while (
+      j >= 0 &&
+      values[j] > current
+    ) {
+
+      values[j + 1] =
+        values[j];
+
+      j--;
+    }
+
+    values[j + 1] =
+      current;
+  }
+}
+
+
+float medianValue(
+  const float *values,
+  uint8_t count
+) {
+
+  if (count == 0) {
+    return NAN;
+  }
+
+  float sorted[
+    RAW_SAMPLES_PER_MINUTE
+  ] = {};
+
+  for (
+    uint8_t i = 0;
+    i < count;
+    i++
+  ) {
+
+    sorted[i] =
+      values[i];
+  }
+
+  sortSmallFloatArray(
+    sorted,
+    count
+  );
+
+  if (count % 2 == 1) {
+    return sorted[count / 2];
+  }
+
+  return (
+    sorted[count / 2 - 1] +
+    sorted[count / 2]
+  ) / 2.0f;
+}
+
+
+float filteredUltrasonicAverage(
+  float *values,
+  uint8_t count
+) {
+
+  if (count < 4) {
+    return filteredAverage(
+      values,
+      count
+    );
+  }
+
+  const float median =
+    medianValue(
+      values,
+      count
+    );
+
+  if (!isfinite(median)) {
+    return filteredAverage(
+      values,
+      count
+    );
+  }
+
+  float stableValues[
+    RAW_SAMPLES_PER_MINUTE
+  ] = {};
+
+  uint8_t stableCount = 0;
+
+  for (
+    uint8_t i = 0;
+    i < count;
+    i++
+  ) {
+
+    if (
+      fabs(values[i] - median) <=
+      A02YYUW_MAX_MEDIAN_DEVIATION_CM
+    ) {
+
+      stableValues[stableCount++] =
+        values[i];
+    }
+  }
+
+  return stableCount >= MIN_VALID_RAW_SAMPLES
+    ? filteredAverage(
+        stableValues,
+        stableCount
+      )
+    : filteredAverage(
+        values,
+        count
+      );
+}
+
+
+// ============================================================
+// COLLECT ONE MINUTE
+// ============================================================
+
+MinuteReading collectMinuteReading() {
+
+  float distances[
+    RAW_SAMPLES_PER_MINUTE
+  ] = {};
+
+  float ecMsCm[
+    RAW_SAMPLES_PER_MINUTE
+  ] = {};
+
+  float ecUsCm[
+    RAW_SAMPLES_PER_MINUTE
+  ] = {};
+
+  float tempC[
+    RAW_SAMPLES_PER_MINUTE
+  ] = {};
+
+  float tdsPpm[
+    RAW_SAMPLES_PER_MINUTE
+  ] = {};
+
+  float salPpm[
+    RAW_SAMPLES_PER_MINUTE
+  ] = {};
+
+  float salPpt[
+    RAW_SAMPLES_PER_MINUTE
+  ] = {};
+
+
+  uint8_t distanceCount = 0;
+  uint8_t ecCount = 0;
+
+
+  const char *distanceStatus =
+    "no_valid_sample";
+
+  const char *ecStatus =
+    "no_valid_sample";
+
+
+  for (
+    uint8_t i = 0;
+    i < RAW_SAMPLES_PER_MINUTE;
+    i++
+  ) {
+
+    serviceWatchdog();
+
+
+    // --------------------------------------------------------
+    // Ultrasonic
+    // --------------------------------------------------------
+
+    SensorValue distance = {
+      false,
+      NAN,
+      "disabled"
+    };
+
+    if (!DEBUG_SKIP_ULTRASONIC) {
+      distance =
+        readA02yyuwDistanceCm();
+    }
+
+
+    if (
+      distance.ok &&
+      distanceCount <
+      RAW_SAMPLES_PER_MINUTE
+    ) {
+
+      distances[distanceCount++] =
+        distance.value;
+    }
+
+
+    distanceStatus =
+      distance.status;
+
+
+    // --------------------------------------------------------
+    // EC sensor
+    // --------------------------------------------------------
+
+    WaterEcReading ec = {
+      false,
+      NAN,
+      NAN,
+      NAN,
+      NAN,
+      NAN,
+      NAN,
+      "disabled"
+    };
+
+    if (!DEBUG_SKIP_EC) {
+      ec =
+        readWaterEc();
+    }
+
+
+    if (
+      ec.ok &&
+      ecCount <
+      RAW_SAMPLES_PER_MINUTE
+    ) {
+
+      ecMsCm[ecCount] =
+        ec.ecMsCm;
+
+      ecUsCm[ecCount] =
+        ec.ecUsCm;
+
+      tempC[ecCount] =
+        ec.temperatureC;
+
+      tdsPpm[ecCount] =
+        ec.tdsPpm;
+
+      salPpm[ecCount] =
+        ec.salinityPpm;
+
+      salPpt[ecCount] =
+        ec.salinityPpt;
+
+      ecCount++;
+    }
+
+
+    ecStatus =
+      ec.status;
+
+
+    if (DEBUG_RAW_SENSOR_SAMPLES) {
+      Serial.printf(
+        "[MAU THO %u/%u]\n",
+        static_cast<unsigned int>(i + 1),
+        static_cast<unsigned int>(RAW_SAMPLES_PER_MINUTE)
+      );
+
+      Serial.print(
+        "  Muc nuoc: "
+      );
+
+      Serial.print(
+        distance.ok ? "binh_thuong" : statusToVietnamese(distance.status)
+      );
+
+      if (distance.ok) {
+        Serial.printf(
+          " | Khoang cach cam bien: %.1f cm | Muc nuoc: %.1f cm",
+          distance.value,
+          max(
+            0.0f,
+            SENSOR_HEIGHT_CM -
+            distance.value
+          )
+        );
+      }
+
+      Serial.println();
+
+
+      Serial.print(
+        "  Cam bien nuoc EC: "
+      );
+
+      Serial.print(
+        ec.ok ? "binh_thuong" : statusToVietnamese(ec.status)
+      );
+
+      if (ec.ok) {
+        Serial.printf(
+          " | EC nuoc: %.0f uS/cm (%.3f mS/cm) | Nhiet do nuoc: %s C | TDS nuoc: %s ppm | Do man: %s ppm (%s ppt)",
+          ec.ecUsCm,
+          ec.ecMsCm,
+          numberOrNull(
+            ec.temperatureC,
+            2
+          ).c_str(),
+          numberOrNull(
+            ec.tdsPpm,
+            1
+          ).c_str(),
+          numberOrNull(
+            ec.salinityPpm,
+            1
+          ).c_str(),
+          numberOrNull(
+            ec.salinityPpt,
+            3
+          ).c_str()
+        );
+      }
+
+      Serial.println();
+    }
+
+
+    serviceWatchdog();
+
+
+    // Wait before next raw sample.
+    delay(RAW_SAMPLE_GAP_MS);
+  }
+
+
+  // ==========================================================
+  // VALIDITY
+  // ==========================================================
+
+  const bool waterOk =
+    distanceCount >=
+    MIN_VALID_RAW_SAMPLES;
+
+
+  const bool ecOk =
+    ecCount >=
+    MIN_VALID_RAW_SAMPLES;
+
+  const BatteryReading battery = readBattery();
+
+
+  // ==========================================================
+  // FILTER
+  // ==========================================================
+
+  const float distanceCm =
+    waterOk
+      ? filteredUltrasonicAverage(
+          distances,
+          distanceCount
+        )
+      : NAN;
+
+
+  const float waterLevelCm =
+    waterOk
+      ? max(
+          0.0f,
+          SENSOR_HEIGHT_CM -
+          distanceCm
+        )
+      : NAN;
+
+
+  const float filteredEc =
+    ecOk
+      ? filteredAverage(
+          ecMsCm,
+          ecCount
+        )
+      : NAN;
+
+
+  const float filteredEcUs =
+    ecOk
+      ? filteredAverage(
+          ecUsCm,
+          ecCount
+        )
+      : NAN;
+
+
+  const float filteredTemp =
+    ecOk
+      ? filteredAverage(
+          tempC,
+          ecCount
+        )
+      : NAN;
+
+
+  const float filteredTds =
+    ecOk
+      ? filteredAverage(
+          tdsPpm,
+          ecCount
+        )
+      : NAN;
+
+
+  const float filteredSalPpm =
+    ecOk
+      ? filteredAverage(
+          salPpm,
+          ecCount
+        )
+      : NAN;
+
+
+  const float filteredSalPpt =
+    ecOk
+      ? filteredAverage(
+          salPpt,
+          ecCount
+        )
+      : NAN;
+
+
+  // ==========================================================
+  // RESULT
+  // ==========================================================
+
+  return {
+
+    waterOk,
+
+    ecOk,
+
+    distanceCm,
+
+    waterLevelCm,
+
+    filteredEc,
+
+    filteredEcUs,
+
+    filteredTemp,
+
+    filteredTds,
+
+    filteredSalPpm,
+
+    filteredSalPpt,
+
+    distanceCount,
+
+    ecCount,
+
+    battery.ok,
+    battery.voltageV,
+    battery.percent,
+
+    waterOk
+      ? "ok"
+      : distanceStatus,
+
+    ecOk
+      ? "ok"
+      : ecStatus,
+
+    battery.ok
+      ? "ok"
+      : battery.status
+  };
+}
+
+
+// ============================================================
+// PUSH MINUTE INTO RTC AGGREGATE
+// ============================================================
+
+void pushAggregateMinute(
+  const MinuteReading &reading
+) {
+
+  if (
+    aggregateCount >=
+    MINUTE_RECORDS_PER_PACKET
+  ) {
+
+    aggregateCount = 0;
+  }
+
+
+  aggregateDistance[
+    aggregateCount
+  ] = reading.distanceCm;
+
+
+  aggregateWaterLevel[
+    aggregateCount
+  ] = reading.waterLevelCm;
+
+
+  aggregateEcMsCm[
+    aggregateCount
+  ] = reading.ecMsCm;
+
+
+  aggregateEcUsCm[
+    aggregateCount
+  ] = reading.ecUsCm;
+
+
+  aggregateTempC[
+    aggregateCount
+  ] = reading.temperatureC;
+
+
+  aggregateTdsPpm[
+    aggregateCount
+  ] = reading.tdsPpm;
+
+
+  aggregateSalinityPpm[
+    aggregateCount
+  ] = reading.salinityPpm;
+
+
+  aggregateSalinityPpt[
+    aggregateCount
+  ] = reading.salinityPpt;
+
+  aggregateBatteryVoltageV[
+    aggregateCount
+  ] = reading.batteryVoltageV;
+
+  aggregateBatteryPercent[
+    aggregateCount
+  ] = reading.batteryPercent;
+
+
+  aggregateCount++;
+}
+
+
+// ============================================================
+// AVERAGE FINITE VALUES
+// ============================================================
+
+float averageFinite(
+  const float *values,
+  uint8_t count
+) {
+
+  float sum = 0.0f;
+
+  uint8_t valid = 0;
+
+
+  for (
+    uint8_t i = 0;
+    i < count;
+    i++
+  ) {
+
+    if (isfinite(values[i])) {
+
+      sum += values[i];
+
+      valid++;
+    }
+  }
+
+
+  return valid > 0
+    ? sum / valid
+    : NAN;
+}
+
+
+bool ina226ReadRegister(
+  uint8_t reg,
+  uint16_t &value
+) {
+
+  Wire.beginTransmission(INA226_ADDRESS);
+  Wire.write(reg);
+
+  if (Wire.endTransmission(false) != 0) {
+    return false;
+  }
+
+  if (Wire.requestFrom(static_cast<int>(INA226_ADDRESS), 2) != 2) {
+    return false;
+  }
+
+  value =
+    (static_cast<uint16_t>(Wire.read()) << 8) |
+    static_cast<uint16_t>(Wire.read());
+
+  return true;
+}
+
+
+bool ina226WriteRegister(
+  uint8_t reg,
+  uint16_t value
+) {
+
+  Wire.beginTransmission(INA226_ADDRESS);
+  Wire.write(reg);
+  Wire.write(static_cast<uint8_t>(value >> 8));
+  Wire.write(static_cast<uint8_t>(value & 0xFF));
+  return Wire.endTransmission() == 0;
+}
+
+
+bool setupIna226() {
+  uint16_t config = 0;
+
+  if (!ina226ReadRegister(INA226_REG_CONFIG, config)) {
+    return false;
+  }
+
+  return ina226WriteRegister(INA226_REG_CONFIG, 0x4527);
+}
+
+
+float estimateLifePo4Percent(float packVoltage) {
+  if (!isfinite(packVoltage) || LIFEPO4_CELL_COUNT == 0) {
+    return NAN;
+  }
+
+  const float cellVoltage = packVoltage / LIFEPO4_CELL_COUNT;
+  const float pointsV[] = {
+    2.80f, 3.00f, 3.10f, 3.20f, 3.25f, 3.30f, 3.35f, 3.40f, 3.50f, 3.60f
+  };
+  const float pointsPct[] = {
+    0.0f, 5.0f, 10.0f, 20.0f, 40.0f, 60.0f, 80.0f, 90.0f, 98.0f, 100.0f
+  };
+  const uint8_t pointCount = sizeof(pointsV) / sizeof(pointsV[0]);
+
+  if (cellVoltage <= pointsV[0]) {
+    return 0.0f;
+  }
+
+  if (cellVoltage >= pointsV[pointCount - 1]) {
+    return 100.0f;
+  }
+
+  for (uint8_t i = 1; i < pointCount; i += 1) {
+    if (cellVoltage <= pointsV[i]) {
+      const float spanV = pointsV[i] - pointsV[i - 1];
+      const float ratio = spanV > 0 ? (cellVoltage - pointsV[i - 1]) / spanV : 0.0f;
+      return pointsPct[i - 1] + ratio * (pointsPct[i] - pointsPct[i - 1]);
+    }
+  }
+
+  return NAN;
+}
+
+
+BatteryReading readBattery() {
+  if (!ina226Ready) {
+    return {false, NAN, NAN, "ina226_not_ready"};
+  }
+
+  uint16_t rawBus = 0;
+  if (!ina226ReadRegister(INA226_REG_BUS_VOLTAGE, rawBus)) {
+    return {false, NAN, NAN, "bus_read_error"};
+  }
+
+  uint16_t rawShuntRegister = 0;
+  if (!ina226ReadRegister(INA226_REG_SHUNT_VOLTAGE, rawShuntRegister)) {
+    return {false, NAN, NAN, "shunt_read_error"};
+  }
+
+  const int16_t rawShunt =
+    static_cast<int16_t>(rawShuntRegister);
+
+  const float voltageV = rawBus * 0.00125f;
+  const float shuntMv = rawShunt * 0.0025f;
+  const float currentA =
+    (shuntMv / 1000.0f) /
+    INA226_SHUNT_OHMS;
+  const float percent = estimateLifePo4Percent(voltageV);
+
+  if (DEBUG_BATTERY_READING) {
+    Serial.printf(
+      "[PIN] raw_dien_ap=%u dien_ap=%.3fV raw_dong=%d dien_ap_shunt=%.4fmV dong=%.4fA phan_tram=%.1f\n",
+      rawBus,
+      voltageV,
+      rawShunt,
+      shuntMv,
+      currentA,
+      percent
+    );
+  }
+
+  return {true, voltageV, percent, "ok"};
+}
+
+
+// ============================================================
+// BUILD AGGREGATE
+// ============================================================
+
+AggregateReading buildAggregateReading() {
+
+  return {
+
+    averageFinite(
+      aggregateDistance,
+      aggregateCount
+    ),
+
+    averageFinite(
+      aggregateWaterLevel,
+      aggregateCount
+    ),
+
+    averageFinite(
+      aggregateEcMsCm,
+      aggregateCount
+    ),
+
+    averageFinite(
+      aggregateEcUsCm,
+      aggregateCount
+    ),
+
+    averageFinite(
+      aggregateTempC,
+      aggregateCount
+    ),
+
+    averageFinite(
+      aggregateTdsPpm,
+      aggregateCount
+    ),
+
+    averageFinite(
+      aggregateSalinityPpm,
+      aggregateCount
+    ),
+
+    averageFinite(
+      aggregateSalinityPpt,
+      aggregateCount
+    ),
+
+    averageFinite(
+      aggregateBatteryVoltageV,
+      aggregateCount
+    ),
+
+    averageFinite(
+      aggregateBatteryPercent,
+      aggregateCount
+    ),
+
+    aggregateCount
+  };
+}
+
+
+// ============================================================
+// BUILD MINUTE JSON
+// ============================================================
+
+String buildMinutePayload(
+  const MinuteReading &reading
+) {
+
+  String payload;
+
+  payload.reserve(520);
+
+
+  payload +=
+    "{\"type\":\"minute_reading\"";
+
+
+  payload +=
+    ",\"station_id\":\"";
+
+  payload += STATION_ID;
+
+  payload += "\"";
+
+
+  payload +=
+    ",\"firmware_version\":\"";
+
+  payload += FIRMWARE_VERSION;
+
+  payload += "\"";
+
+
+  payload +=
+    ",\"uptime_ms\":";
+
+  payload +=
+    String(millis());
+
+
+  payload +=
+    ",\"sensor_height_cm\":";
+
+  payload +=
+    String(
+      SENSOR_HEIGHT_CM,
+      1
+    );
+
+
+  payload +=
+    ",\"distance_cm\":";
+
+  payload +=
+    numberOrNull(
+      reading.distanceCm,
+      1
+    );
+
+
+  payload +=
+    ",\"water_level_cm\":";
+
+  payload +=
+    numberOrNull(
+      reading.waterLevelCm,
+      1
+    );
+
+
+  payload +=
+    ",\"ec_ms_cm\":";
+
+  payload +=
+    numberOrNull(
+      reading.ecMsCm,
+      3
+    );
+
+
+  payload +=
+    ",\"ec_us_cm\":";
+
+  payload +=
+    numberOrNull(
+      reading.ecUsCm,
+      1
+    );
+
+
+  payload +=
+    ",\"temperature_c\":";
+
+  payload +=
+    numberOrNull(
+      reading.temperatureC,
+      2
+    );
+
+
+  payload +=
+    ",\"tds_ppm\":";
+
+  payload +=
+    numberOrNull(
+      reading.tdsPpm,
+      1
+    );
+
+
+  payload +=
+    ",\"salinity_ppm\":";
+
+  payload +=
+    numberOrNull(
+      reading.salinityPpm,
+      1
+    );
+
+
+  payload +=
+    ",\"salinity_ppt\":";
+
+  payload +=
+    numberOrNull(
+      reading.salinityPpt,
+      3
+    );
+
+
+  payload +=
+    ",\"battery_voltage_v\":";
+
+  payload +=
+    numberOrNull(
+      reading.batteryVoltageV,
+      2
+    );
+
+
+  payload +=
+    ",\"battery_percent\":";
+
+  payload +=
+    numberOrNull(
+      reading.batteryPercent,
+      1
+    );
+
+
+  payload +=
+    ",\"valid_distance_samples\":";
+
+  payload +=
+    String(
+      reading.validDistanceSamples
+    );
+
+
+  payload +=
+    ",\"valid_ec_samples\":";
+
+  payload +=
+    String(
+      reading.validEcSamples
+    );
+
+
+  payload +=
+    ",\"ultrasonic_status\":\"";
+
+  payload +=
+    reading.ultrasonicStatus;
+
+  payload += "\"";
+
+
+  payload +=
+    ",\"ec_status\":\"";
+
+  payload +=
+    reading.ecStatus;
+
+  payload += "\"";
+
+
+  payload +=
+    ",\"battery_status\":\"";
+
+  payload +=
+    reading.batteryStatus;
+
+  payload += "\"}";
+
+
+  return payload;
+}
+
+
+// ============================================================
+// BUILD AGGREGATE JSON
+// ============================================================
+
+String buildAggregatePayload(
+  const AggregateReading &reading,
+  const char *messageId
+) {
+
+  String payload;
+
+  payload.reserve(620);
+
+
+  payload +=
+    "{\"type\":\"station_summary\"";
+
+
+  payload +=
+    ",\"station_id\":\"";
+
+  payload += STATION_ID;
+
+  payload += "\"";
+
+
+  payload +=
+    ",\"firmware_version\":\"";
+
+  payload += FIRMWARE_VERSION;
+
+  payload += "\"";
+
+
+  payload +=
+    ",\"message_id\":\"";
+
+  payload += messageId;
+
+  payload += "\"";
+
+
+  payload +=
+    ",\"sequence\":";
+
+  payload +=
+    String(sequenceNumber);
+
+
+  payload +=
+    ",\"uptime_ms\":";
+
+  payload +=
+    String(millis());
+
+
+  payload +=
+    ",\"summary_minutes\":";
+
+  payload +=
+    String(
+      reading.minuteCount
+    );
+
+
+  payload +=
+    ",\"sensor_height_cm\":";
+
+  payload +=
+    String(
+      SENSOR_HEIGHT_CM,
+      1
+    );
+
+
+  payload +=
+    ",\"distance_cm\":";
+
+  payload +=
+    numberOrNull(
+      reading.distanceCm,
+      1
+    );
+
+
+  payload +=
+    ",\"water_level_cm\":";
+
+  payload +=
+    numberOrNull(
+      reading.waterLevelCm,
+      1
+    );
+
+
+  payload +=
+    ",\"ec_ms_cm\":";
+
+  payload +=
+    numberOrNull(
+      reading.ecMsCm,
+      3
+    );
+
+
+  payload +=
+    ",\"ec_us_cm\":";
+
+  payload +=
+    numberOrNull(
+      reading.ecUsCm,
+      1
+    );
+
+
+  payload +=
+    ",\"temperature_c\":";
+
+  payload +=
+    numberOrNull(
+      reading.temperatureC,
+      2
+    );
+
+
+  payload +=
+    ",\"tds_ppm\":";
+
+  payload +=
+    numberOrNull(
+      reading.tdsPpm,
+      1
+    );
+
+
+  payload +=
+    ",\"salinity_ppm\":";
+
+  payload +=
+    numberOrNull(
+      reading.salinityPpm,
+      1
+    );
+
+
+  payload +=
+    ",\"salinity_ppt\":";
+
+  payload +=
+    numberOrNull(
+      reading.salinityPpt,
+      3
+    );
+
+
+  payload +=
+    ",\"battery_voltage_v\":";
+
+  payload +=
+    numberOrNull(
+      reading.batteryVoltageV,
+      2
+    );
+
+
+  payload +=
+    ",\"battery_percent\":";
+
+  payload +=
+    numberOrNull(
+      reading.batteryPercent,
+      1
+    );
+
+
+  payload += "}";
+
+
+  return payload;
+}
+
+
+// ============================================================
+// JSON UINT FIELD PARSER
+// ============================================================
+
+uint32_t extractUintField(
+  const String &json,
+  const char *field,
+  uint32_t fallback
+) {
+
   String key = "\"";
+
   key += field;
+
   key += "\":";
-  const int start = json.indexOf(key);
+
+
+  const int start =
+    json.indexOf(key);
+
+
   if (start < 0) {
     return fallback;
   }
 
-  const int valueStart = start + key.length();
-  int valueEnd = valueStart;
-  while (valueEnd < json.length() && isDigit(json[valueEnd])) {
-    valueEnd += 1;
+
+  const int valueStart =
+    start + key.length();
+
+
+  int valueEnd =
+    valueStart;
+
+
+  while (
+    valueEnd < json.length() &&
+    isDigit(
+      json[valueEnd]
+    )
+  ) {
+
+    valueEnd++;
   }
-  if (valueEnd == valueStart) {
+
+
+  if (
+    valueEnd ==
+    valueStart
+  ) {
+
     return fallback;
   }
 
-  return static_cast<uint32_t>(json.substring(valueStart, valueEnd).toInt());
+
+  return static_cast<uint32_t>(
+    json
+      .substring(
+        valueStart,
+        valueEnd
+      )
+      .toInt()
+  );
 }
+
+
+// ============================================================
+// GATEWAY COMMANDS: CONFIG + POLL
+// ============================================================
 
 bool configTargetsThisStation(const String &json) {
   String stationKey = "\"station_id\":\"";
@@ -301,16 +2462,22 @@ void applyConfigCommand(const String &json) {
     return;
   }
 
+  const uint32_t currentSeconds = configuredSleepIntervalMs / 1000UL;
   const uint32_t sleepSeconds = extractUintField(
     json,
     "sleep_interval_seconds",
-    configuredSleepIntervalMs / 1000UL
+    currentSeconds
   );
+
   configuredSleepIntervalMs = min<uint32_t>(86400UL, sleepSeconds) * 1000UL;
   Serial.printf("[CONFIG] ngu=%lu giay\n", configuredSleepIntervalMs / 1000UL);
 }
 
 void sendNoDataStatus() {
+  if (!loraReady) {
+    return;
+  }
+
   String status;
   status.reserve(120);
   status += "{\"type\":\"station_status\",\"station_id\":\"";
@@ -346,12 +2513,13 @@ void handleGatewayCommand(const String &json) {
 }
 
 void readLoRaCommands() {
-  if (DEBUG_DISABLE_LORA_UART) {
+  if (!loraReady) {
     return;
   }
 
   while (loraSerial.available() > 0) {
     const char c = static_cast<char>(loraSerial.read());
+
     if (c == '\n') {
       loraCommandLine.trim();
       if (loraCommandLine.length() > 0) {
@@ -367,887 +2535,148 @@ void readLoRaCommands() {
   }
 }
 
-void maybeEnterConfiguredSleep() {
-  if (configuredSleepIntervalMs == 0) {
-    return;
-  }
-
-  Serial.printf("[NGUON] Ngu sau %lu giay\n", configuredSleepIntervalMs / 1000UL);
-  Serial.flush();
-  esp_sleep_enable_timer_wakeup(static_cast<uint64_t>(configuredSleepIntervalMs) * 1000ULL);
-  esp_deep_sleep_start();
-}
-
 // ============================================================
-// SHT30 AMBIENT SENSOR - I2C SDA IO8, SCL IO9
+// WAIT FOR LORA ACK
 // ============================================================
 
-uint8_t sht30Crc8(const uint8_t *data, size_t length) {
-  uint8_t crc = 0xFF;
-  for (size_t index = 0; index < length; index += 1) {
-    crc ^= data[index];
-    for (uint8_t bit = 0; bit < 8; bit += 1) {
-      crc = (crc & 0x80) ? static_cast<uint8_t>((crc << 1) ^ 0x31) : static_cast<uint8_t>(crc << 1);
-    }
-  }
-  return crc;
-}
+bool waitForAck(
+  const char *messageId,
+  uint32_t timeoutMs
+) {
 
-Sht30Reading readSht30() {
-  const char *lastError = "sht30_timeout";
-
-  for (uint8_t attempt = 1; attempt <= SHT30_READ_RETRIES; attempt += 1) {
-    sht30Wire.beginTransmission(SHT30_I2C_ADDRESS);
-    sht30Wire.write(0x24);
-    sht30Wire.write(0x00);
-    if (sht30Wire.endTransmission() != 0) {
-      lastError = "i2c_error";
-      delay(10);
-      continue;
-    }
-
-    delay(SHT30_MEASUREMENT_DELAY_MS);
-    if (sht30Wire.requestFrom(SHT30_I2C_ADDRESS, static_cast<uint8_t>(6)) != 6) {
-      lastError = "sht30_timeout";
-      delay(10);
-      continue;
-    }
-
-    uint8_t raw[6] = {};
-    for (uint8_t index = 0; index < 6; index += 1) {
-      raw[index] = static_cast<uint8_t>(sht30Wire.read());
-    }
-
-    if (sht30Crc8(raw, 2) != raw[2] || sht30Crc8(raw + 3, 2) != raw[5]) {
-      lastError = "sht30_crc_error";
-      Serial.printf("[SHT30] Doc lan %u/%u loi CRC\n",
-                    static_cast<unsigned int>(attempt),
-                    static_cast<unsigned int>(SHT30_READ_RETRIES));
-      continue;
-    }
-
-    const uint16_t rawTemperature = (static_cast<uint16_t>(raw[0]) << 8) | raw[1];
-    const uint16_t rawHumidity = (static_cast<uint16_t>(raw[3]) << 8) | raw[4];
-    const float temperatureC = -45.0f + 175.0f * rawTemperature / 65535.0f;
-    const float humidityPct = 100.0f * rawHumidity / 65535.0f;
-
-    if (!isfinite(temperatureC) || !isfinite(humidityPct) ||
-        temperatureC < -40.0f || temperatureC > 125.0f ||
-        humidityPct < 0.0f || humidityPct > 100.0f) {
-      lastError = "sht30_out_of_range";
-      continue;
-    }
-
-    sht30Ready = true;
-    Serial.printf("[SHT30] OK T=%.1f C H=%.1f %% SDA=IO%d SCL=IO%d\n",
-                  temperatureC, humidityPct, SHT30_SDA_PIN, SHT30_SCL_PIN);
-    return {
-      {true, temperatureC, "ok"},
-      {true, humidityPct, "ok"},
-    };
-  }
-
-  sht30Ready = false;
-  return {
-    {false, NAN, lastError},
-    {false, NAN, lastError},
-  };
-}
-
-uint16_t crc16Modbus(const uint8_t *data, size_t len) {
-  uint16_t crc = 0xFFFF;
-  for (size_t i = 0; i < len; i += 1) {
-    crc ^= data[i];
-    for (uint8_t bit = 0; bit < 8; bit += 1) {
-      if (crc & 0x0001) {
-        crc = static_cast<uint16_t>((crc >> 1) ^ 0xA001);
-      } else {
-        crc >>= 1;
-      }
-    }
-  }
-  return crc;
-}
-
-void waitForRs485IdleGap() {
-  while (lastRs485TransactionMs != 0 && millis() - lastRs485TransactionMs < RS485_INTER_REQUEST_GAP_MS) {
-    serviceWatchdog();
-    delay(2);
-  }
-}
-
-bool readHoldingRegisters(uint8_t slaveId, uint16_t startReg, uint16_t regCount, uint16_t *outRegs, uint32_t timeoutMs = 800) {
-  if (regCount == 0 || regCount > 10) {
+  if (!loraReady) {
     return false;
   }
 
-  waitForRs485IdleGap();
+  const uint32_t startedAt =
+    millis();
 
-  while (rs485Serial.available() > 0) {
-    rs485Serial.read();
-  }
 
-  uint8_t request[8] = {
-    slaveId,
-    0x03,
-    highByte(startReg),
-    lowByte(startReg),
-    highByte(regCount),
-    lowByte(regCount),
-    0,
-    0,
-  };
-  const uint16_t requestCrc = crc16Modbus(request, 6);
-  request[6] = lowByte(requestCrc);
-  request[7] = highByte(requestCrc);
-
-  setRs485Transmit(true);
-  rs485Serial.write(request, sizeof(request));
-  rs485Serial.flush();
-  setRs485Transmit(false);
-  serviceWatchdog();
-
-  const uint8_t expectedLen = static_cast<uint8_t>(5 + regCount * 2);
-  uint8_t response[32] = {};
-  uint8_t count = 0;
-  const uint32_t startedAt = millis();
-
-  while (millis() - startedAt < timeoutMs && count < expectedLen) {
-    serviceWatchdog();
-
-    if (rs485Serial.available() > 0) {
-      response[count++] = static_cast<uint8_t>(rs485Serial.read());
-    } else {
-      delay(2);
-    }
-  }
-
-  if (count != expectedLen) {
-    return false;
-  }
-
-  const uint16_t receivedCrc = static_cast<uint16_t>(response[count - 2]) | (static_cast<uint16_t>(response[count - 1]) << 8);
-  const uint16_t expectedCrc = crc16Modbus(response, count - 2);
-  if (receivedCrc != expectedCrc) {
-    return false;
-  }
-
-  if (response[0] != slaveId || response[1] != 0x03 || response[2] != regCount * 2) {
-    return false;
-  }
-
-  for (uint16_t i = 0; i < regCount; i += 1) {
-    const uint8_t offset = static_cast<uint8_t>(3 + i * 2);
-    outRegs[i] = (static_cast<uint16_t>(response[offset]) << 8) | response[offset + 1];
-  }
-
-  lastRs485TransactionMs = millis();
-  return true;
-}
-
-bool writeSingleRegister(uint8_t slaveId, uint16_t reg, uint16_t value, uint32_t timeoutMs = 800) {
-  waitForRs485IdleGap();
-
-  while (rs485Serial.available() > 0) {
-    rs485Serial.read();
-  }
-
-  uint8_t request[8] = {
-    slaveId,
-    0x06,
-    highByte(reg),
-    lowByte(reg),
-    highByte(value),
-    lowByte(value),
-    0,
-    0,
-  };
-  const uint16_t requestCrc = crc16Modbus(request, 6);
-  request[6] = lowByte(requestCrc);
-  request[7] = highByte(requestCrc);
-
-  setRs485Transmit(true);
-  rs485Serial.write(request, sizeof(request));
-  rs485Serial.flush();
-  setRs485Transmit(false);
-  serviceWatchdog();
-
-  uint8_t response[8] = {};
-  uint8_t count = 0;
-  const uint32_t startedAt = millis();
-
-  while (millis() - startedAt < timeoutMs && count < sizeof(response)) {
-    serviceWatchdog();
-
-    if (rs485Serial.available() > 0) {
-      response[count++] = static_cast<uint8_t>(rs485Serial.read());
-    } else {
-      delay(2);
-    }
-  }
-
-  if (count != sizeof(response)) {
-    return false;
-  }
-
-  const uint16_t receivedCrc = static_cast<uint16_t>(response[6]) | (static_cast<uint16_t>(response[7]) << 8);
-  const uint16_t expectedCrc = crc16Modbus(response, 6);
-  if (receivedCrc != expectedCrc) {
-    return false;
-  }
-
-  for (uint8_t i = 0; i < sizeof(request); i += 1) {
-    if (response[i] != request[i]) {
-      return false;
-    }
-  }
-
-  lastRs485TransactionMs = millis();
-  return true;
-}
-
-SoilThecReading readSoilThec() {
-  ensureRs485Baud(RS485_BAUD);
-
-  uint16_t regs[THEC_REG_COUNT] = {};
-  bool readOk = false;
-
-  for (uint8_t attempt = 1; attempt <= SOIL_THEC_READ_RETRIES; ++attempt) {
-    for (uint8_t i = 0; i < THEC_REG_COUNT; ++i) regs[i] = 0;
-
-    if (readHoldingRegisters(SOIL_THEC_SLAVE_ID, THEC_START_REG, THEC_REG_COUNT, regs, SOIL_THEC_TIMEOUT_MS)) {
-      readOk = true;
-      break;
-    }
-
-    if (attempt < SOIL_THEC_READ_RETRIES) {
-      Serial.printf("[THEC] Doc Modbus lan %u/%u that bai, thu lai...\n",
-                    static_cast<unsigned int>(attempt),
-                    static_cast<unsigned int>(SOIL_THEC_READ_RETRIES));
-      delay(SOIL_THEC_RETRY_GAP_MS);
-    }
-  }
-
-  if (!readOk) {
-    lastSoilThecRawOk = false;
-    return {
-      {false, NAN, "modbus_error"},
-      {false, NAN, "modbus_error"},
-      {false, NAN, "modbus_error"},
-      {false, NAN, "modbus_error"},
-      {false, NAN, "modbus_error"},
-    };
-  }
-
-  lastSoilThecRawOk = true;
-  for (uint8_t i = 0; i < THEC_REG_COUNT; i += 1) {
-    lastSoilThecRegs[i] = regs[i];
-  }
-
-  Serial.printf("[THEC RAW] 0000=%u 0001=%u 0002=%u 0003=%u 0004=%u\n",
-                regs[0], regs[1], regs[2], regs[3], regs[4]);
-
-  if (regs[0] > 0 && regs[1] == 0 && regs[2] == 0 && regs[3] == 0 && regs[4] == 0) {
-    Serial.println("[THEC] CANH BAO: Modbus OK nhung chi do_am co gia_tri; temp/EC/salinity/TDS deu RAW=0");
-  }
-
-  const float moisturePct = regs[0] / 10.0f;
-  const int16_t rawTemp = static_cast<int16_t>(regs[1]);
-  const float tempC = rawTemp / 10.0f;
-  const float ecUsCm = static_cast<float>(regs[2]);
-  const float salinity = static_cast<float>(regs[3]);
-  const float tds = static_cast<float>(regs[4]);
-
-  return {
-    {true, moisturePct, "ok"},
-    {true, tempC, "ok"},
-    {true, ecUsCm, "ok"},
-    {true, salinity, "ok"},
-    {true, tds, "ok"},
-  };
-}
-
-SensorValue readSoilPh() {
-  ensureRs485Baud(activeSoilPhBaud);
-
-  uint16_t regs[PH_REG_COUNT] = {};
-  for (uint8_t attempt = 1; attempt <= SOIL_PH_READ_RETRIES; attempt += 1) {
-    if (readHoldingRegisters(activeSoilPhSlaveId, PH_START_REG, PH_REG_COUNT, regs, SOIL_PH_TIMEOUT_MS)) {
-      lastSoilPhRaw = regs[0];
-      lastSoilPhRawValid = true;
-      Serial.printf("[PH RAW] ID=%u baud=%lu 0000=%u -> pH=%.1f (lan %u/%u)\n",
-                    activeSoilPhSlaveId,
-                    static_cast<unsigned long>(activeSoilPhBaud),
-                    regs[0],
-                    regs[0] / 10.0f,
-                    attempt,
-                    static_cast<unsigned int>(SOIL_PH_READ_RETRIES));
-
-      const float ph = regs[0] / 10.0f;
-      if (ph < 0.0f || ph > 14.0f) {
-        return {false, ph, "out_of_range"};
-      }
-      return {true, ph, "ok"};
-    }
-    if (attempt < SOIL_PH_READ_RETRIES) delay(SOIL_PH_RETRY_GAP_MS);
-  }
-
-  lastSoilPhRawValid = false;
-  Serial.printf("[PH RAW] ID=%u baud=%lu KHONG_PHAN_HOI sau %u lan\n",
-                activeSoilPhSlaveId,
-                static_cast<unsigned long>(activeSoilPhBaud),
-                static_cast<unsigned int>(SOIL_PH_READ_RETRIES));
-  return {false, NAN, "modbus_error"};
-}
-
-bool diagnosePhAddressRegister() {
-  ensureRs485Baud(activeSoilPhBaud);
-  uint16_t addrReg[1] = {};
-  if (!readHoldingRegisters(activeSoilPhSlaveId, PH_DEVICE_ADDRESS_REG, 1, addrReg, 900)) {
-    Serial.printf("[PH DIAG] ID=%u khong doc duoc thanh ghi 07D0H - co the sai ID/baud hoac khong phai module pH\n", activeSoilPhSlaveId);
-    return false;
-  }
-  Serial.printf("[PH DIAG] ID dang doc=%u | thanh ghi 07D0H tra ve=%u\n", activeSoilPhSlaveId, addrReg[0]);
-  return addrReg[0] == activeSoilPhSlaveId;
-}
-
-void setupPhAddressIfRequested() {
-  if (!DEBUG_PH_ADDRESS_SETUP_MODE || DEBUG_SKIP_PH_SENSOR) {
-    return;
-  }
-
-  Serial.println("[PH SETUP] Dang cai dia chi pH - chi noi rieng cam bien pH vao RS485");
-
-  for (uint8_t baudIndex = 0; baudIndex < sizeof(PH_BAUD_CANDIDATES) / sizeof(PH_BAUD_CANDIDATES[0]); baudIndex += 1) {
-    const uint32_t baud = PH_BAUD_CANDIDATES[baudIndex];
-    ensureRs485Baud(baud);
-
-    uint16_t regs[PH_REG_COUNT] = {};
-    if (!readHoldingRegisters(1, PH_START_REG, PH_REG_COUNT, regs, 800)) {
-      Serial.printf("[PH SETUP] baud=%lu dia_chi_mac_dinh=1 khong_phan_hoi\n", static_cast<unsigned long>(baud));
-      continue;
-    }
-
-    Serial.printf("[PH SETUP] baud=%lu dia_chi_mac_dinh=1 raw=%u ph=%.1f\n",
-                  static_cast<unsigned long>(baud),
-                  regs[0],
-                  regs[0] / 10.0f);
-
-    if (!writeSingleRegister(1, PH_DEVICE_ADDRESS_REG, SOIL_PH_SLAVE_ID, 800)) {
-      Serial.println("[PH SETUP] Ghi dia chi moi that bai");
-      return;
-    }
-
-    delay(300);
-
-    if (!readHoldingRegisters(SOIL_PH_SLAVE_ID, PH_START_REG, PH_REG_COUNT, regs, 800)) {
-      Serial.println("[PH SETUP] Da ghi dia chi nhung dia chi moi khong phan hoi");
-      return;
-    }
-
-    activeSoilPhSlaveId = SOIL_PH_SLAVE_ID;
-    activeSoilPhBaud = baud;
-    Serial.printf("[PH SETUP] Da doi dia chi pH sang %u baud=%lu raw=%u ph=%.1f\n",
-                  activeSoilPhSlaveId,
-                  static_cast<unsigned long>(activeSoilPhBaud),
-                  regs[0],
-                  regs[0] / 10.0f);
-    return;
-  }
-
-  Serial.println("[PH SETUP] Khong tim thay dia chi mac dinh=1 tai 2400/4800/9600");
-}
-
-bool ina226ReadRegister(uint8_t reg, uint16_t &value) {
-  Wire.beginTransmission(INA226_ADDRESS);
-  Wire.write(reg);
-  if (Wire.endTransmission(false) != 0) {
-    return false;
-  }
-
-  if (Wire.requestFrom(static_cast<int>(INA226_ADDRESS), 2) != 2) {
-    return false;
-  }
-
-  value = (static_cast<uint16_t>(Wire.read()) << 8) | static_cast<uint16_t>(Wire.read());
-  return true;
-}
-
-bool ina226WriteRegister(uint8_t reg, uint16_t value) {
-  Wire.beginTransmission(INA226_ADDRESS);
-  Wire.write(reg);
-  Wire.write(static_cast<uint8_t>(value >> 8));
-  Wire.write(static_cast<uint8_t>(value & 0xFF));
-  return Wire.endTransmission() == 0;
-}
-
-bool setupIna226() {
-  uint16_t config = 0;
-  if (!ina226ReadRegister(INA226_REG_CONFIG, config)) {
-    return false;
-  }
-
-  return ina226WriteRegister(INA226_REG_CONFIG, 0x4527);
-}
-
-float estimateLifePo4Percent(float packVoltage) {
-  if (!isfinite(packVoltage) || LIFEPO4_CELL_COUNT == 0) {
-    return NAN;
-  }
-
-  const float cellVoltage = packVoltage / LIFEPO4_CELL_COUNT;
-  const float pointsV[] = {2.80f, 3.00f, 3.10f, 3.20f, 3.25f, 3.30f, 3.35f, 3.40f, 3.50f, 3.60f};
-  const float pointsPct[] = {0.0f, 5.0f, 10.0f, 20.0f, 40.0f, 60.0f, 80.0f, 90.0f, 98.0f, 100.0f};
-  const uint8_t pointCount = sizeof(pointsV) / sizeof(pointsV[0]);
-
-  if (cellVoltage <= pointsV[0]) {
-    return 0.0f;
-  }
-  if (cellVoltage >= pointsV[pointCount - 1]) {
-    return 100.0f;
-  }
-
-  for (uint8_t i = 1; i < pointCount; i += 1) {
-    if (cellVoltage <= pointsV[i]) {
-      const float spanV = pointsV[i] - pointsV[i - 1];
-      const float ratio = spanV > 0 ? (cellVoltage - pointsV[i - 1]) / spanV : 0.0f;
-      return pointsPct[i - 1] + ratio * (pointsPct[i] - pointsPct[i - 1]);
-    }
-  }
-
-  return NAN;
-}
-
-BatteryReading readBattery() {
-  if (!ina226Ready) {
-    return {false, NAN, NAN, "ina226_not_ready"};
-  }
-
-  uint16_t rawBus = 0;
-  if (!ina226ReadRegister(INA226_REG_BUS_VOLTAGE, rawBus)) {
-    return {false, NAN, NAN, "bus_read_error"};
-  }
-
-  const float voltageV = rawBus * 0.00125f;
-  const float percent = estimateLifePo4Percent(voltageV);
-  return {true, voltageV, percent, "ok"};
-}
-
-float ecUsCmToMsCm(float ecUsCm) {
-  if (!isfinite(ecUsCm)) {
-    return NAN;
-  }
-  return ecUsCm / 1000.0f;
-}
-
-const char *buildGrapefruitAdvice(float moisturePct, float ecMsCm, float ph) {
-  if (isfinite(moisturePct) && moisturePct > 80.0f) {
-    return "soil_too_wet_stop_pump_check_root_rot_risk";
-  }
-  if (isfinite(moisturePct) && moisturePct < 35.0f) {
-    return "soil_too_dry_consider_irrigation";
-  }
-  if (isfinite(ecMsCm) && ecMsCm >= 2.0f) {
-    return "soil_ec_high_reduce_fertilizer_flush_salt";
-  }
-  if (isfinite(ecMsCm) && ecMsCm >= 1.5f) {
-    return "soil_ec_warning_monitor_before_fertilizing";
-  }
-  if (isfinite(ph) && ph < 5.0f) {
-    return "soil_too_acidic_check_lime_and_nutrient_plan";
-  }
-  if (isfinite(ph) && ph > 7.0f) {
-    return "soil_too_alkaline_watch_micronutrient_deficiency";
-  }
-  if (isfinite(ph) && (ph < 5.5f || ph > 6.5f)) {
-    return "soil_ph_near_edge_monitor_grapefruit_root_zone";
-  }
-  return "soil_conditions_suitable_continue_monitoring";
-}
-
-float filteredAverage(float *values, uint8_t count) {
-  if (count == 0) {
-    return NAN;
-  }
-  if (count < 4) {
-    float sum = 0.0f;
-    for (uint8_t i = 0; i < count; i += 1) {
-      sum += values[i];
-    }
-    return sum / count;
-  }
-
-  float minValue = values[0];
-  float maxValue = values[0];
-  float sum = 0.0f;
-  for (uint8_t i = 0; i < count; i += 1) {
-    minValue = min(minValue, values[i]);
-    maxValue = max(maxValue, values[i]);
-    sum += values[i];
-  }
-
-  return (sum - minValue - maxValue) / (count - 2);
-}
-
-float averageFinite(const float *values, uint8_t count) {
-  float sum = 0.0f;
-  uint8_t valid = 0;
-  for (uint8_t i = 0; i < count; i += 1) {
-    if (isfinite(values[i])) {
-      sum += values[i];
-      valid += 1;
-    }
-  }
-  return valid > 0 ? sum / valid : NAN;
-}
-
-MinuteReading collectMinuteReading() {
-  float airTempC[RAW_SAMPLES_PER_MINUTE] = {};
-  float airHumidityPct[RAW_SAMPLES_PER_MINUTE] = {};
-  float soilTempC[RAW_SAMPLES_PER_MINUTE] = {};
-  float soilMoisturePct[RAW_SAMPLES_PER_MINUTE] = {};
-  float soilEcUsCm[RAW_SAMPLES_PER_MINUTE] = {};
-  float soilEcMsCm[RAW_SAMPLES_PER_MINUTE] = {};
-  float soilSalinity[RAW_SAMPLES_PER_MINUTE] = {};
-  float soilTds[RAW_SAMPLES_PER_MINUTE] = {};
-  float soilPh[RAW_SAMPLES_PER_MINUTE] = {};
-
-  uint8_t ambientCount = 0;
-  uint8_t soilCount = 0;
-  uint8_t phCount = 0;
-  const char *ambientStatus = "no_valid_sample";
-  const char *soilStatus = "no_valid_sample";
-  const char *phStatus = "no_valid_sample";
-
-  for (uint8_t i = 0; i < RAW_SAMPLES_PER_MINUTE; i += 1) {
-    serviceWatchdog();
-
-    const Sht30Reading ambient = readSht30();
-    if (ambient.airTempC.ok && ambient.airHumidityPct.ok) {
-      airTempC[ambientCount] = ambient.airTempC.value;
-      airHumidityPct[ambientCount] = ambient.airHumidityPct.value;
-      ambientCount += 1;
-    }
-    ambientStatus = ambient.airTempC.ok ? ambient.airHumidityPct.status : ambient.airTempC.status;
-
-    const SoilThecReading soil = readSoilThec();
-    if (soil.soilMoisturePct.ok && soil.soilTempC.ok && soil.soilEcUsCm.ok) {
-      soilTempC[soilCount] = soil.soilTempC.value;
-      soilMoisturePct[soilCount] = soil.soilMoisturePct.value;
-      soilEcUsCm[soilCount] = soil.soilEcUsCm.value;
-      soilEcMsCm[soilCount] = ecUsCmToMsCm(soil.soilEcUsCm.value);
-      soilSalinity[soilCount] = soil.soilSalinity.value;
-      soilTds[soilCount] = soil.soilTds.value;
-      soilCount += 1;
-    }
-    soilStatus = soil.soilEcUsCm.status;
-
-    SensorValue ph = {false, NAN, "disabled"};
-    if (!DEBUG_SKIP_PH_SENSOR) {
-      ph = readSoilPh();
-    }
-
-    if (ph.ok) {
-      soilPh[phCount++] = ph.value;
-    }
-    phStatus = ph.status;
-
-    if (DEBUG_RAW_SENSOR_SAMPLES) {
-      Serial.printf("[MAU THO %u/%u]\n",
-                    static_cast<unsigned int>(i + 1),
-                    static_cast<unsigned int>(RAW_SAMPLES_PER_MINUTE));
-
-      Serial.print("  Khong khi: ");
-      Serial.print(ambient.airTempC.ok && ambient.airHumidityPct.ok ? "binh_thuong" : statusToVietnamese(ambientStatus));
-      if (ambient.airTempC.ok && ambient.airHumidityPct.ok) {
-        Serial.printf(" | Nhiet do khong khi: %.1f C | Do am khong khi: %.1f %%",
-                      ambient.airTempC.value,
-                      ambient.airHumidityPct.value);
-      }
-      Serial.println();
-
-      Serial.print("  Cam bien dat: ");
-      Serial.print(soil.soilMoisturePct.ok && soil.soilTempC.ok && soil.soilEcUsCm.ok ? "binh_thuong" : statusToVietnamese(soilStatus));
-      if (soil.soilMoisturePct.ok && soil.soilTempC.ok && soil.soilEcUsCm.ok) {
-        Serial.printf(" | Do am dat: %.1f %% | Nhiet do dat: %.1f C | EC dat: %.0f uS/cm (%.3f mS/cm) | Do man dat: %.0f | TDS dat: %.0f",
-                      soil.soilMoisturePct.value,
-                      soil.soilTempC.value,
-                      soil.soilEcUsCm.value,
-                      ecUsCmToMsCm(soil.soilEcUsCm.value),
-                      soil.soilSalinity.value,
-                      soil.soilTds.value);
-      }
-      Serial.println();
-
-      Serial.print("  Du lieu tho cam bien dat:");
-      if (lastSoilThecRawOk) {
-        for (uint8_t regIndex = 0; regIndex < THEC_REG_COUNT; regIndex += 1) {
-          Serial.printf(" %04X=%u",
-                        THEC_START_REG + regIndex,
-                        lastSoilThecRegs[regIndex]);
-        }
-      } else {
-        Serial.print(" loi_modbus");
-      }
-      Serial.println();
-
-      Serial.print("  pH dat: ");
-      if (ph.ok) {
-        Serial.printf("%.1f", ph.value);
-      } else {
-        Serial.printf("%s | Dang doc Modbus ID: %u | Baud: %lu",
-                      statusToVietnamese(ph.status),
-                      activeSoilPhSlaveId,
-                      static_cast<unsigned long>(activeSoilPhBaud));
-      }
-
-      Serial.println();
-    }
-
-    delay(RAW_SAMPLE_GAP_MS);
-  }
-
-  const bool ambientOk = ambientCount >= MIN_VALID_RAW_SAMPLES;
-  const bool soilOk = soilCount >= MIN_VALID_RAW_SAMPLES;
-  const bool phOk = phCount >= MIN_VALID_RAW_SAMPLES;
-  const BatteryReading battery = readBattery();
-
-  if (!ambientOk) {
-    Serial.printf("[KHI HAU] SHT30 loi=%s SDA=IO%d SCL=IO%d\n",
-                  statusToVietnamese(ambientStatus),
-            SHT30_SDA_PIN,
-            SHT30_SCL_PIN);
-  }
-
-  const float filteredMoisture = soilOk ? filteredAverage(soilMoisturePct, soilCount) : NAN;
-  const float filteredEcMsCm = soilOk ? filteredAverage(soilEcMsCm, soilCount) : NAN;
-  const float filteredPh = phOk ? filteredAverage(soilPh, phCount) : NAN;
-  const char *advice = buildGrapefruitAdvice(filteredMoisture, filteredEcMsCm, filteredPh);
-
-  return {
-    ambientOk,
-    soilOk,
-    phOk,
-    battery.ok,
-    ambientOk ? filteredAverage(airTempC, ambientCount) : NAN,
-    ambientOk ? filteredAverage(airHumidityPct, ambientCount) : NAN,
-    soilOk ? filteredAverage(soilTempC, soilCount) : NAN,
-    filteredMoisture,
-    soilOk ? filteredAverage(soilEcUsCm, soilCount) : NAN,
-    filteredEcMsCm,
-    soilOk ? filteredAverage(soilSalinity, soilCount) : NAN,
-    soilOk ? filteredAverage(soilTds, soilCount) : NAN,
-    filteredPh,
-    battery.voltageV,
-    battery.percent,
-    ambientCount,
-    soilCount,
-    phCount,
-    ambientOk ? "ok" : ambientStatus,
-    soilOk ? "ok" : soilStatus,
-    phOk ? "ok" : phStatus,
-    battery.status,
-    advice,
-  };
-}
-
-void pushAggregateMinute(const MinuteReading &reading) {
-  if (aggregateCount >= MINUTE_RECORDS_PER_PACKET) {
-    aggregateCount = 0;
-  }
-
-  aggregateAirTempC[aggregateCount] = reading.airTempC;
-  aggregateAirHumidityPct[aggregateCount] = reading.airHumidityPct;
-  aggregateSoilTempC[aggregateCount] = reading.soilTempC;
-  aggregateSoilMoisturePct[aggregateCount] = reading.soilMoisturePct;
-  aggregateSoilEcUsCm[aggregateCount] = reading.soilEcUsCm;
-  aggregateSoilEcMsCm[aggregateCount] = reading.soilEcMsCm;
-  aggregateSoilSalinity[aggregateCount] = reading.soilSalinity;
-  aggregateSoilTds[aggregateCount] = reading.soilTds;
-  aggregateSoilPh[aggregateCount] = reading.soilPh;
-  aggregateBatteryVoltageV[aggregateCount] = reading.batteryVoltageV;
-  aggregateBatteryPercent[aggregateCount] = reading.batteryPercent;
-  aggregateCount += 1;
-}
-
-AggregateReading buildAggregateReading() {
-  const float moisture = averageFinite(aggregateSoilMoisturePct, aggregateCount);
-  const float ecMsCm = averageFinite(aggregateSoilEcMsCm, aggregateCount);
-  const float ph = averageFinite(aggregateSoilPh, aggregateCount);
-
-  return {
-    averageFinite(aggregateAirTempC, aggregateCount),
-    averageFinite(aggregateAirHumidityPct, aggregateCount),
-    averageFinite(aggregateSoilTempC, aggregateCount),
-    moisture,
-    averageFinite(aggregateSoilEcUsCm, aggregateCount),
-    ecMsCm,
-    averageFinite(aggregateSoilSalinity, aggregateCount),
-    averageFinite(aggregateSoilTds, aggregateCount),
-    ph,
-    averageFinite(aggregateBatteryVoltageV, aggregateCount),
-    averageFinite(aggregateBatteryPercent, aggregateCount),
-    aggregateCount,
-    buildGrapefruitAdvice(moisture, ecMsCm, ph),
-  };
-}
-
-String buildMinutePayload(const MinuteReading &reading) {
-  String payload;
-  payload.reserve(880);
-  payload += "{\"type\":\"minute_reading\",\"station_id\":\"";
-  payload += STATION_ID;
-  payload += "\",\"firmware_version\":\"";
-  payload += FIRMWARE_VERSION;
-  payload += "\",\"uptime_ms\":";
-  payload += String(millis());
-  payload += ",\"crop\":\"grapefruit\",\"air_temp_c\":";
-  payload += numberOrNull(reading.airTempC, 1);
-  payload += ",\"air_humidity_pct\":";
-  payload += numberOrNull(reading.airHumidityPct, 1);
-  payload += ",\"soil_temp_c\":";
-  payload += numberOrNull(reading.soilTempC, 1);
-  payload += ",\"soil_moisture_pct\":";
-  payload += numberOrNull(reading.soilMoisturePct, 1);
-  payload += ",\"soil_ec_us_cm\":";
-  payload += numberOrNull(reading.soilEcUsCm, 0);
-  payload += ",\"soil_ec_ms_cm\":";
-  payload += numberOrNull(reading.soilEcMsCm, 3);
-  payload += ",\"soil_salinity\":";
-  payload += numberOrNull(reading.soilSalinity, 0);
-  payload += ",\"soil_tds\":";
-  payload += numberOrNull(reading.soilTds, 0);
-  payload += ",\"soil_ph\":";
-  payload += numberOrNull(reading.soilPh, 1);
-  payload += ",\"battery_voltage_v\":";
-  payload += numberOrNull(reading.batteryVoltageV, 2);
-  payload += ",\"battery_percent\":";
-  payload += numberOrNull(reading.batteryPercent, 1);
-  payload += ",\"valid_ambient_samples\":";
-  payload += String(reading.validAmbientSamples);
-  payload += ",\"valid_soil_samples\":";
-  payload += String(reading.validSoilSamples);
-  payload += ",\"valid_ph_samples\":";
-  payload += String(reading.validPhSamples);
-  payload += ",\"ambient_status\":\"";
-  payload += reading.ambientStatus;
-  payload += "\",\"soil_status\":\"";
-  payload += reading.soilStatus;
-  payload += "\",\"ph_status\":\"";
-  payload += reading.phStatus;
-  payload += "\",\"battery_status\":\"";
-  payload += reading.batteryStatus;
-  payload += "\",\"advice\":\"";
-  payload += reading.grapefruitAdvice;
-  payload += "\"}";
-  return payload;
-}
-
-String buildAggregatePayload(const AggregateReading &reading, const char *messageId) {
-  String payload;
-  payload.reserve(900);
-  payload += "{\"type\":\"station_summary\",\"station_id\":\"";
-  payload += STATION_ID;
-  payload += "\",\"firmware_version\":\"";
-  payload += FIRMWARE_VERSION;
-  payload += "\",\"message_id\":\"";
-  payload += messageId;
-  payload += "\",\"sequence\":";
-  payload += String(sequenceNumber);
-  payload += ",\"uptime_ms\":";
-  payload += String(millis());
-  payload += ",\"summary_minutes\":";
-  payload += String(reading.minuteCount);
-  payload += ",\"crop\":\"grapefruit\",\"air_temp_c\":";
-  payload += numberOrNull(reading.airTempC, 1);
-  payload += ",\"air_humidity_pct\":";
-  payload += numberOrNull(reading.airHumidityPct, 1);
-  payload += ",\"soil_temp_c\":";
-  payload += numberOrNull(reading.soilTempC, 1);
-  payload += ",\"soil_moisture_pct\":";
-  payload += numberOrNull(reading.soilMoisturePct, 1);
-  payload += ",\"soil_ec_us_cm\":";
-  payload += numberOrNull(reading.soilEcUsCm, 0);
-  payload += ",\"soil_ec_ms_cm\":";
-  payload += numberOrNull(reading.soilEcMsCm, 3);
-  payload += ",\"soil_salinity\":";
-  payload += numberOrNull(reading.soilSalinity, 0);
-  payload += ",\"soil_tds\":";
-  payload += numberOrNull(reading.soilTds, 0);
-  payload += ",\"soil_ph\":";
-  payload += numberOrNull(reading.soilPh, 1);
-  payload += ",\"battery_voltage_v\":";
-  payload += numberOrNull(reading.batteryVoltageV, 2);
-  payload += ",\"battery_percent\":";
-  payload += numberOrNull(reading.batteryPercent, 1);
-  payload += ",\"advice\":\"";
-  payload += reading.grapefruitAdvice;
-  payload += "\"}";
-  return payload;
-}
-
-String buildLoraTestPayload(const char *messageId) {
-  String payload;
-  payload.reserve(120);
-  payload += "{\"type\":\"ping\",\"station_id\":\"";
-  payload += STATION_ID;
-  payload += "\",\"firmware_version\":\"";
-  payload += FIRMWARE_VERSION;
-  payload += "\",\"message_id\":\"";
-  payload += messageId;
-  payload += "\"}";
-  return payload;
-}
-
-bool waitForAck(const char *messageId, uint32_t timeoutMs) {
-  if (DEBUG_DISABLE_LORA_UART) {
-    return false;
-  }
-
-  const uint32_t startedAt = millis();
   String line;
 
-  while (millis() - startedAt < timeoutMs) {
+
+  while (
+    millis() - startedAt <
+    timeoutMs
+  ) {
+
     serviceWatchdog();
-    while (loraSerial.available() > 0) {
-      const char c = static_cast<char>(loraSerial.read());
+
+
+    while (
+      loraSerial.available() > 0
+    ) {
+
+      const char c =
+        static_cast<char>(
+          loraSerial.read()
+        );
+
+
       if (c == '\n') {
+
         line.trim();
-        if (line.indexOf("\"type\":\"ack\"") >= 0 && line.indexOf(messageId) >= 0) {
+
+
+        if (
+          line.indexOf(
+            "\"type\":\"ack\""
+          ) >= 0 &&
+
+          line.indexOf(
+            messageId
+          ) >= 0
+        ) {
+
           return true;
         }
+
+
         applyConfigCommand(line);
+
+
         line = "";
-      } else if (c != '\r') {
+      }
+
+
+      else if (c != '\r') {
+
         line += c;
+
+
         if (line.length() > 420) {
           line = "";
         }
       }
     }
+
+
     delay(10);
   }
+
 
   return false;
 }
 
+
+// ============================================================
+// DEEP SLEEP
+// ============================================================
+
+void maybeEnterConfiguredSleep() {
+
+  if (
+    configuredSleepIntervalMs == 0
+  ) {
+
+    return;
+  }
+
+
+  Serial.printf(
+    "[NGUON] Ngu sau %lu giay\n",
+    configuredSleepIntervalMs /
+    1000UL
+  );
+
+
+  Serial.flush();
+
+
+  esp_sleep_enable_timer_wakeup(
+    static_cast<uint64_t>(
+      configuredSleepIntervalMs
+    ) * 1000ULL
+  );
+
+
+  esp_deep_sleep_start();
+}
+
+
+// ============================================================
+// SEND AGGREGATE
+// ============================================================
+
 void sendAggregateIfReady() {
+
   if (aggregateCount < MINUTE_RECORDS_PER_PACKET) {
     return;
   }
 
+  // Only transmit after this station was explicitly polled.
   if (!gatewayPollPending) {
     return;
   }
   gatewayPollPending = false;
 
-  if (DEBUG_DISABLE_LORA_UART) {
+  if (!loraReady) {
     Serial.println("[LORA] UART dang tat - giu goi tong hop de gui lai");
     return;
   }
 
   if (pendingSequence == 0) {
-    sequenceNumber += 1;
+    sequenceNumber++;
     pendingSequence = sequenceNumber;
   }
 
@@ -1261,15 +2690,14 @@ void sendAggregateIfReady() {
   );
 
   const AggregateReading aggregate = buildAggregateReading();
-  const String payload = LORA_TEST_SHORT_PACKET
-    ? buildLoraTestPayload(messageId)
-    : buildAggregatePayload(aggregate, messageId);
+  const String payload = buildAggregatePayload(aggregate, messageId);
 
   Serial.printf("[LORA] Gateway poll -> bat dau BURST %u lan cho %s\n",
                 LORA_TX_BURST_COUNT,
                 messageId);
   Serial.println(payload);
 
+  // Give the gateway/module time to finish TX->RX switching after the poll.
   delay(LORA_REPLY_GUARD_MS);
 
   // Remove stale poll/garbage bytes before the first data transmission.
@@ -1308,10 +2736,12 @@ void sendAggregateIfReady() {
     }
   }
 
-  Serial.printf("[LORA] Ket qua %s: %s, da_gui=%u\n",
-                messageId,
-                ackOk ? "da_nhan" : "chua_nhan_duoc",
-                sentCopies);
+  Serial.printf(
+    "[LORA] Ket qua %s: %s, da_gui=%u\n",
+    messageId,
+    ackOk ? "da_nhan" : "chua_nhan_duoc",
+    sentCopies
+  );
 
   String packetLog = payload;
   if (packetLog.endsWith("}")) {
@@ -1322,12 +2752,13 @@ void sendAggregateIfReady() {
   packetLog += ",\"tx_copies\":";
   packetLog += String(sentCopies);
   packetLog += "}";
+
   Serial.printf("[LOG-PACKET] %s\n", packetLog.c_str());
 
   if (ackOk) {
+    Serial.println("[LORA] Gateway da xac nhan - xoa aggregate");
     aggregateCount = 0;
     pendingSequence = 0;
-    Serial.println("[LORA] Gateway da ACK - xoa aggregate va cho chu ky moi");
     maybeEnterConfiguredSleep();
   } else {
     Serial.println("[LORA] Het burst van khong ACK - GIU aggregate + message_id cho poll sau");
@@ -1339,8 +2770,8 @@ void sendAggregateIfReady() {
 // SIMPLE LORA QoS1 WIRE PROTOCOL
 // ============================================================
 // No poll, no long JSON over LoRa.
-// Packet: S2|seq|minutes|airT|airH|soilT|moist|ec_ms|sal|tds|ph|bat_v|bat_pct|CRC16
-// ACK:    A2|seq
+// Packet: S1|seq|minutes|distance|water|ec_ms|temp|tds|sal_ppt|bat_v|bat_pct|CRC16
+// ACK:    A1|seq
 // The same sequence is retried FOREVER until ACK is received.
 
 static uint32_t simpleNextTxMs = 0;
@@ -1364,18 +2795,16 @@ String simpleFloat(float value, uint8_t decimals) {
 
 String buildSimpleLoRaPacket(const AggregateReading &r, uint32_t seq) {
   String body;
-  body.reserve(170);
-  body += "S2|";
+  body.reserve(140);
+  body += "S1|";
   body += String(seq);
   body += "|"; body += String(r.minuteCount);
-  body += "|"; body += simpleFloat(r.airTempC, 1);
-  body += "|"; body += simpleFloat(r.airHumidityPct, 1);
-  body += "|"; body += simpleFloat(r.soilTempC, 1);
-  body += "|"; body += simpleFloat(r.soilMoisturePct, 1);
-  body += "|"; body += simpleFloat(r.soilEcMsCm, 3);
-  body += "|"; body += simpleFloat(r.soilSalinity, 0);
-  body += "|"; body += simpleFloat(r.soilTds, 0);
-  body += "|"; body += simpleFloat(r.soilPh, 1);
+  body += "|"; body += simpleFloat(r.distanceCm, 1);
+  body += "|"; body += simpleFloat(r.waterLevelCm, 1);
+  body += "|"; body += simpleFloat(r.ecMsCm, 3);
+  body += "|"; body += simpleFloat(r.temperatureC, 1);
+  body += "|"; body += simpleFloat(r.tdsPpm, 0);
+  body += "|"; body += simpleFloat(r.salinityPpt, 3);
   body += "|"; body += simpleFloat(r.batteryVoltageV, 2);
   body += "|"; body += simpleFloat(r.batteryPercent, 1);
 
@@ -1387,7 +2816,7 @@ String buildSimpleLoRaPacket(const AggregateReading &r, uint32_t seq) {
 }
 
 bool waitSimpleAck(uint32_t seq, uint32_t timeoutMs) {
-  String expected = "A2|" + String(seq);
+  String expected = "A1|" + String(seq);
   String line;
   const uint32_t started = millis();
 
@@ -1411,12 +2840,11 @@ bool waitSimpleAck(uint32_t seq, uint32_t timeoutMs) {
 
 void readLoRaCommandsSimple() {
   // ACK is consumed synchronously by waitSimpleAck().
+  // No polling/config protocol is used in this reliability test build.
 }
 
 void sendAggregateIfReadySimple() {
-  // A minute record is still sent when THEC is unavailable. Its THEC fields
-  // remain unavailable in the packet; only aggregateCount controls batching.
-  if (aggregateCount < MINUTE_RECORDS_PER_PACKET || DEBUG_DISABLE_LORA_UART) return;
+  if (aggregateCount < MINUTE_RECORDS_PER_PACKET || !loraReady) return;
 
   const uint32_t now = millis();
   if (simpleNextTxMs != 0 && static_cast<int32_t>(now - simpleNextTxMs) < 0) return;
@@ -1425,8 +2853,8 @@ void sendAggregateIfReadySimple() {
     sequenceNumber += 1;
     pendingSequence = sequenceNumber;
     simpleTxAttempts = 0;
-    // Station 2 starts in a later window to reduce first-attempt collision.
-    simpleNextTxMs = millis() + 1100 + (esp_random() % 900);
+    // Station 1 gets the earlier first-send window.
+    simpleNextTxMs = millis() + 150 + (esp_random() % 750);
     return;
   }
 
@@ -1453,112 +2881,376 @@ void sendAggregateIfReadySimple() {
     return;
   }
 
-  // Never give up. Different random window from Station 1 reduces lock-step collisions.
-  simpleNextTxMs = millis() + 2200 + (esp_random() % 3000);
+  // Never give up. Random backoff breaks repeated collisions with Station 2.
+  simpleNextTxMs = millis() + 1200 + (esp_random() % 2200);
 }
 
+// ============================================================
+// SETUP
+// ============================================================
+
 void setup() {
-  Serial.begin(DEBUG_BAUD);
-  delay(300);
+
+  // USB CDC diagnostics; ultrasonicSerial remains dedicated to UART0.
+  Serial.begin(
+    DEBUG_BAUD
+  );
+
+
+  delay(700);
+
+  Serial.println();
+  Serial.println(
+    "[KHOI DONG] Tram 1 bat dau chay"
+  );
+  Serial.println("[DEBUG] USB CDC Serial enabled; UART0 reserved for A02YYUW");
+  Serial.println("[UART MAP] UART0=A02YYUW | UART1=LoRa | UART2=EC RS485");
+  Serial.println("[I2C] INA226: SDA=IO19 SCL=IO20");
+  Serial.flush();
+
+
+  // ----------------------------------------------------------
+  // Watchdog
+  // ----------------------------------------------------------
 
   setupWatchdog();
 
-  if (RS485_DE_RE_PIN >= 0) {
-    pinMode(RS485_DE_RE_PIN, OUTPUT);
-  }
-  setRs485Transmit(false);
 
-  Wire.begin(INA226_SDA_PIN, INA226_SCL_PIN);
+  // ----------------------------------------------------------
+  // A02YYUW UART
+  // ----------------------------------------------------------
+
+  if (!DEBUG_SKIP_ULTRASONIC) {
+    pinMode(
+      A02YYUW_RX_PIN,
+      INPUT_PULLUP
+    );
+
+    ultrasonicSerial.begin(
+      A02YYUW_BAUD,
+      SERIAL_8N1,
+      A02YYUW_RX_PIN,
+      -1
+    );
+    Serial.printf("[UART0] A02YYUW RX=IO%d baud=%lu san_sang\n",
+                  A02YYUW_RX_PIN,
+                  static_cast<unsigned long>(A02YYUW_BAUD));
+  }
+
+
+  // ----------------------------------------------------------
+  // EC RS485 UART
+  // ----------------------------------------------------------
+
+  ecSerial.begin(
+    EC_RS485_BAUD,
+    SERIAL_8N1,
+    EC_RS485_RX_PIN,
+    EC_RS485_TX_PIN
+  );
+  Serial.printf("[UART2] EC RS485 RX=IO%d TX=IO%d baud=%lu san_sang\n",
+                EC_RS485_RX_PIN, EC_RS485_TX_PIN,
+                static_cast<unsigned long>(EC_RS485_BAUD));
+
+  if (EC_RS485_DE_RE_PIN >= 0) {
+    pinMode(
+      EC_RS485_DE_RE_PIN,
+      OUTPUT
+    );
+
+    setEcRs485Transmit(false);
+  }
+
+  scanEcModbus();
+
+
+  // ----------------------------------------------------------
+  // LoRa UART
+  // ----------------------------------------------------------
+
+  Serial.println(
+    "[LORA] Dang khoi dong UART"
+  );
+  Serial.flush();
+
+  if (DEBUG_DISABLE_LORA_UART) {
+    loraReady = false;
+
+    Serial.println(
+      "[LORA] UART dang tat de giu man hinh Serial"
+    );
+  } else {
+    loraSerial.begin(
+      LORA_UART_BAUD,
+      SERIAL_8N1,
+      LORA_UART_RX_PIN,
+      LORA_UART_TX_PIN
+    );
+
+    loraReady = true;
+    Serial.printf("[UART1] LoRa RX=IO%d TX=IO%d baud=%lu san_sang\n",
+                  LORA_UART_RX_PIN, LORA_UART_TX_PIN,
+                  static_cast<unsigned long>(LORA_UART_BAUD));
+  }
+
+
+  // ----------------------------------------------------------
+  // I2C + INA226 battery monitor
+  // ----------------------------------------------------------
+
+  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
   Wire.setClock(I2C_CLOCK_HZ);
   ina226Ready = setupIna226();
 
-  sht30Ready = sht30Wire.begin(SHT30_SDA_PIN, SHT30_SCL_PIN, I2C_CLOCK_HZ);
-  Serial.printf("[SHT30] SDA=IO%d SCL=IO%d dia_chi=0x%02X trang_thai=%s\n",
-                SHT30_SDA_PIN,
-                SHT30_SCL_PIN,
-                SHT30_I2C_ADDRESS,
-                sht30Ready ? "san_sang" : "khong_co");
 
-  ensureRs485Baud(RS485_BAUD);
-  // Khong bao gio doi Modbus ID trong firmware chay thuong.
-  // Cau hinh da chot: pH=ID1, THEC=ID2, cung baud 4800.
-  diagnosePhAddressRegister();
-
-  if (DEBUG_DISABLE_LORA_UART) {
-    pinMode(LORA_UART_RX_PIN, INPUT);
-    pinMode(LORA_UART_TX_PIN, INPUT);
-    Serial.println("[LORA] Tam tat UART de kiem tra nhiet module");
-  } else {
-    loraSerial.begin(LORA_UART_BAUD, SERIAL_8N1, LORA_UART_RX_PIN, LORA_UART_TX_PIN);
-    Serial.println("[LORA] SIMPLE QoS1: goi ngan + retry vo han den khi ACK");
-  }
+  // ----------------------------------------------------------
+  // ----------------------------------------------------------
+  // Startup information
+  // ----------------------------------------------------------
 
   Serial.println();
-  Serial.println("[HORIZON] Tram 2 do dat buoi dang khoi dong");
-  Serial.printf("[HORIZON] Tram: %s\n", STATION_ID);
-  Serial.printf("[HORIZON] Phien ban: %s\n", FIRMWARE_VERSION);
-  Serial.println("[RS485] BUS CHUNG: pH=ID1 | THEC=ID2 | baud=4800 | doc TUAN TU, khong ghi ID");
-  Serial.printf("[PIN] SDA=%d SCL=%d dia_chi=0x%02X trang_thai=%s\n",
-                INA226_SDA_PIN,
-                INA226_SCL_PIN,
-                INA226_ADDRESS,
-                ina226Ready ? "san_sang" : "khong_co");
-  Serial.printf("[KHI HAU] SHT30 SDA=IO%d SCL=IO%d trang_thai=cho_doc_lan_dau\n",
-                SHT30_SDA_PIN,
-                SHT30_SCL_PIN);
-  Serial.printf("[DAT RS485] baud=%lu TX=%d RX=%d tu_dong_doi_chieu=%s THEC_ID=%u PH_ID=%u PH_BAUD=%lu\n",
-                static_cast<unsigned long>(RS485_BAUD),
-                RS485_TX_PIN,
-                RS485_RX_PIN,
-                RS485_DE_RE_PIN < 0 ? "co" : "khong",
-                SOIL_THEC_SLAVE_ID,
-                activeSoilPhSlaveId,
-                static_cast<unsigned long>(activeSoilPhBaud));
-  Serial.printf("[LORA] RX=%d TX=%d baud=%lu trang_thai=%s\n",
-                LORA_UART_RX_PIN,
-                LORA_UART_TX_PIN,
-                static_cast<unsigned long>(LORA_UART_BAUD),
-                DEBUG_DISABLE_LORA_UART ? "tam_tat_de_do_nhiet" : "san_sang");
+
+  Serial.println(
+    "[HORIZON] Tram 1 do muc nuoc dang khoi dong"
+  );
+
+
+  Serial.printf(
+    "[HORIZON] Tram: %s\n",
+    STATION_ID
+  );
+
+
+  Serial.printf(
+    "[HORIZON] Phien ban: %s\n",
+    FIRMWARE_VERSION
+  );
+
+
+  Serial.printf(
+    "[SIEU AM] Chi dung chan RX IO%d\n",
+    A02YYUW_RX_PIN
+  );
+
+  Serial.println(
+    "[SIEU AM] Da bat keo len cho chan RX"
+  );
+
+  Serial.printf(
+    "[SIEU AM] trang_thai=%s\n",
+    DEBUG_SKIP_ULTRASONIC
+      ? "tat_de_debug_pin"
+      : "bat"
+  );
+
+  Serial.printf(
+    "[SIEU AM] Loc mau: trung_vi +/- %.1f cm, bo cuc tri roi lay trung binh\n",
+    A02YYUW_MAX_MEDIAN_DEVIATION_CM
+  );
+
+
+  Serial.printf(
+    "[SIEU AM] Chieu cao cam bien: %.1f cm\n",
+    SENSOR_HEIGHT_CM
+  );
+
+
+  Serial.printf(
+    "[EC NUOC] dia_chi=%u baud=%lu\n",
+    activeEcSlaveId,
+    static_cast<unsigned long>(
+      activeEcRs485Baud
+    )
+  );
+
+
+  Serial.printf(
+    "[EC NUOC] TX=%d RX=%d\n",
+    EC_RS485_TX_PIN,
+    EC_RS485_RX_PIN
+  );
+
+  Serial.printf(
+    "[EC NUOC] trang_thai=%s\n",
+    DEBUG_SKIP_EC
+      ? "tat_de_debug_pin"
+      : "bat"
+  );
+
+  if (EC_RS485_DE_RE_PIN >= 0) {
+    Serial.printf(
+      "[EC NUOC] DE/RE=IO%d\n",
+      EC_RS485_DE_RE_PIN
+    );
+  } else {
+    Serial.println(
+      "[EC NUOC] RS485 tu dong doi chieu"
+    );
+  }
+
+  Serial.printf(
+    "[EC NUOC] in khung Modbus=%s\n",
+    DEBUG_MODBUS_FRAMES ? "bat" : "tat"
+  );
+
+  Serial.printf(
+    "[I2C] SDA=%d SCL=%d INA226=0x%02X pin=%s\n",
+    I2C_SDA_PIN,
+    I2C_SCL_PIN,
+    INA226_ADDRESS,
+    ina226Ready ? "san_sang" : "khong_co"
+  );
+
+  Serial.printf(
+    "[PIN] dien_tro_shunt=%.3f ohm in_kiem_thu=%s\n",
+    INA226_SHUNT_OHMS,
+    DEBUG_BATTERY_READING ? "bat" : "tat"
+  );
+
+  Serial.println("[LORA] SIMPLE QoS1: goi ngan + retry vo han den khi ACK");
+
+  Serial.printf(
+    "[LORA] RX=%d TX=%d baud=%lu trang_thai=%s\n",
+    LORA_UART_RX_PIN,
+    LORA_UART_TX_PIN,
+    static_cast<unsigned long>(
+      LORA_UART_BAUD
+    ),
+    loraReady ? "san_sang" : "dang_tat"
+  );
+
+
   Serial.println("[LOG] Luu du lieu flash: tat");
-  Serial.printf("[KIEM THU] mau_tho=%s ph=%s\n",
-                DEBUG_RAW_SENSOR_SAMPLES ? "bat" : "tat",
-                DEBUG_SKIP_PH_SENSOR ? "tam_tat" : "bat");
-  Serial.printf("[NGUON] chu_ky_do=%lu giay ngu=%lu giay\n", SAMPLE_INTERVAL_MS / 1000UL, configuredSleepIntervalMs / 1000UL);
-  Serial.println("[HORIZON] Khoi dong xong, san sang do va gui du lieu");
+
+
+  Serial.printf(
+    "[RTC] so_thu_tu=%lu so_ban_ghi=%u goi_cho_xac_nhan=%lu\n",
+
+    static_cast<unsigned long>(
+      sequenceNumber
+    ),
+
+    aggregateCount,
+
+    static_cast<unsigned long>(
+      pendingSequence
+    )
+  );
+
+  Serial.printf(
+    "[CAU HINH] che_do=%s mau_moi_phut=%u mau_hop_le_toi_thieu=%u tong_hop=%u chu_ky_do=%lu giay\n",
+    LORA_TEST_FAST_SEND ? "kiem_thu_nhanh" : "chay_that",
+    RAW_SAMPLES_PER_MINUTE,
+    MIN_VALID_RAW_SAMPLES,
+    MINUTE_RECORDS_PER_PACKET,
+    static_cast<unsigned long>(
+      SAMPLE_INTERVAL_MS / 1000UL
+    )
+  );
+
+  Serial.println(
+    "[HORIZON] Khoi dong xong, san sang do va gui du lieu"
+  );
 }
 
+
+// ============================================================
+// LOOP
+// ============================================================
+
 void loop() {
-  serviceWatchdog();
+
+  // Watchdog disabled for debugging; no manual reset required.
+
+  // ----------------------------------------------------------
+  // Check incoming LoRa commands
+  // ----------------------------------------------------------
+
   readLoRaCommandsSimple();
 
-  // Reply immediately when this station is selected by the gateway.
+  // If a poll just arrived and an aggregate is ready, transmit immediately.
   sendAggregateIfReadySimple();
 
-  // Do not start another long sensor cycle while a five-minute packet is
-  // waiting for its ACK. This is especially important when sensors are
-  // disconnected and their Modbus reads consume several seconds.
-  if (pendingSequence != 0) {
+
+  // ----------------------------------------------------------
+  // Sampling interval
+  // ----------------------------------------------------------
+
+  const uint32_t now =
+    millis();
+
+
+  if (
+    lastSampleMs != 0 &&
+
+    now - lastSampleMs <
+    SAMPLE_INTERVAL_MS
+  ) {
+
     delay(20);
+
     return;
   }
 
-  const uint32_t now = millis();
-  if (lastSampleMs != 0 && now - lastSampleMs < SAMPLE_INTERVAL_MS) {
-    delay(20);
-    return;
-  }
-  lastSampleMs = now;
 
-  const MinuteReading minute = collectMinuteReading();
-  const String minutePayload = buildMinutePayload(minute);
+  // ----------------------------------------------------------
+  // Collect one minute record
+  // ----------------------------------------------------------
+
+  if (DEBUG_PRINT_SENSOR_CYCLE) {
+    Serial.println(
+      "[CAM BIEN] Dang lay mau..."
+    );
+  }
+
+
+  const MinuteReading minute =
+    collectMinuteReading();
+
+
+  // Important:
+  // start the next 1-minute interval AFTER
+  // this measurement cycle has completed.
+  lastSampleMs =
+    millis();
+
+
+  // ----------------------------------------------------------
+  // Log minute record
+  // ----------------------------------------------------------
+
+  const String minutePayload =
+    buildMinutePayload(
+      minute
+    );
+
 
   Serial.printf("[LOG-MINUTE] %s\n", minutePayload.c_str());
 
-  pushAggregateMinute(minute);
-  Serial.printf("[TONG HOP] %u/%u phut | THEC_mau_hop_le=%u | THEC_trang_thai=%s\n",
-                aggregateCount,
-                MINUTE_RECORDS_PER_PACKET,
-                minute.validSoilSamples,
-                minute.soilStatus);
+
+  // ----------------------------------------------------------
+  // Add to 5-minute aggregate
+  // ----------------------------------------------------------
+
+  pushAggregateMinute(
+    minute
+  );
+
+
+  if (DEBUG_PRINT_AGGREGATE_STATUS) {
+    Serial.printf(
+      "[TONG HOP] %u/%u phut\n",
+
+      aggregateCount,
+
+      MINUTE_RECORDS_PER_PACKET
+    );
+  }
+
+
+  // ----------------------------------------------------------
+  // Send every 5 minutes
+  // ----------------------------------------------------------
+
   sendAggregateIfReadySimple();
 }

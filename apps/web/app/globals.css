@@ -113,6 +113,10 @@
   --h-salinity: #0d8285;
   --h-water-level: #2563eb;
   --h-grid: rgba(19, 29, 27, 0.1);
+  --h-domain-water: rgba(13, 130, 133, 0.10);
+  --h-domain-soil: rgba(44, 158, 87, 0.10);
+  --h-domain-weather: rgba(37, 99, 235, 0.07);
+  --h-domain-infrastructure: rgba(19, 29, 27, 0.07);
 
   /* ----------------------------------------------------------------- WASH
    * Interaction surfaces. These replace scattered `bg-muted/20`,
@@ -209,6 +213,10 @@
     --h-salinity: #34b7b0;
     --h-water-level: #5b8def;
     --h-grid: rgba(255, 255, 255, 0.1);
+    --h-domain-water: rgba(52, 183, 176, 0.15);
+    --h-domain-soil: rgba(69, 192, 120, 0.14);
+    --h-domain-weather: rgba(91, 141, 239, 0.12);
+    --h-domain-infrastructure: rgba(160, 175, 190, 0.11);
 
     --h-wash-hover: rgba(255, 255, 255, 0.045);
     --h-wash-active: rgba(79, 176, 212, 0.1);
@@ -276,6 +284,10 @@
   --h-salinity: #34b7b0;
   --h-water-level: #5b8def;
   --h-grid: rgba(255, 255, 255, 0.1);
+  --h-domain-water: rgba(52, 183, 176, 0.15);
+  --h-domain-soil: rgba(69, 192, 120, 0.14);
+  --h-domain-weather: rgba(91, 141, 239, 0.12);
+  --h-domain-infrastructure: rgba(160, 175, 190, 0.11);
 
   --h-wash-hover: rgba(255, 255, 255, 0.045);
   --h-wash-active: rgba(79, 176, 212, 0.1);
