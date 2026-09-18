@@ -11,9 +11,9 @@ status: draft
 Trang chủ nói HORIZON đo nước, đất và không khí. Bài này nói bằng thiết bị gì,
 và vì sao lại là những thiết bị đó.
 
-Toàn bộ nội dung dưới đây là **thiết kế của hệ thống**. Phần cứng chưa được lắp
-đặt ngoài thực địa. Các sơ đồ trên trang chủ là hình minh họa kỹ thuật, không
-phải ảnh chụp thiết bị đã dựng.
+Nội dung dưới đây mô tả **phần cứng và đường dữ liệu hiện tại**. Ảnh thiết bị là
+ảnh dự án; bản đồ minh họa trên trang chủ vẫn là sơ đồ, không phải ảnh vệ tinh
+hay bằng chứng cho một lần kiểm định vật lý cụ thể.
 
 ## Nhóm 1 — Nước (Trạm Nước)
 
@@ -23,14 +23,10 @@ ngày trong nước lợ, nên ít hỏng và ít phải bảo trì hơn phao c�
 
 **ES-EC-WT-01.** Đầu dò độ dẫn điện trong nước, dùng để suy ra độ mặn.
 
-Đây là điểm còn dang dở lớn nhất của hệ thống: **phần đọc giá trị từ đầu dò này
-chưa được lập trình.** Trạm có phần cứng để đo độ mặn, nhưng firmware chưa lấy
-được số từ nó. Giao diện nói rõ điều đó thay vì hiển thị một con số trống rỗng.
-
-Vì chưa đọc được đầu dò, dự án cũng chưa hiệu chuẩn được quan hệ giữa độ dẫn
-điện và độ mặn tại chỗ. Đó là lý do HORIZON không quy đổi giữa ‰ và dS/m: quan
-hệ đó phụ thuộc thành phần ion và nhiệt độ của chính vùng nước này, không có
-hằng số chung nào dùng được.
+Firmware hiện đọc và truyền riêng EC (mS/cm và µS/cm), nhiệt độ nước, TDS và độ
+mặn. Việc có đủ các trường không biến chúng thành những đại lượng tương đương:
+HORIZON không quy đổi giữa ‰ và dS/m bằng một hằng số tùy ý, vì quan hệ đó phụ
+thuộc thành phần ion và nhiệt độ của chính nguồn nước.
 
 ## Nhóm 2 — Đất và không khí (Trạm Đất)
 

@@ -155,7 +155,7 @@ that gains nothing from it.
 
 | Table | RLS enabled | Anon policy | Authenticated policy | Live enforcement today |
 |---|---|---|---|---|
-| `stations`, `environmental_readings`, `environmental_events`, `station_health_logs`, `crop_thresholds`, `soil_readings` | yes | `to anon using (true)` (018/019, untracked) | `has_station_access()`-scoped (009) | **Anon policy is the real boundary** — public pages read through it |
+| `stations`, `environmental_readings`, `environmental_events`, `station_health_logs`, `crop_thresholds`, `soil_readings` | yes | `to anon using (true)` (018/019) | `has_station_access()`-scoped (009) | **Anon policy is the real boundary** — public pages read through it |
 | `devices`, `ingestion_audit_logs`, `firmware_updates`, `admin_allowed_emails`, `device_runtime_configs`, `gateway_observations` | yes | none (012 revoked, never restored) | `is_admin()`-scoped | **Not the real boundary** — admin reaches these via service-role, which ignores RLS entirely |
 | `users`, `station_assignments` | yes | none | self-or-admin scoped | Unreachable — nothing authenticates as a Supabase-Auth user |
 | `damage_logs` | yes | none | own-or-admin scoped (009), admin-update (016) | **Not the real boundary** — both the public insert (via `/api/public/reports`) and admin read/update go through service-role |

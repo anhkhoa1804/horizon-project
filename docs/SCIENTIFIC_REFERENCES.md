@@ -27,16 +27,16 @@ normal outcome, not an unfinished one.
 
 ---
 
-## P0 — an unresolved unit problem, ahead of any threshold
+## P0 — unit verification before any operational salinity threshold
 
-**HORIZON labels water salinity `‰`, and the firmware contract calls the field
-`salinity_ppt`. Neither has been verified against the sensor.**
+**HORIZON records the probe's EC, temperature, TDS and salinity registers, but
+the salinity register-to-display unit chain has not been field-verified.**
 
 The ES-EC-WT-01 measures **electrical conductivity** and exposes separate
 salinity/TDS registers. Nothing in the device documentation licenses treating
-every "salinity" value it returns as ‰. Meanwhile `readWaterEc()` in the
-station firmware is still a stub, so the water salinity path is not actually
-being read at all.
+every "salinity" value it returns as ‰. The current `readWaterEc()` path is
+implemented and real observations are retained, but implementation is not the
+same as calibration or physical verification at the installation site.
 
 If the raw register is mg/L or ppm and the UI prints ‰, that is a **unit
 error**, not a threshold disagreement — and no threshold placed on top of it
@@ -46,11 +46,11 @@ would mean anything.
 
 1. Verify `register → raw unit → conversion → displayed unit` against the
    datasheet.
-2. Implement the real EC read in firmware.
-3. Store **water EC in dS/m** as its own quantity.
-4. Only if salinity in ‰ is still wanted, calibrate EC ↔ salinity against the
+2. Keep **water EC** as its own stored quantity (mS/cm, numerically equivalent
+   to dS/m) rather than deriving it from salinity.
+3. Only if salinity in ‰ is still wanted, calibrate EC ↔ salinity against the
    actual water at Cồn Hô.
-5. Only then enable a threshold.
+4. Only then enable a salinity threshold.
 
 Until step 1 is done, no salinity threshold should enter the database.
 
@@ -308,10 +308,34 @@ metric · unit · value · severity · basis · source · scope
 site-validated threshold should drive an operational alert without a caveat
 beside it.
 
-The `alert_configs` table (migration 022) is the beginning of this. It does not
-yet carry `basis`, `source`, `scope` or `status`; adding them is the next step,
-and until it does the Admin UI labels every configured threshold as
-operator-set rather than scientific.
+**Implemented in migration 023** as `threshold_registry`, with the full
+provenance set — `quantity`, `basis`, `source_title`, `source_url`,
+`source_locator`, `scope`, `validation_status`, `effective_from`.
+
+Two safeguards are in the schema rather than in application discipline:
+
+- `is_active` decides whether a row produces status at all. Twenty-one rows are
+  seeded; **six are active, and all six are `DEVICE_HEALTH`** (battery and
+  signal). Every scientific reference colours nothing.
+- A CHECK constraint (`reference_rows_cannot_be_active`) makes it impossible to
+  activate a row still marked `REFERENCE`. A citation cannot become an alert
+  rule by an edit that forgets the distinction.
+
+`quantity` is a separate column from `metric_key` and the resolver matches on
+it, so an ECe figure can never be evaluated against a bulk in-situ EC reading.
+`water_salinity` and `soil_ec_bulk` are seeded with **no threshold at all** —
+the first because its unit chain is unverified, the second because FAO's
+figures describe ECe.
+
+Soil moisture has no percentage in the registry. `soil_water_models` stores
+FC, PWP and MAD per station and Postgres **generates** the irrigation trigger
+from them, so it cannot drift from its inputs. No default row is seeded: a
+guessed field capacity would produce a confident-looking threshold for soil
+nobody has measured.
+
+The registry is published on Quan trắc under "Cơ sở diễn giải số liệu", with
+each row's basis, source and whether it is currently in use — so the claim
+that every figure is traceable can be checked without an account.
 
 ---
 
@@ -321,8 +345,8 @@ operator-set rather than scientific.
 2. **Soil pH** — 5.5–6.5 target, <5.0 critical, with pomelo-reference provenance.
 3. **Soil EC measurement confidence** — moisture ≤20% ⇒ low confidence.
 
-Blocked: water ECw (P0 unit chain). Not to be hard-coded: soil EC, soil
-moisture %, flood level, soil temperature, air temperature/RH status.
+Reference-only pending site validation: water ECw. Not to be hard-coded: soil
+EC, soil moisture %, flood level, soil temperature, air temperature/RH status.
 
 **Research credit:** the threshold analysis, the local Vĩnh Long pomelo source
 and the three-layer REFERENCE/OPERATIONAL/QUALITY model are the project owner's

@@ -38,7 +38,7 @@ crop, advice
 | Firmware field (Station 1) | Gateway relay field | Backend field (`types.ts`) | Unit | Required | Status |
 |---|---|---|---|---|---|
 | `water_level_cm` | `water_level` | `TelemetryPayloadV1.water_level` | cm | yes (water) | ✅ implemented, real sensor |
-| `salinity_ppt` | `salinity` | `TelemetryPayloadV1.salinity` | ‰ | yes (water) | ⚠️ **always null** — `readWaterEc()` is a stub (trạm 1.ino:279-296) |
+| `salinity_ppt` | `salinity` | `TelemetryPayloadV1.salinity` | ‰ | yes (water) | Implemented in current Station 01 firmware; distinct from water EC |
 | `ec_status` | mapped via `mapSensorStatus()` → `ok`\|`warn`\|`fault` | `sensor_status.ec_probe` | enum | yes (water) | ✅ implemented (status always reachable even though the underlying value is stubbed) |
 | `ultrasonic_status` | mapped | `sensor_status.ultrasonic` | enum | yes (water) | ✅ implemented |
 | `station_id` (used as source, not sent as-is) | first field of canonical string / `device_id` in body | `device_id` | string | yes | ✅ |
@@ -123,18 +123,16 @@ dependent) either the water fields or at least one soil field.
 
 **Always optional, never fabricated when absent:** `battery_voltage`,
 `signal_strength_dbm` (gateway can't measure these for a relayed
-station — correctly omitted, not zeroed), `temperature_c` and
-`calibration` (defined in `TelemetryPayloadV1` but not produced by
-either current firmware — reserved for future sensors).
+station — correctly omitted, not zeroed), and `calibration`.
+Station 01 does produce water `temperature_c` in the current gateway
+envelope; migration 024 stores it as `water_temp_c` through the web ingest
+path. The older signed-v1 DTO does not yet carry water EC/temperature.
 
 ## Compatibility verdict
 
-Field names, canonical-string formats, and required/optional shape are
-**byte-for-byte consistent** between firmware and backend as written —
-this was verified by direct side-by-side reading, not assumed from
-matching filenames or comments. The mismatch is not in the contract
-itself; it's in **deployment**: `EDGE_INGEST_URL` and `CONFIG_URL` are
-both placeholder values in firmware, `GATEWAY_DEVICE_SECRET` is a
-pilot-seed placeholder, and the firmware has never been compiled or run
-on real hardware. The contract is sound; nothing has actually spoken it
-to a real backend yet.
+The repository now has two explicit ingestion boundaries. The signed-v1 Edge
+contract remains byte-consistent for its salinity + water-level pair and soil
+object. The current gateway HTTP envelope is retained verbatim, then unwrapped
+into the typed water/soil tables; this is the path evidenced by live
+`gateway_observations`. Neither path proves physical installation or field
+calibration on its own.

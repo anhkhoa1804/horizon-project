@@ -88,21 +88,18 @@ session. This is the correct, minimal footprint; no change recommended.
 
 Byte-for-byte consistent as written (verified by direct side-by-side
 reading of `gateway.ino` and `canonical.ts`/`ingest.ts`/`types.ts`).
-The gap is deployment, not the contract: `EDGE_INGEST_URL` and
-`CONFIG_URL` are both placeholder values in firmware, never pointed at a
-real deployment; firmware has never been compiled. See
-`FIRMWARE_BACKEND_CONTRACT.md`.
+The signed Edge contract remains internally consistent, while the current
+field gateway uses the token-authenticated Next.js gateway route. See
+`FIRMWARE_BACKEND_CONTRACT.md` for the distinct boundaries.
 
 ## 8. What measurements HORIZON actually supports
 
-**Real, sensor-to-schema-complete**: soil moisture, soil temperature,
-soil EC, soil pH, air temperature, air humidity (all Station 2) —
-sensor code is real, `soil_readings` columns exist, ingestion validation
-is correct. **Real sensor, but currently unstorable**: water level
-(Station 1) — sensor works, but every payload is rejected due to the EC
-stub poisoning the fault-flags check (see #13). **Not implemented**:
-salinity (EC probe is a stub, always null). **Structurally impossible
-today**: battery voltage, signal strength for either station (gateway
+**Sensor-to-schema complete**: water level, water EC, water temperature,
+salinity, soil moisture, soil temperature, soil EC, soil pH, air temperature
+and air humidity. Existing authenticated gateway envelopes are retained and
+promoted into typed tables by migration 025. These code/data paths do not
+constitute physical installation or field-calibration evidence.
+**Structurally unavailable today**: battery voltage and signal strength for a relayed station (gateway
 can't honestly measure a relayed station's own power/link state — by
 design, not a bug). **Never reaches the schema**: gateway delivery rate
 (no data source anywhere), the firmware-computed `advice` string
@@ -121,45 +118,34 @@ design — see `TELEMETRY_STATE_MODEL.md` for the full correction and why.
 
 ## 10. Deployment architecture
 
-**Backend/frontend: LIVE. Field hardware/ingestion function: NOT YET
-DEPLOYED.** (Updated Phase E/F — this decision originally read "LOCAL
-only, entirely," which was accurate when written and is preserved in git
-history, but is no longer true.) The Supabase project
-(`edhcnccvbwuffiwzywfm`) is provisioned, reachable, and fully migrated
-(001–019). The Next.js application reads real data from it in production.
-No Edge Function has ever been deployed — `edge-ingest` only runs locally
-under `tsx --test`, though `.github/workflows/release-deploy.yml` already
-automates deployment on a version tag push (see Phase G update above). No
-firmware has ever been flashed. There is still no STAGING or PRODUCTION
-telemetry path today: nothing has ever sent a real signed reading through
-the deployed system, because the two things needed to do that (a
-deployed edge function, and compiled/flashed firmware) don't exist yet.
-See `ARCHITECTURE.md`'s "Deployment status" section for the current,
-maintained version of this picture.
+**Backend/frontend and the gateway HTTP ingestion path are live.** The
+Supabase project is provisioned and migrated through 025, and retained
+gateway observations demonstrate real water and soil payloads. On 2026-09-18,
+the separate signed Edge Function was also exercised against its live URL:
+valid telemetry accepted, duplicate ignored, stale/future replay rejected.
+This verifies the deployed boundary, not that the installed physical gateway
+has begun using it. The repository also cannot prove the hardware's physical
+installation or field calibration. See `ARCHITECTURE.md` for the maintained
+boundary.
 
 ## 11. What must be built before production
 
 Updated — item (a) and (d) below are done; kept for the historical
 dependency ordering, not as an open list:
 
-(a) ~~a real Supabase project, with migrations 001–019 applied in order
-and 018/019 committed to git first~~ **DONE, fully** — both migrations are
-now tracked in git; (b) `readWaterEc()` implemented against the real EC
-probe, since without it Station 1 can never store a reading; (c) firmware
-actually compiled (PlatformIO toolchain) and flashed to real ESP32
-hardware, with the placeholder `EDGE_INGEST_URL`/`CONFIG_URL`/
-`GATEWAY_DEVICE_SECRET` replaced with real values; (d) ~~the
+(a) ~~a real Supabase project, with migrations 001–025 applied in order
+and tracked in git~~ **DONE**; (b) ~~`readWaterEc()` implemented against the
+configured EC registers~~ **DONE IN SOURCE; FIELD CALIBRATION PENDING**;
+(c) independently verify the physical installation and calibration records;
+(d) ~~the
 `soil_readings` repository-read gap closed~~ **DONE, fully** — the
-repository method exists and `station-detail.tsx` now calls it, rendering
-real EC/moisture/pH values when present; the table still holds zero live
-rows because nothing has ever ingested a soil payload, which is an
-ingestion-deployment gap, not a UI gap anymore; (e) the three NOT-VERIFIED
+repository method exists and typed soil rows are now populated from retained
+gateway observations; (e) the three NOT-VERIFIED
 gateway
 firmware assumptions (AT+CCLK format, multi-header AT+HTTPPARA behavior,
 mbedtls-on-real-hardware) confirmed against the actual SIM module and
-board; (f) **new**: deploy `edge-ingest` as a real Supabase Edge Function
-— this is now the single biggest remaining gap between "backend is live"
-and "a real device could actually send data," see
+board; (f) ~~deploy and live-test `edge-ingest`~~ **DONE 2026-09-18**. The
+remaining gap is device-side adoption and physical verification, see
 `EDGE_INGEST_READINESS.md`.
 
 ## 12. What can remain deferred
@@ -200,13 +186,12 @@ reasoning already captured in `ARCHITECTURE_DECISIONS.md`.
 ## 15. What requires live Supabase/GCP/hardware verification
 
 Everything about actual deployed behavior, listed precisely rather than
-waved at: whether migrations 001–019 apply cleanly in sequence against a
+waved at: whether migrations 001–025 apply cleanly in sequence against a
 fresh Postgres instance; whether the anon-key RLS policies actually
 produce the intended row visibility under real traffic; whether the
 `getLatestForAllStations`/`getLatestHealthForAllStations` nested-
 embedding queries perform correctly at real data volume; whether the
-Edge Function actually deploys and responds at a real
-`*.supabase.co/functions/v1/edge-ingest` URL; whether the gateway's SIM
+physical gateway's SIM
 module's `AT+CCLK?` response actually matches the assumed SIMCom format;
 whether `AT+HTTPPARA="USERDATA"` actually appends rather than overwrites
 across repeated calls; whether mbedtls HMAC produces byte-identical

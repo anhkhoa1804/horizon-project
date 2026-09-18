@@ -42,6 +42,8 @@ function mapReading(row: Record<string, unknown>): EnvironmentalReading {
     station_id: row.station_id as string,
     salinity: Number(row.salinity),
     water_level: Number(row.water_level),
+    water_ec_ms_cm: numberOrNull(row.water_ec_ms_cm),
+    water_temp_c: numberOrNull(row.water_temp_c),
     fault_flags: Number(row.fault_flags),
     ec_probe_status: row.ec_probe_status as EnvironmentalReading["ec_probe_status"],
     ultrasonic_status: row.ultrasonic_status as EnvironmentalReading["ultrasonic_status"],
@@ -97,6 +99,8 @@ export class ReadingRepository {
         date: shortDateLabel(dateKey(date.toISOString())),
         tideLevel: null,
         salinity: null,
+        waterEc: null,
+        waterTemp: null,
         soilEc: null,
         readingCount: 0,
       };
@@ -303,7 +307,7 @@ export class ReadingRepository {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data, error } = await this.supabase
       .from("environmental_readings")
-      .select("timestamp, salinity, water_level")
+      .select("timestamp, salinity, water_level, water_ec_ms_cm, water_temp_c")
       .eq("station_id", stationId)
       .gte("timestamp", since)
       .order("timestamp", { ascending: true });
@@ -315,6 +319,8 @@ export class ReadingRepository {
       timestamp: row.timestamp as string,
       salinity: Number(row.salinity),
       water_level: Number(row.water_level),
+      water_ec_ms_cm: numberOrNull(row.water_ec_ms_cm),
+      water_temp_c: numberOrNull(row.water_temp_c),
     }));
   }
 
@@ -322,7 +328,7 @@ export class ReadingRepository {
     const since = new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000).toISOString();
     let query = this.supabase
       .from("environmental_readings")
-      .select("timestamp, station_id, salinity, water_level")
+      .select("timestamp, station_id, salinity, water_level, water_ec_ms_cm, water_temp_c")
       .gte("timestamp", since)
       .order("timestamp", { ascending: true });
 
@@ -337,18 +343,24 @@ export class ReadingRepository {
       {
         salinity: number[];
         tideLevel: number[];
+        waterEc: number[];
+        waterTemp: number[];
         soilEc: number[];
       }
     >();
 
     for (const row of data ?? []) {
       const key = dateKey(row.timestamp as string);
-      const bucket = buckets.get(key) ?? { salinity: [], tideLevel: [], soilEc: [] };
+      const bucket = buckets.get(key) ?? { salinity: [], tideLevel: [], waterEc: [], waterTemp: [], soilEc: [] };
 
       // environmental_readings only carries salinity/water_level — soil EC
       // has no real column here and must never be derived from these fields.
       bucket.salinity.push(Number(row.salinity));
       bucket.tideLevel.push(Number(row.water_level));
+      const waterEc = numberOrNull(row.water_ec_ms_cm);
+      const waterTemp = numberOrNull(row.water_temp_c);
+      if (waterEc !== null) bucket.waterEc.push(waterEc);
+      if (waterTemp !== null) bucket.waterTemp.push(waterTemp);
 
       buckets.set(key, bucket);
     }
@@ -370,6 +382,8 @@ export class ReadingRepository {
         date: shortDateLabel(key),
         tideLevel: average(bucket?.tideLevel ?? [], 1),
         salinity: average(bucket?.salinity ?? [], 2),
+        waterEc: average(bucket?.waterEc ?? [], 3),
+        waterTemp: average(bucket?.waterTemp ?? [], 1),
         soilEc: average(bucket?.soilEc ?? [], 2),
         readingCount: (bucket?.tideLevel.length ?? 0) + (bucket?.salinity.length ?? 0),
       };

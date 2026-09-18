@@ -4,6 +4,7 @@ import { getObservatoryViewModel } from "@/lib/monitoring/buildObservatory";
 import { getExternalWeather } from "@/lib/external/weather";
 import { getI18n } from "@/lib/i18n/server";
 import { ObservatoryCanvas } from "@/components/monitoring/observatory-canvas";
+import { loadThresholdRegistry, loadSoilWaterModels } from "@/lib/monitoring/thresholds";
 import { HashScroll } from "@/components/ui/hash-scroll";
 import { PageHero } from "@/components/layout/page-hero";
 import { PublicShell } from "@/components/layout/public-shell";
@@ -35,7 +36,21 @@ async function MonitoringContent({ mode }: { mode: "real" | "demo" }) {
     getObservatoryViewModel(mode, dict),
     getExternalWeather(),
   ]);
-  return <ObservatoryCanvas model={model} weather={weather} />;
+  // The registry is public: the basis for every interpretation is part of what
+  // this page publishes, not operator-only configuration.
+  const [thresholds, soilModels] = await Promise.all([
+    loadThresholdRegistry(),
+    loadSoilWaterModels(),
+  ]);
+
+  return (
+    <ObservatoryCanvas
+      model={model}
+      weather={weather}
+      thresholds={thresholds}
+      soilModels={soilModels}
+    />
+  );
 }
 
 export default async function DashboardPage({

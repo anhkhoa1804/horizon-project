@@ -1572,17 +1572,10 @@ WaterEcReading readWaterEc() {
       : NAN;
 
 
-  /*
-    If salinity register is unavailable,
-    estimate ppt from EC.
-
-    This is only an approximation.
-  */
-
   const float salinityPpt =
     isfinite(salinityPpm)
       ? salinityPpm / 1000.0f
-      : ecMsCm * 0.64f;
+      : NAN;
 
 
   return {

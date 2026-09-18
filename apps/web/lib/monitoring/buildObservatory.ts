@@ -80,6 +80,8 @@ function metric(
 }
 
 const ALL_METRICS: TrendMetric[] = [
+  "waterEc",
+  "waterTemp",
   "salinity",
   "waterLevel",
   "soilMoisture",
@@ -103,6 +105,8 @@ function availableMetrics(points: ObservationPoint[]): TrendMetric[] {
 function blankPoint(label: string): ObservationPoint {
   return {
     label,
+    waterEc: null,
+    waterTemp: null,
     salinity: null,
     waterLevel: null,
     soilMoisture: null,
@@ -171,8 +175,11 @@ async function buildRealObservatory(dict: Dictionary): Promise<ObservatoryViewMo
     const alerts = recentAlerts.filter((alert) => isPilotStation(alert.station_id));
     const alertStationIds = new Set(alerts.map((a) => a.station_id));
 
+    const latestWaterProbe = [...trend24h]
+      .reverse()
+      .find((point) => point.water_ec_ms_cm !== null || point.water_temp_c !== null) ?? null;
     const stations: ObservatoryStation[] = PILOT_STATION_IDS.map((id) =>
-      buildRealStation(dict, id, snapshots, soilReading, alertStationIds.has(id)),
+      buildRealStation(dict, id, snapshots, soilReading, alertStationIds.has(id), latestWaterProbe),
     );
 
     return {
@@ -219,6 +226,8 @@ function emptyRealObservatory(dict: Dictionary): ObservatoryViewModel {
 function seriesFromTrend(water: TrendPoint[], soil: SoilTrendPoint[]): ObservationSeries {
   const waterPoints: ObservationPoint[] = water.map((p) => ({
     ...blankPoint(timeLabel(p.timestamp)),
+    waterEc: p.water_ec_ms_cm,
+    waterTemp: p.water_temp_c,
     salinity: Number.isFinite(p.salinity) ? p.salinity : null,
     waterLevel: Number.isFinite(p.water_level) ? p.water_level : null,
   }));
@@ -256,6 +265,8 @@ function seriesFromDaily(daily: DailyComparisonPoint[], soil: DailySoilPoint[] =
       ...blankPoint(d.date),
       salinity: d.salinity,
       waterLevel: d.tideLevel,
+      waterEc: d.waterEc,
+      waterTemp: d.waterTemp,
       soilMoisture: s?.soil_moisture_pct ?? null,
       soilEc: s?.soil_ec_ms_cm ?? null,
       soilPh: s?.soil_ph ?? null,
@@ -274,6 +285,7 @@ function buildRealStation(
   snapshots: StationReadingSnapshot[],
   soilReading: SoilReading | null,
   hasAlert: boolean,
+  latestWaterProbe: TrendPoint | null = null,
 ): ObservatoryStation {
   const profile = stationProfiles[id];
   const snapshot = snapshots.find((s) => s.station.id === id);
@@ -350,6 +362,9 @@ function buildRealStation(
   }
 
   const reading = snapshot?.reading ?? null;
+  const probeProvenance: DataProvenance = latestWaterProbe
+    ? { origin: "telemetry", source: "Quan trắc trực tiếp", observedAt: latestWaterProbe.timestamp }
+    : unavailable("Chưa có quan trắc EC/nhiệt độ nước");
   return {
     ...base,
     kind: "water",
@@ -359,7 +374,25 @@ function buildRealStation(
       {
         domain: "water",
         label: "Nước",
-        metrics: [metric("Mực nước", reading?.water_level, 0, "cm", provenance, "waterLevel")],
+        metrics: [
+          metric("Mực nước", reading?.water_level, 0, "cm", provenance, "waterLevel"),
+          metric(
+            "EC nước",
+            reading?.water_ec_ms_cm ?? latestWaterProbe?.water_ec_ms_cm,
+            3,
+            "mS/cm",
+            reading?.water_ec_ms_cm != null ? provenance : probeProvenance,
+            "waterEc",
+          ),
+          metric(
+            "Nhiệt độ nước",
+            reading?.water_temp_c ?? latestWaterProbe?.water_temp_c,
+            1,
+            "°C",
+            reading?.water_temp_c != null ? provenance : probeProvenance,
+            "waterTemp",
+          ),
+        ],
       },
     ],
     capabilityNote: null,
@@ -379,6 +412,8 @@ function buildDemoObservatory(dict: Dictionary): ObservatoryViewModel {
     const phase = i / 4;
     return {
       ...blankPoint(dayLabel(d.date)),
+      waterEc: null,
+      waterTemp: null,
       salinity: d.salinity ?? null,
       waterLevel: d.tideLevel ?? null,
       soilMoisture: Number((56 + Math.sin(phase) * 5).toFixed(1)),
@@ -395,6 +430,8 @@ function buildDemoObservatory(dict: Dictionary): ObservatoryViewModel {
   const trendPoints: ObservationPoint[] = [
     ...DEMO_WATER_TREND.points.map((p) => ({
       ...blankPoint(timeLabel(p.timestamp)),
+      waterEc: null,
+      waterTemp: null,
       salinity: p.salinity ?? null,
       waterLevel: p.waterLevel ?? null,
     })),
@@ -511,7 +548,15 @@ function buildDemoStation(snapshot: DemoStationSnapshot, dict: Dictionary): Obse
     quality: "valid",
     primary: metric("Độ mặn", snapshot.salinity, 2, "‰", provenance, "salinity"),
     environment: [
-      { domain: "water" as const, label: "Nước", metrics: [metric("Mực nước", snapshot.waterLevel, 0, "cm", provenance, "waterLevel")] },
+      {
+        domain: "water" as const,
+        label: "Nước",
+        metrics: [
+          metric("Mực nước", snapshot.waterLevel, 0, "cm", provenance, "waterLevel"),
+          metric("EC nước", null, 3, "mS/cm", provenance, "waterEc"),
+          metric("Nhiệt độ nước", null, 1, "°C", provenance, "waterTemp"),
+        ],
+      },
     ],
     device,
     capabilityNote: null,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, CloudRain, Droplets, Send, Thermometer, Waves, Wind } from "lucide-react";
+import { ChevronDown, CloudRain, Droplets, Send, Sprout, Thermometer, Waves, Wind } from "lucide-react";
 import { MapStation, StationNetworkMap } from "@/components/dashboard/station-network-map";
 import { ObservationLog } from "@/components/monitoring/observation-log";
 import type { ExternalWeather } from "@/lib/external/weather";
@@ -10,6 +10,8 @@ import type { Dictionary } from "@/lib/i18n/vi";
 import { buildSignalGroups, type SignalGroup } from "@/lib/monitoring/signals";
 import { contextLine, deviceContext, type ContextMetricKey } from "@/lib/monitoring/context";
 import { mergeWeather24hSeries, weatherHistoryToObservationSeries } from "@/lib/monitoring/weatherSeries";
+import { ThresholdTable } from "@/components/monitoring/threshold-table";
+import type { ThresholdRow, SoilWaterModel } from "@/lib/monitoring/thresholdTypes";
 import { STATION_COORDS } from "@/lib/geo";
 import type { PilotStationId } from "@/lib/publicStations";
 import { statusFor, worstStatus, STATUS_SURFACE, type MetricStatus } from "@/lib/monitoring/status";
@@ -47,7 +49,7 @@ import type {
 /**
  * THE OBSERVATORY BENTO.
  *
- * Eight boxes on an explicit grid — not derived from content length,
+ * Ten boxes on an explicit grid — not derived from content length,
  * companion count, or data availability. The grid IS the design.
  *
  * ONE BASE CELL, THREE ARRANGEMENTS.
@@ -58,9 +60,9 @@ import type {
  * a region buys — never whether it is a whole number of them.
  *
  *            columns x rows      base cell @ the breakpoint's low end
- *   <md          4 x 15          ~81px  (390)
- *   md           4 x 7           ~167px (768)
- *   lg           6 x 3           ~148px (1024)
+ *   <md          4 x 21          ~81px  (390)
+ *   md           4 x 10          ~167px (768)
+ *   lg           6 x 4           ~148px (1024)
  *
  *   region      <md          md          lg
  *   BOX 0       4x2          4x1         2x1   primary: salinity + level
@@ -68,10 +70,12 @@ import type {
  *   BOX 2       4x3          4x2         2x2   the map
  *   BOX 3       4x2          4x1         2x1   infrastructure
  *   BOX 4-7     2x2 each     1x1 each    1x1 each   regional context
+ *   WATER       4x2          4x1          2x1
+ *   SOIL        4x4          4x2          4x1 (four zones)
  *
  * Each of the three is a complete, non-overlapping tiling (there is a test
- * that proves it for all three). `aspect-[4/15]` / `aspect-[4/7]` /
- * `aspect-[2/1]` on the container is what makes the base cell square at any
+ * that proves it for all three). `aspect-[4/21]` / `aspect-[2/5]` /
+ * `aspect-[3/2]` on the container is what makes the base cell square at any
  * width without measuring anything in JS — the ratio is columns : rows.
  *
  * WHY THE ROW COUNT CHANGES BETWEEN <md AND md. A base cell is ~81px at 390
@@ -104,11 +108,10 @@ import type {
  * one canvas. Untinted boxes are plain white; the status boxes are the only
  * ones that carry colour.
  *
- * Soil chemistry, the stations' own air readings, and station identity are
- * deliberately absent — not deleted from the model, just not rendered here.
- * This grid is the observatory read as one instrument, not three stations
- * side by side. Each node's role, location and measured variables live on
- * Home's network chapter; the per-station routes were folded into this page.
+ * The fourth desktop row restores the field measurements as two grouped
+ * domains: a 2×1 water surface and a 4×1 soil surface. On mobile the soil
+ * surface uses a readable 2×2 internal arrangement rather than four tiny
+ * cards.
  */
 
 const STATUS_LABEL: Record<MetricStatus["level"], keyof Dictionary["alerts"]> = {
@@ -327,6 +330,7 @@ function ObservatoryBento({
   network: ObservatoryViewModel["network"];
 }) {
   const water = groups.find((g) => g.domain === "water");
+  const soil = groups.find((g) => g.domain === "soil");
   const infra = groups.find((g) => g.domain === "infrastructure");
   const context = groups.find((g) => g.domain === "context");
 
@@ -340,6 +344,12 @@ function ObservatoryBento({
 
   const salinity = water?.primary;
   const waterLevel = water?.secondary[0];
+  const waterEc = water?.secondary.find((m) => m.labelKey === "waterEc");
+  const waterTemp = water?.secondary.find((m) => m.labelKey === "waterTemp");
+  const soilMoisture = soil?.primary;
+  const soilEc = soil?.secondary.find((m) => m.labelKey === "ec");
+  const soilPh = soil?.secondary.find((m) => m.labelKey === "ph");
+  const soilTemp = soil?.secondary.find((m) => m.labelKey === "temperature");
   const contextMetric = (key: string) => context?.secondary.find((m) => m.labelKey === key);
   const infraMetric = (key: string) => infra?.secondary.find((m) => m.labelKey === key);
 
@@ -360,9 +370,9 @@ function ObservatoryBento({
     <div
       className={cn(
         "grid gap-[var(--bento-gap)]",
-        "aspect-[4/15] grid-cols-4 grid-rows-15",
-        "md:aspect-[4/7] md:grid-rows-7",
-        "lg:aspect-[2/1] lg:grid-cols-6 lg:grid-rows-3",
+        "aspect-[4/21] grid-cols-4 grid-rows-[repeat(21,minmax(0,1fr))]",
+        "md:aspect-[2/5] md:grid-rows-[repeat(10,minmax(0,1fr))]",
+        "lg:aspect-[3/2] lg:grid-cols-6 lg:grid-rows-4",
       )}
     >
       {/* BOX 0 — primary. Salinity and water level side by side, no divider,
@@ -546,6 +556,40 @@ function ObservatoryBento({
           />
         </div>
       ))}
+
+      {/* ROW 4 — two observation domains, each a single parent surface. */}
+      <div
+        className={cn(
+          cell,
+          padded,
+          "col-start-1 col-end-5 row-start-16 row-end-18 bg-surface",
+          "md:col-start-1 md:col-end-5 md:row-start-8 md:row-end-9",
+          "lg:col-start-1 lg:col-end-3 lg:row-start-4 lg:row-end-5",
+        )}
+      >
+        <RegionHeader icon={Waves} title={dict.terms.water} status={null} dict={dict} />
+        <div className="mt-auto grid grid-cols-2 gap-4 pt-2">
+          <Value label={dict.metricLabels.waterEc} metric={waterEc} dict={dict} />
+          <Value label={dict.metricLabels.waterTemp} metric={waterTemp} dict={dict} />
+        </div>
+      </div>
+
+      <div
+        className={cn(
+          cell,
+          "col-start-1 col-end-5 row-start-18 row-end-22 flex flex-col bg-surface p-[var(--bento-pad)]",
+          "md:col-start-1 md:col-end-5 md:row-start-9 md:row-end-11",
+          "lg:col-start-3 lg:col-end-7 lg:row-start-4 lg:row-end-5",
+        )}
+      >
+        <RegionHeader icon={Sprout} title={dict.terms.soil} status={null} dict={dict} />
+        <div className="mt-2 grid flex-1 grid-cols-2 content-around gap-x-4 gap-y-2 lg:grid-cols-4 lg:items-end">
+          <Value label={dict.metricLabels.moisture} metric={soilMoisture} dict={dict} />
+          <Value label={dict.metricLabels.ec} metric={soilEc} dict={dict} />
+          <Value label={dict.metricLabels.ph} metric={soilPh} dict={dict} />
+          <Value label={dict.metricLabels.temperature} metric={soilTemp} dict={dict} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -649,8 +693,13 @@ function ReferencePanel({ reference, dict }: { reference: ObservatoryReferenceIt
 export function ObservatoryCanvas({
   model,
   weather: initialWeather = null,
+  thresholds = [],
+  soilModels = [],
 }: {
   model: ObservatoryViewModel;
+  /** The threshold registry (migration 023), loaded on the server. */
+  thresholds?: ThresholdRow[];
+  soilModels?: SoilWaterModel[];
   /** External regional context. Shares the canvas, never the provenance. */
   weather?: ExternalWeather | null;
 }) {
@@ -825,6 +874,17 @@ export function ObservatoryCanvas({
           <h2 className="mt-2 text-xl font-semibold tracking-tight md:text-2xl">{dict.monitoring.referenceTitle}</h2>
         </div>
         <ReferencePanel reference={model.reference} dict={dict} />
+
+        {/* The registry itself, printed publicly. The panel above is the
+            editorial explanation; this is the actual table of numbers the
+            system holds, each with its basis and whether it is currently
+            colouring anything. A reader should be able to check the claim
+            "every figure here is traceable" without an account. */}
+        {thresholds.length > 0 ? (
+          <div className="border-t border-border pt-8">
+            <ThresholdTable rows={thresholds} soilModels={soilModels} />
+          </div>
+        ) : null}
       </section>
     </div>
   );

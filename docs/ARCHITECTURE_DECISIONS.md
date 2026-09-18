@@ -213,7 +213,7 @@ waiting.
 - **Sensor fault:** rejected with `SENSOR_FAULT` (422), recorded as an
   `environmental_events` row, **not** stored as an environmental reading.
   This means a station reporting a genuine hardware fault (e.g. Trạm 1's
-  EC probe, currently a permanent stub) produces zero rows in
+  EC probe when it explicitly reports a fault) produces zero rows in
   `environmental_readings` until the sensor works — this is correct, not a
   bug: a "fault" reading with an invented numeric value would be exactly
   the fabrication Phase A eliminated everywhere else.
@@ -287,7 +287,7 @@ not inferred.
 | `water_level_cm` | `extractNumberField("water_level_cm")` | `water_level` | `environmental_readings.water_level` | `formatWaterValue()` / "Mực nước" |
 | `salinity_ppt` | `extractNumberField("salinity_ppt")` | `salinity` | `environmental_readings.salinity` | `formatSalinityValue()` / "Độ mặn" |
 | `ultrasonic_status` | `extractStringField` + `mapSensorStatus()` → 3-value enum | `sensor_status.ultrasonic` | `environmental_readings.ultrasonic_status` | `sensorStatusLabel()` |
-| `ec_status` (always `"pending_ec_protocol"` today — stub sensor) | same mapping → always `"fault"` | `sensor_status.ec_probe` | never written — `isFaulty()` rejects the whole reading (422, not stored) | N/A — **this is why Trạm 1 cannot successfully store a reading until the real EC sensor is implemented; it's an honest rejection, not a bug** |
+| `ec_status` | mapped to the three-value status enum | `sensor_status.ec_probe` | valid readings persist; explicit faults are rejected | Observatory quality state |
 | `distance_cm`, `sensor_height_cm`, `ec_us_cm` | not extracted by the gateway at all | — | — | **NOT MODELED** — raw diagnostic values; `water_level_cm` is already the derived value the product needs, no evidence more granularity is wanted |
 | *(never sent — no ADC battery read, no cellular modem)* | — | `battery_voltage`, `signal_strength_dbm` (optional) | not written (no health row when both absent) | "Chưa có dữ liệu" (honest, Phase A) |
 | `firmware_version` | `extractStringField("firmware_version")` | `firmware_version` | **NOT MODELED for this path** — `environmental_readings` has no firmware_version column, and since no health row is written (no battery/signal), it's currently discarded after signing. Low-priority: cosmetic/diagnostic only, no product impact. | N/A |
@@ -296,16 +296,16 @@ not inferred.
 
 | Station field | Gateway extraction | Contract field | DB column | Frontend |
 |---|---|---|---|---|
-| `station_id` | `extractStringField("station_id")` | `device_id` | `soil_readings.station_id` | not yet wired (see §9) |
+| `station_id` | `extractStringField("station_id")` | `device_id` | `soil_readings.station_id` | wired to repository + Observatory |
 | `message_id` | `extractStringField("message_id")` | `message_id` | `soil_readings.message_id` | — |
 | *(none)* | gateway's network time | `timestamp` | `soil_readings.timestamp` | — |
-| `air_temp_c` / `_status` | `extractNumberField("air_temp_c")` (status not forwarded — see below) | `soil.air_temp_c` | `soil_readings.air_temp_c` | not yet wired |
-| `air_humidity_pct` | `extractNumberField` | `soil.air_humidity_pct` | `soil_readings.air_humidity_pct` | not yet wired |
-| `soil_temp_c` | `extractNumberField` | `soil.soil_temp_c` | `soil_readings.soil_temp_c` | not yet wired |
-| `soil_moisture_pct` | `extractNumberField` | `soil.soil_moisture_pct` | `soil_readings.soil_moisture_pct` | not yet wired |
+| `air_temp_c` / `_status` | `extractNumberField("air_temp_c")` (status not forwarded — see below) | `soil.air_temp_c` | `soil_readings.air_temp_c` | wired |
+| `air_humidity_pct` | `extractNumberField` | `soil.air_humidity_pct` | `soil_readings.air_humidity_pct` | wired |
+| `soil_temp_c` | `extractNumberField` | `soil.soil_temp_c` | `soil_readings.soil_temp_c` | wired |
+| `soil_moisture_pct` | `extractNumberField` | `soil.soil_moisture_pct` | `soil_readings.soil_moisture_pct` | wired |
 | `soil_ec_us_cm` (raw) | not extracted — gateway uses the station's own derived `soil_ec_ms_cm` instead | — | **NOT MODELED** (raw value; the derived one is what's stored, matching Trạm 1's water_level_cm precedent of storing the derived value) | — |
-| `soil_ec_ms_cm` (derived) | `extractNumberField` | `soil.soil_ec_ms_cm` | `soil_readings.soil_ec_ms_cm` | not yet wired |
-| `soil_ph` | `extractNumberField` | `soil.soil_ph` | `soil_readings.soil_ph` | not yet wired |
+| `soil_ec_ms_cm` (derived) | `extractNumberField` | `soil.soil_ec_ms_cm` | `soil_readings.soil_ec_ms_cm` | wired |
+| `soil_ph` | `extractNumberField` | `soil.soil_ph` | `soil_readings.soil_ph` | wired |
 | `crop` (always `"grapefruit"` today) | not extracted | — | **NOT MODELED** — static per-deployment metadata, not a per-reading measurement; belongs on `stations` (a station-level column) if/when multi-crop support matters, not on every reading |
 | `advice` (computed recommendation string) | not extracted | — | **NOT MODELED, deliberately** — this is a firmware-computed, un-audited text string with no versioned thresholds behind it; storing it as if it were data would let stale firmware logic silently become "the official advice" in the DB. The dashboard already computes its own advice from `crop_thresholds` (see `daily-comparison-chart.tsx`'s standards table) — that's the source of truth, not a device-generated string. |
 | individual `_status` fields (`air_temp_c_status`, `soil_ph_status`, etc.) | not extracted | — | **NOT MODELED as status enums** — soil validation uses null-per-field instead (see §8); a sensor that faults sends `null` for its value rather than a separate status flag, which the gateway already does no translation for (see `numberOrNull()` in the station firmware) |
@@ -385,9 +385,8 @@ phase wires up a real read path against the now-populated table.
 
 - **Farmer-facing sign-up/login UI** — no UI redesign this pass (explicit
   brief constraint); would be new code with no caller today.
-- **Real salinity sensing** (`trạm 1.ino::readWaterEc()`) — needs the
-  ES-EC-WT-01's actual Modbus register map, which needs the physical
-  sensor or its datasheet, neither available here.
+- **Physical/site validation of Station 01 EC and salinity** — the firmware
+  path exists, but field calibration evidence remains a separate requirement.
 - **LoRa RSSI reporting** — needs to know which LoRa transparent-mode
   firmware the SX1278 module runs; guessing would mean fabricating a
   plausible-looking number, which is the one thing this whole effort is

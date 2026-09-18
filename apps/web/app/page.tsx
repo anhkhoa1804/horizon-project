@@ -284,8 +284,7 @@ function MapFallback() {
  * repository → UI.
  *
  * Home renders only the part numbers, as a compact three-column index. The
- * `role` and `note` text — including the honest record of the EC probe the
- * firmware cannot yet read — is the substance of
+ * `role` and `note` text — including the implemented Station 01 EC path — is the substance of
  * /posts/phan-cung-cua-mot-tram-do, and is kept here so the two cannot
  * describe different hardware.
  */
@@ -299,8 +298,8 @@ const HARDWARE_GROUPS = [
       { part: "A02YYUW", role: "Cảm biến siêu âm đo khoảng cách tới mặt nước, từ đó suy ra mực nước.", note: null },
       {
         part: "ES-EC-WT-01",
-        role: "Đầu dò độ dẫn điện trong nước, dùng để suy ra độ mặn.",
-        note: "Phần đọc giá trị từ đầu dò này chưa được lập trình — hiện là điểm còn dang dở lớn nhất của hệ thống.",
+        role: "Đầu dò độ dẫn điện và nhiệt độ nước; firmware ghi EC, TDS và độ mặn thành các trường riêng.",
+        note: null,
       },
     ],
   },
@@ -389,6 +388,34 @@ const EXPLORE = [
   },
 ] as const;
 
+const APPLICATION_PROFILES = [
+  { index: "01", title: "Vườn cây giá trị cao", equation: "Đất × nước × thời tiết → hỗ trợ quyết định tưới", available: ["Độ ẩm, EC, pH và nhiệt độ đất", "EC, nhiệt độ và mực nước", "Bối cảnh không khí"], next: ["Đo đất nhiều tầng", "FC / PWP / MAD tại chỗ", "ET0, Kc và hiệu chuẩn theo mùa vụ"] },
+  { index: "02", title: "Lúa – Tôm", equation: "Nước × đất × mùa → theo dõi chuyển dịch mặn/ngọt", available: ["Quan trắc nước và đất trên cùng hạ tầng", "Chuỗi thời gian có nguồn gốc"], next: ["Mô hình mùa khô / mùa mưa", "So sánh nguồn nước và phân vùng ruộng/ao"] },
+  { index: "03", title: "Lúa AWD + MRV", equation: "Mực nước × thời gian → quản lý nước và hồ sơ có thể kiểm chứng", available: ["Mực nước siêu âm", "Telemetry có thời gian và lịch sử tiếp nhận"], next: ["Hình học ống đo tại ruộng", "Phương pháp AWD và quy trình thẩm tra MRV"] },
+] as const;
+
+function ApplicationProfilesChapter() {
+  return (
+    <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-border bg-border lg:grid-cols-3">
+      {APPLICATION_PROFILES.map((profile) => (
+        <article key={profile.index} className="flex flex-col bg-background p-6 md:p-8">
+          <p className="text-[11px] tracking-[0.16em] text-accent [font-family:var(--font-data)]">{profile.index}</p>
+          <h3 className="mt-4 text-xl font-semibold tracking-tight">{profile.title}</h3>
+          <p className="mt-2 min-h-12 text-sm leading-relaxed text-muted">{profile.equation}</p>
+          <div className="mt-6 border-t border-border pt-5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-safe">Đang có</p>
+            <ul className="mt-2 space-y-1 text-sm leading-relaxed text-muted">{profile.available.map((item) => <li key={item}>{item}</li>)}</ul>
+          </div>
+          <div className="mt-5 border-t border-border pt-5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-watch">Có thể mở rộng</p>
+            <ul className="mt-2 space-y-1 text-sm leading-relaxed text-muted">{profile.next.map((item) => <li key={item}>{item}</li>)}</ul>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function ExploreChapter() {
   return (
     <div className="border-t border-border">
@@ -438,15 +465,15 @@ export default async function HomePage() {
               it rather than merely disclaim it — and again on the hardware
               chapter, which is where it actually bites. */}
           <Reveal stagger as="section" className="mx-auto max-w-[var(--width-reading)]">
-            <ChapterHeading eyebrow="01 · Dự án" title="Một mạng lưới quan trắc đặt đúng nơi cần biết." />
+            <ChapterHeading eyebrow="01 · Đây là Cồn Hô" title="Một cù lao nông nghiệp giữa sông." />
             <Prose>
               <p>
-                HORIZON là một mạng lưới quan trắc môi trường quy mô nhỏ tại Cồn Hô, Vĩnh Long. Ba điểm đo ghi lại điều
-                kiện nước, đất và không khí ngay tại chỗ, rồi công bố kết quả kèm nguồn gốc của từng con số.
+                Cồn Hô là nơi HORIZON bắt đầu: một dải đất canh tác nhỏ giữa các nhánh sông ở Vĩnh Long, nơi điều kiện
+                nước và đất thay đổi đủ gần để một bản tin cấp tỉnh không thể trả lời câu hỏi của từng khu vườn.
               </p>
               <p>
-                Ba vai trò, không phải ba bản sao: một trạm đọc nước, một trạm đọc đất, và một gateway gom dữ liệu rồi
-                chuyển về. Mọi số đo đều công khai kèm thời điểm và nguồn gốc — ai cũng có thể xem, không cần tài khoản.
+                Đây không phải địa điểm minh họa dùng một lần. Nó là bối cảnh hiện trường đầu tiên để hạ tầng được xây,
+                kiểm tra và học cách trở nên hữu ích cho những bài toán khác.
               </p>
             </Prose>
           </Reveal>
@@ -468,17 +495,16 @@ export default async function HomePage() {
 
           {/* 02 — Where, and why here */}
           <Reveal stagger as="section" className="mx-auto max-w-[var(--width-reading)]">
-            <ChapterHeading eyebrow="02 · Nơi chốn" title="Một cù lao nông nghiệp giữa sông." />
+            <ChapterHeading eyebrow="02 · Đây là HORIZON" title="Một hạ tầng quan trắc bắt đầu từ hiện trường." />
             <Prose>
               <p>
-                Cồn Hô là một cù lao thuộc tỉnh Vĩnh Long, nằm giữa các nhánh sông ở đồng bằng sông Cửu Long. Đây là một
-                dải đất hẹp — dài khoảng một cây số và rộng chừng ba trăm mét — nên gần như mọi điểm trên cồn đều cách
-                mặt nước không xa.
+                HORIZON kết nối cảm biến hiện trường, ESP32, LoRa, gateway, internet, Supabase và đài quan trắc công khai
+                thành một đường dữ liệu có thể lần ngược tới nguồn.
               </p>
               <p>
-                Một bản tin cho cả tỉnh có thể nói hôm nay mặn hay không mặn. Nó không nói được nước ngay ngoài bờ vườn
-                nhà mình lúc này thế nào, hay khác gì so với hôm qua. Khoảng cách giữa hai câu hỏi đó là lý do HORIZON
-                tồn tại.
+                Ba vai trò, không phải ba bản sao: một trạm đọc nước, một trạm đọc đất, và một gateway gom dữ liệu rồi
+                chuyển về. Cồn Hô là lần triển khai đầu tiên; kiến trúc được xây để tái sử dụng, không phải để giả vờ đã
+                là một mạng lưới quy mô lớn.
               </p>
             </Prose>
           </Reveal>
@@ -521,33 +547,8 @@ export default async function HomePage() {
             </Reveal>
           </section>
 
-          {/* 03 — The three observation points */}
-          <Reveal stagger as="section">
-            <ChapterHeading
-              eyebrow="03 · Mạng lưới"
-              title="Ba vai trò, không phải ba bản sao."
-              lead="Mỗi điểm được thiết kế cho một nhiệm vụ khác nhau, thay vì đặt cùng một bộ cảm biến ở cả ba nơi. Danh sách chỉ số là năng lực đo của từng trạm, không phải số liệu hiện tại — trạng thái thật nằm ở trang Quan trắc."
-            />
-            <div className="mt-10">
-              <Suspense fallback={<NetworkFallback />}>
-                <NetworkChapter />
-              </Suspense>
-            </div>
-          </Reveal>
-
-          {/* 04 — Real positions.
-              The heading stays in normal flow so it lands on the same left
-              edge as every other section; only the map takes the spatial
-              breakout. `full-bleed` and `Reveal` must stay on separate
-              elements — both drive `transform`, and the reveal's `none` end
-              state would cancel full-bleed's translateX(-50%) centering. */}
           <Reveal as="section">
-            <ChapterHeading
-              eyebrow="04 · Không gian"
-              title="Ba điểm đo trên một cù lao."
-              lead="Toạ độ khảo sát thật của từng trạm, hiển thị đúng trạng thái dữ liệu hiện tại."
-            />
-            <div className="full-bleed mt-10">
+            <div className="full-bleed">
               <div className="h-spatial">
                 <Suspense fallback={<MapFallback />}>
                   <MapChapter />
@@ -556,7 +557,7 @@ export default async function HomePage() {
             </div>
           </Reveal>
 
-          {/* 05 — What the system observes.
+          {/* 03 — From sensing hardware to a traceable row.
               This was a full hardware chapter: three image/text splits with a
               definition list of every part. That is a good field note and a
               bad homepage section — it tripled the page's length in the
@@ -566,9 +567,9 @@ export default async function HomePage() {
               the claim, the honest caveat, and one way in. */}
           <Reveal stagger as="section">
             <ChapterHeading
-              eyebrow="05 · Thiết bị"
+              eyebrow="03 · Từ cảm biến đến dữ liệu"
               title="Thiết bị được chọn theo câu hỏi cần trả lời."
-              lead="Mỗi đầu dò được chọn để trả lời một câu hỏi cụ thể về nước, đất hoặc không khí trên cù lao."
+              lead="Mỗi đầu dò trả lời một câu hỏi về nước, đất hoặc không khí; LoRa, gateway và Supabase giữ đường đi của phép đo có thể lần ngược."
             />
             {/* Photographs of the actual built hardware, not diagrams. The
                 boards exist, are populated, and carry this project's own
@@ -608,9 +609,8 @@ export default async function HomePage() {
               ))}
             </div>
             <p className="mt-6 text-sm leading-relaxed text-muted">
-              Đầu dò độ mặn đã có trên trạm nhưng{" "}
-              <span className="text-watch">firmware chưa đọc được giá trị từ nó</span> — phần dang dở lớn nhất của hệ
-              thống hiện nay.{" "}
+              Firmware hiện ghi EC nước và nhiệt độ nước cùng mực nước, TDS và độ mặn. Các đại lượng này được giữ riêng;
+              HORIZON không dùng một hằng số tùy ý để đổi độ mặn ‰ thành dS/m.{" "}
               <Link
                 href="/posts/phan-cung-cua-mot-tram-do"
                 className="text-accent underline-offset-2 hover:underline"
@@ -618,19 +618,20 @@ export default async function HomePage() {
                 Vì sao chọn từng thiết bị →
               </Link>
             </p>
-          </Reveal>
-
-          {/* 06 — How a reading becomes information */}
-          <Reveal stagger as="section">
-            <ChapterHeading eyebrow="06 · Dòng dữ liệu" title="Từ một đầu dò đến một dòng trên màn hình." />
-            <div className="mt-10">
+            <div className="mt-16 border-t border-border pt-10">
+              <h3 className="text-xl font-semibold tracking-tight">Từ một đầu dò đến một dòng trên màn hình.</h3>
+              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted">
+                Dữ liệu được đo, truyền, lưu và trình bày theo một chuỗi có nguồn gốc — không lấp chỗ trống bằng số giả.
+              </p>
+              <div className="mt-8">
               <WorkflowChapter />
+              </div>
             </div>
           </Reveal>
 
-          {/* 07 — What a number does and does not mean */}
+          {/* 04 — What a number does and does not mean */}
           <Reveal stagger as="section" className="mx-auto max-w-[var(--width-reading)]">
-            <ChapterHeading eyebrow="07 · Ý nghĩa" title="Một con số chưa phải là một kết luận." />
+            <ChapterHeading eyebrow="04 · Mỗi con số có một nguồn gốc" title="Một con số chưa phải là một kết luận." />
             <Prose>
               <p>
                 Độ mặn 1,2‰ có thể là bình thường với cây này và đáng lo với cây khác. Cùng một giá trị, đọc ở hai thời
@@ -644,12 +645,48 @@ export default async function HomePage() {
             </Prose>
           </Reveal>
 
-          {/* 08 — Visual material */}
+          {/* 05 — Reusable application profiles */}
+          <Reveal stagger as="section">
+            <ChapterHeading
+              eyebrow="05 · Một hạ tầng. Nhiều bài toán."
+              title="Từ Cồn Hô tới ba hướng ứng dụng có ranh giới rõ ràng."
+              lead="Mỗi mô hình nói riêng phần HORIZON đã có và phần còn phải đo, hiệu chuẩn hoặc kiểm chứng. Không mô hình nào được trình bày như một sản phẩm đã hoàn thiện."
+            />
+            <ApplicationProfilesChapter />
+          </Reveal>
+
+          {/* 06 — Current deployment truth */}
+          <Reveal stagger as="section">
+            <ChapterHeading
+              eyebrow="06 · Cồn Hô hôm nay"
+              title="Mạng lưới hiện có, cùng những giới hạn hiện có."
+              lead="Hai trạm cảm biến và một gateway tạo thành lần triển khai đầu tiên. Trạng thái dưới đây đến từ dữ liệu hệ thống; nó không thay cho kiểm chứng lắp đặt hay hiệu chuẩn ngoài hiện trường."
+            />
+            <div className="mt-10">
+              <Suspense fallback={<NetworkFallback />}>
+                <NetworkChapter />
+              </Suspense>
+            </div>
+          </Reveal>
+
+          {/* 07 — Field notes and learning */}
+          <Reveal stagger as="section" id="ghi-chep" className="scroll-mt-28">
+            <ChapterHeading
+              eyebrow="07 · Những gì chúng tôi đang học"
+              title="Ghi chép trong quá trình xây dựng."
+              lead="Hiệu chuẩn, nghiên cứu ngưỡng, ghi chép hiện trường và các giả định dự án đang kiểm chứng."
+            />
+            <div className="mt-10">
+              <FieldNotesCarousel posts={posts} />
+            </div>
+          </Reveal>
+
+          {/* 08 — Visual material and people */}
           <Reveal as="section">
             <ChapterHeading
-              eyebrow="08 · Thư viện"
+              eyebrow="08 · Hình ảnh / con người"
               title="Hình ảnh dự án."
-              lead="Cù lao, dòng sông quanh nó, và thiết kế của mạng lưới đặt trên đó."
+              lead="Cù lao, dòng sông, con người và phần cứng của mạng lưới đặt trên đó."
             />
             <div className="full-bleed mt-10">
               <div className="h-spatial">
@@ -658,34 +695,7 @@ export default async function HomePage() {
             </div>
           </Reveal>
 
-          {/* 09 — Field notes */}
-          <Reveal stagger as="section" id="ghi-chep" className="scroll-mt-28">
-            <ChapterHeading
-              eyebrow="09 · Ghi chép"
-              title="Ghi chép trong quá trình xây dựng."
-              lead="Các bài viết về thiết kế, phương pháp và những giả định dự án đang kiểm chứng."
-            />
-            <div className="mt-10">
-              <FieldNotesCarousel posts={posts} />
-            </div>
-          </Reveal>
-
-          {/* 10 — Who */}
-          <Reveal stagger as="section" className="mx-auto max-w-[var(--width-reading)]">
-            <ChapterHeading eyebrow="10 · Dự án" title="Ai đang xây dựng HORIZON." />
-            <Prose>
-              <p>
-                HORIZON được phát triển bởi Frogsleap Vietnam như một dự án thí điểm do người trẻ dẫn dắt, kết hợp giữa
-                kỹ thuật và quan tâm tới môi trường địa phương.
-              </p>
-              <p>
-                Dự án không cố chứng minh một kết luận về môi trường. Nó đang thử xây một cách nhìn: đủ nhỏ để đặt đúng
-                chỗ, đủ rõ ràng để người không chuyên vẫn đọc được, và đủ trung thực để biết mình còn thiếu gì.
-              </p>
-            </Prose>
-          </Reveal>
-
-          {/* 11 — Contact.
+          {/* 09 — Go further and contact.
               CONTACT AND REPORT ARE DIFFERENT THINGS. A report is an
               environmental observation that becomes a durable row in
               Supabase; a contact is a person wanting to reach the project.
@@ -694,7 +704,7 @@ export default async function HomePage() {
               mailto/tel/https, nothing posted through this site — since no
               server-side email provider exists to back a submission form. */}
           <Reveal stagger as="section" id="lien-he" className="scroll-mt-28">
-            <ChapterHeading eyebrow={`11 · ${dict.contact.eyebrow}`} title={dict.contact.title} />
+            <ChapterHeading eyebrow="09 · Đi xa hơn" title="Đi sâu hơn, hoặc cùng xây tiếp." />
             <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-border bg-border lg:grid-cols-[0.85fr_1.15fr]">
               <div className="flex flex-col gap-4 bg-background p-8 md:p-10">
                 <div className="flex items-center gap-2 text-foreground-muted">
@@ -744,14 +754,10 @@ export default async function HomePage() {
                 </ul>
               </div>
             </div>
-          </Reveal>
-
-          {/* 12 — Where to go next. Chapter numbering continues from 11
-              (Contact); the operator section above intentionally does not
-              consume a number. */}
-          <Reveal stagger as="section" className="pb-8">
-            <ChapterHeading eyebrow="12 · Tiếp tục" title="Đi sâu hơn." className="mb-10" />
-            <ExploreChapter />
+            <div className="mt-16 border-t border-border pt-10">
+              <h3 className="mb-8 text-xl font-semibold tracking-tight">Đi sâu hơn.</h3>
+              <ExploreChapter />
+            </div>
           </Reveal>
         </div>
       </div>

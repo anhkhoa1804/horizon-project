@@ -123,7 +123,6 @@ export const en: Dictionary = {
     title: "Observatory",
     subtitle: "Every reading in the network on one canvas — each marked with where it came from.",
     sendReport: "Submit a field report",
-    aboutProject: "About the project",
 
     demoBannerTitle: "DEMO DATA",
     demoBannerBody:
@@ -205,6 +204,8 @@ export const en: Dictionary = {
     noObservationsBody:
       "When a station reports within this period the chart will appear here. No line is drawn in its place.",
     metrics: {
+      waterEc: "Water EC",
+      waterTemp: "Water temperature",
       salinity: "Salinity",
       waterLevel: "Water level",
       soilMoisture: "Soil moisture",
@@ -226,13 +227,11 @@ export const en: Dictionary = {
        weight, idiomatic English. Both languages are two lines on desktop and
        within a few characters of each other, so the hero does not change
        height when a reader switches. */
-    title: "The water around Cồn Hô is turning salty. We are recording it.",
+    title: "This is Cồn Hô.\nThis is HORIZON.",
     subtitle:
-      "Three points measuring water, soil and air on the islet — see what the network is recording, and where every figure came from.",
+      "A field observatory on the islet, connecting water, soil, air and data into a traceable view.",
     ctaPrimary: "View the monitoring network",
-    ctaSecondary: "About the project",
-    storyAnchorLabel: "The project story",
-    pilotNote: "Pilot stage · equipment not yet installed in the field.",
+    pilotNote: "Field infrastructure is being completed and verified at Cồn Hô.",
   },
 
   about: {
@@ -544,7 +543,61 @@ export const en: Dictionary = {
   },
 
 
+  thresholds: {
+    active: "In use",
+    referenceOnly: "Reference — creates no alert",
+    source: "Source",
+    scope: "Scope",
+    soilTitle: "Irrigation threshold from soil moisture",
+    soilDerived: "Derived from on-site soil",
+    soilMissing: "No Cồn Hô soil data yet",
+    soilExplain:
+      "There is no single percentage that works everywhere. The irrigation trigger is a function of the soil itself: threshold = FC − MAD × (FC − PWP), where FC is field capacity, PWP the permanent wilting point and MAD the management-allowed depletion. Until FC and PWP are measured for Cồn Hô the system sets no threshold, rather than borrowing a number from somewhere else.",
+    soilSource:
+      "Source: USDA/NRCS — field capacity, permanent wilting point and available water. A 50% MAD is a starting management assumption where local data is absent, not a physiological constant.",
+    irrigateAt: "irrigate at",
+    severity: {
+      normal: "Normal",
+      watch: "Watch",
+      warning: "Warning",
+      critical: "Critical",
+      low_confidence: "Low confidence",
+    },
+    basis: {
+      FAO_REFERENCE: "FAO",
+      CITRUS_REFERENCE: "Citrus reference",
+      POMELO_MEKONG_REFERENCE: "Mekong pomelo study",
+      SENSOR_QUALITY: "Measurement quality",
+      DEVICE_HEALTH: "Device engineering",
+      SITE_CALIBRATED: "Site calibrated",
+      LEGACY_UNVALIDATED: "Unvalidated",
+    },
+    validation: {
+      REFERENCE: "Reference",
+      PILOT: "Pilot",
+      OPERATIONAL: "In use",
+      SITE_VALIDATED: "Site validated",
+    },
+    quantity: {
+      water_ec: "Irrigation water EC (ECw)",
+      water_ph: "Water pH",
+      water_salinity: "Water salinity (‰)",
+      water_level: "Water level",
+      soil_ec_bulk: "Bulk in-situ soil EC",
+      soil_ec_saturated_extract: "Soil EC, saturated extract (ECe)",
+      soil_ph: "Soil pH",
+      soil_moisture: "Soil moisture",
+      soil_temp: "Soil temperature",
+      air_temp: "Air temperature",
+      air_humidity: "Air humidity",
+      battery_voltage: "Battery voltage",
+      signal_dbm: "Signal strength",
+    },
+  },
+
   metricLabels: {
+    waterEc: "Water EC",
+    waterTemp: "Water temperature",
     salinity: "Salinity",
     waterLevel: "Water level",
     moisture: "Moisture",
@@ -559,6 +612,8 @@ export const en: Dictionary = {
   },
 
   terms: {
+    water: "Water",
+    soil: "Soil",
     salinity: TERMINOLOGY.salinity.en,
     waterLevel: TERMINOLOGY.waterLevel.en,
     soilEc: TERMINOLOGY.soilEc.en,

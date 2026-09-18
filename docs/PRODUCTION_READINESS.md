@@ -374,35 +374,26 @@ Per stage, **without hardware available**:
 
 | Stage | State |
 |---|---|
-| Firmware (water) | Implemented except `readWaterEc()` — a placeholder returning `pending_ec_protocol`. **Hardware-unverified.** |
+| Firmware (water) | EC, water temperature, TDS, salinity and ultrasonic water-level reads implemented. **Hardware/site calibration unverified.** |
 | Firmware (soil) | Implemented. **Hardware-unverified.** |
 | Gateway relay | Implemented. **Hardware-unverified.** |
 | Ingestion contract | Implemented + tested (25 tests) |
 | Signature verification | Implemented — HMAC, timing-safe |
 | Replay protection | Implemented — `message_id` idempotency + audit log |
-| Database | Ready; `environmental_readings` has 4 real rows (newest 2026-06-10), `soil_readings` has **0** |
+| Database | Ready; gateway observations are retained and promoted into typed water and soil histories by migration 025 and the current ingest route |
 | Repository layer | Implemented + tested (latest, 24h trend, daily trend; ordering, nulls, VN timezone) |
 | Dashboard | Implemented; renders real rows whenever they appear |
 
 **Blocked:** live end-to-end delivery cannot be verified without a node.
 
-### Water-EC blocker
+### Water EC and temperature
 
-Classified **firmware**, with a contract-level amplifier:
-
-- `trạm 1.ino` `readWaterEc()` is an unimplemented placeholder.
-- The gateway therefore relays `salinity: null` alongside a genuinely measured
-  `water_level`.
-- `ingest.ts` then discards the **whole reading**, first via `MISSING_FIELD`
-  and (if passed) via `SENSOR_FAULT` — non-retryable, so the valid water level
-  is lost permanently.
-
-Soil readings handle this correctly, preserving per-sensor nulls. The fix is a
-contract change (accept a water reading with a null salinity, as soil already
-does) plus the firmware EC protocol; it needs hardware to validate, so it is
-documented rather than guessed at. Characterization tests in
-`services/edge-ingestion/tests/contract.test.ts` pin the current lossy
-behaviour and are expected to fail when the fix lands.
+The Station 01 firmware and gateway payload carry EC and water temperature.
+Migration 024 stores both as their own quantities; migration 025 promotes the
+existing raw history. The signed v1 Edge contract still requires its older
+salinity + water-level pair, while the active gateway HTTP path retains and
+normalizes the richer envelope. No EC↔salinity conversion is performed in the
+backend. Site calibration remains a physical verification task.
 
 ---
 

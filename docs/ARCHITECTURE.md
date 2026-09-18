@@ -10,7 +10,7 @@ detail, see [`FIRMWARE_BACKEND_CONTRACT.md`](FIRMWARE_BACKEND_CONTRACT.md).
 For the auth model, see [`AUTH_ARCHITECTURE.md`](AUTH_ARCHITECTURE.md).
 
 Last reconciled against source (firmware, migrations, seed data, and a live
-Supabase project) 2026-08-13. Every claim below was verified by reading the
+Supabase project) 2026-09-18. Every claim below was verified by reading the
 cited file directly, not carried forward from prior documentation.
 
 ## What is HORIZON?
@@ -92,22 +92,28 @@ technical requirement that these cannot satisfy; none has been found.
 HORIZON (originally built as "Eco-Sense Cồn Hô" — that name persists in some
 technical identifiers, e.g. npm workspace scopes, which are not renamed
 without a deliberate migration) is a serverless environmental monitoring
-platform. Field stations collect water salinity, water level, and soil
-data over LoRa. A gateway node relays their readings — reshaped,
-timestamped with real network time, and HMAC-signed with its own device
-secret — to a Supabase Edge Function. Valid data is stored in PostgreSQL and
-displayed through a Next.js PWA for public users and administrators.
+platform. Field stations collect water, soil, and local air readings over
+LoRa. The current gateway sends an authenticated envelope to the Next.js
+gateway endpoint; the raw envelope is retained and its nested station payload
+is promoted into typed PostgreSQL time-series tables. A separately maintained
+HMAC-signed Edge Function contract remains available for compatible clients.
 
 ## Core data flow
 
-1. ESP32 station wakes on a duty cycle, takes a reading, sends raw JSON over LoRa UART to the gateway. Stations hold no signing secret and no real-time clock.
-2. Gateway receives the raw reading, reshapes it into the `TelemetryPayloadV1` contract, stamps the current network time (`AT+CCLK?`), and signs it with **its own** device secret (not the station's — see `ARCHITECTURE_DECISIONS.md` §1 for why).
-3. Gateway sends the signed payload to the Supabase Edge Function ingestion endpoint (`edge-ingest`), queuing to local storage and retrying with a fresh signature/timestamp if the send fails.
-4. Edge Function validates the authenticating device's signature, checks the attributed station is separately registered, checks timestamp drift, value ranges, idempotency, and sensor fault flags.
-5. Valid readings are inserted into PostgreSQL.
-6. Faults and operational events are recorded separately from environmental readings — a faulty reading is never stored as if it were trustworthy.
-7. Public Next.js pages read shaped data from Supabase using an anon-key client scoped by RLS (not service-role); admin pages use service-role behind an authenticated admin session.
-8. Users view station status, charts, alerts, and reports.
+1. ESP32 station takes a reading and sends JSON over LoRa UART to the gateway.
+2. The gateway wraps the station payload with gateway identity, sequence,
+   firmware and transport metadata.
+3. The current gateway POSTs that envelope to `/api/public/gateway`, protected
+   by `GATEWAY_INGEST_TOKEN`; the endpoint fails closed when unconfigured.
+4. `gateway_observations` retains the untouched envelope as the audit source.
+5. The nested Station 01 or Station 02 payload is also written to
+   `environmental_readings` or `soil_readings`. Null fields stay null; EC,
+   salinity, TDS and soil quantities are never substituted for one another.
+6. Public Next.js pages read typed data from Supabase using an anon-key client
+   scoped by RLS; admin pages use service-role only behind an authenticated
+   admin session.
+7. The signed `edge-ingest` contract is a second supported ingestion boundary,
+   with HMAC, timestamp, range, registration and idempotency validation.
 
 A device with its own connectivity can also self-authenticate directly
 (`x-device-id` header equal to `payload.device_id`, signed with its own
@@ -117,17 +123,20 @@ secret) — the gateway-relay and direct-connect paths are the same contract.
 
 **CURRENT (verified live):**
 - Supabase project `edhcnccvbwuffiwzywfm` is provisioned and reachable.
-- All 19 migrations (001–019) are applied to it; RLS-scoped public reads
+- All 25 migrations (001–025) are applied to it; RLS-scoped public reads
   work end-to-end against real data on every public route.
-- Migrations `018_architecture_realignment.sql` and `019_soil_readings.sql`
-  are tracked in git (`git ls-tree -r HEAD` confirms both paths) — an
-  earlier version of this document said otherwise; that was true when
-  written and is no longer true.
 - The web application reads real data from Supabase in production (typed
   repository layer, anon-key client for public pages, service-role for
-  admin). This includes a read path for `soil_readings` — the repository
-  method and the `/s/[stationId]` UI wiring both exist; the table currently
-  holds zero rows because nothing has ever ingested a soil payload.
+  admin). The retained gateway history currently promotes to typed Station 01
+  water rows and Station 02 soil rows; EC and water temperature have real
+  series sources.
+- The deployed signed `edge-ingest` Function was exercised against the live
+  project on 2026-09-18: valid signed telemetry was accepted, a duplicate was
+  idempotently ignored, and stale/future replay attempts were rejected.
+- `readWaterEc()` reads the configured EC, water-temperature, TDS and salinity
+  registers. Its values are hardware-unverified at the installation site; the
+  code no longer estimates salinity from EC when the salinity register is
+  absent.
 - Three GitHub Actions workflows exist and are well-formed:
   `.github/workflows/ci-validate.yml` (typecheck/lint/test/build on every
   PR and push to main), `ci-live-smoke.yml` (weekly cron + manual dispatch,
@@ -138,26 +147,15 @@ secret) — the gateway-relay and direct-connect paths are the same contract.
   #10, both claimed "no CI/CD pipeline was found" — that was simply wrong;
   none of the prior phases that made this claim checked `.github/workflows/`.
 
-**FUTURE / NOT YET DONE:**
-- The `edge-ingest` Supabase Edge Function has never actually been deployed
-  to the live project. The *mechanism* to do so already exists
-  (`release-deploy.yml`, triggered by a version tag) — the real blocker is
-  that this repository's GitHub remote has never had the required secrets
-  configured and no tag has been pushed, not that a script needs writing.
-- Firmware has never been compiled (no PlatformIO/ESP32 toolchain has been
-  available in any session) or flashed to physical hardware.
-- `gateway.ino`'s `EDGE_INGEST_URL` and `CONFIG_URL` are still literal
-  placeholder strings (`https://YOUR_PROJECT_REF.supabase.co/...`,
-  `https://example.com/...`), never pointed at the real deployment.
-- Station 1's EC/salinity sensor is a permanent stub (`readWaterEc()`
-  always returns `NAN`) — until real EC hardware/protocol is implemented,
-  every water reading fails validation and cannot be stored, water level
-  included (the EC-fault check rejects the whole payload).
-
-So: the *backend and frontend* are live and real; the *field hardware* is
-not deployed, and the *edge function* has automation ready but has never
-actually been triggered. These are independent gaps — closing one doesn't
-require the other.
+**FUTURE / NOT YET VERIFIED:**
+- Physical installation geometry, field calibration and long-duration device
+  acknowledgement have not been independently verified from repository data.
+- The live-tested signed Edge Function is an available ingestion boundary, but
+  the installed gateway has not yet been independently shown to use it on
+  physical hardware. The current token-authenticated gateway HTTP path remains
+  the one evidenced by retained field observations.
+- Water-salinity display units require datasheet and field-calibration
+  confirmation before any salinity threshold can become operational.
 
 ## System boundaries
 
