@@ -2853,8 +2853,10 @@ void sendAggregateIfReadySimple() {
     sequenceNumber += 1;
     pendingSequence = sequenceNumber;
     simpleTxAttempts = 0;
-    // Station 1 gets the earlier first-send window.
-    simpleNextTxMs = millis() + 150 + (esp_random() % 750);
+    // Station 1 starts before Station 2, but not immediately after a sensor
+    // cycle. The short guard gives the LoRa module and gateway parser room to
+    // settle before the first frame.
+    simpleNextTxMs = millis() + 500 + (esp_random() % 900);
     return;
   }
 
@@ -2881,8 +2883,9 @@ void sendAggregateIfReadySimple() {
     return;
   }
 
-  // Never give up. Random backoff breaks repeated collisions with Station 2.
-  simpleNextTxMs = millis() + 1200 + (esp_random() % 2200);
+  // Never give up. Use a wider random window than the first send to avoid
+  // repeating the same collision pattern with Station 2.
+  simpleNextTxMs = millis() + 1800 + (esp_random() % 3600);
 }
 
 // ============================================================
@@ -3170,6 +3173,14 @@ void loop() {
 
   // If a poll just arrived and an aggregate is ready, transmit immediately.
   sendAggregateIfReadySimple();
+
+  // When a five-minute packet is waiting for ACK, keep the station in a short
+  // LoRa retry loop. Starting another sensor cycle here can block long enough
+  // to miss ACK/retry windows and can also overwrite the aggregate buffer.
+  if (pendingSequence != 0) {
+    delay(20);
+    return;
+  }
 
 
   // ----------------------------------------------------------

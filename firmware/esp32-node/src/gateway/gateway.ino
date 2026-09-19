@@ -113,9 +113,10 @@ static const int RELAY_RED_PIN = 47;
 static const int BUZZER_RELAY_PIN = 21;
 static const int BUZZER_MUTE_BUTTON_PIN = 14;
 
-// Most common 4-channel relay boards are LOW-trigger.
-// Change to false if your module turns a relay ON when INx is HIGH.
-static const bool RELAY_ACTIVE_LOW = true;
+// This gateway board is wired as HIGH-triggered: INx HIGH energizes the relay.
+// With LOW-trigger boards, set this to true; with the current module installed,
+// the normal state should keep GREEN ON and the other warning relays OFF.
+static const bool RELAY_ACTIVE_LOW = false;
 
 // Alarm thresholds. Distance is the S1 ultrasonic distance-to-water field.
 static const float WATER_RED_DISTANCE_CM = 50.0f;
