@@ -925,10 +925,11 @@ export default async function AdminPage({
           <CardHeader>
             <CardTitle>Cấu hình vận hành</CardTitle>
             <CardDescription>
-              Khi mưa kéo dài, tăng thời gian ngủ để ba trạm tiết kiệm pin. Lưu ở đây là{" "}
-              <strong className="font-semibold text-foreground">đã ghi vào cơ sở dữ liệu</strong> — gateway sẽ nhận
-              cấu hình mới ở lần hỏi tiếp theo. Hệ thống hiện chưa có đường phản hồi từ thiết bị, nên không thể xác
-              nhận thiết bị đã áp dụng hay chưa.
+              Khi mưa kéo dài, có thể chuẩn bị thay đổi chu kỳ ngủ cho ba trạm. Lưu ở đây là{" "}
+              <strong className="font-semibold text-foreground">đã ghi vào cơ sở dữ liệu</strong>. Hiện firmware gateway
+              đang <strong className="font-semibold text-foreground">tắt thăm dò cấu hình thiết bị</strong> sau lỗi 403,
+              nên cấu hình được lưu nhưng chưa được gửi tới thiết bị. Chỉ bật đường này sau khi kiểm tra xác thực và
+              xác nhận ngoài hiện trường.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 lg:grid-cols-3">

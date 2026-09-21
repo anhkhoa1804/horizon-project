@@ -36,6 +36,10 @@ const CLEANUP_MIGRATION = fs.readFileSync(
   path.join(process.cwd(), "..", "..", "infra", "supabase", "migrations", "027_remove_fixture_and_qa_data.sql"),
   "utf8",
 );
+const SECRET_HASH_REMOVAL = fs.readFileSync(
+  path.join(process.cwd(), "..", "..", "infra", "supabase", "migrations", "028_remove_dead_device_secret_hash.sql"),
+  "utf8",
+);
 
 describe("admin form parsing", () => {
   it("accepts only the three managed stations", () => {
@@ -152,6 +156,19 @@ describe("no fabricated device acknowledgement", () => {
     const block = MIGRATION.slice(MIGRATION.indexOf("create table if not exists public.calibration_records"));
     const check = block.slice(0, block.indexOf(");"));
     assert.match(check, /status in \('recorded', 'superseded'\)/);
+  });
+
+  it("states that database runtime settings await a disabled device-poll path", () => {
+    const page = SRC("app", "admin", "page.tsx");
+    assert.match(page, /tắt thăm dò cấu hình thiết bị/);
+    assert.match(page, /chưa được gửi tới thiết bị/);
+  });
+});
+
+describe("dead device-secret hash debt", () => {
+  it("removes the unused MD5 column without cascading unknown production dependencies", () => {
+    assert.match(SECRET_HASH_REMOVAL, /drop column if exists device_secret_hash/i);
+    assert.ok(!/\bcascade\b/i.test(sql(SECRET_HASH_REMOVAL)));
   });
 });
 

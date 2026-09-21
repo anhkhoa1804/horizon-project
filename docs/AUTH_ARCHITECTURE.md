@@ -170,10 +170,10 @@ reads the plaintext column, never the hash — the hash column is dead
 code, and even if it were used, MD5 is not an appropriate secret-hashing
 function. This is fine for HMAC signing (the *server* needs the raw
 secret to recompute the signature — a hash wouldn't work for that
-purpose at all), so the plaintext column isn't itself wrong; the
-`device_secret_hash` column is simply vestigial and should either be
-removed or given an actual purpose, not left implying a security
-property it doesn't provide.
+purpose at all), so the plaintext column isn't itself wrong. Migration 028
+removes the vestigial `device_secret_hash` column without `CASCADE`; an
+unexpected production dependency stops the migration for review instead of
+being removed implicitly.
 
 ## Session lifecycle
 

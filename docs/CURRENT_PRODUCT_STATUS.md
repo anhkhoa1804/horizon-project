@@ -48,7 +48,8 @@ claim changes.
 
 ## Unresolved release gates
 
-1. Apply all production migrations, including `027_remove_fixture_and_qa_data`.
+1. Apply all production migrations, including `027_remove_fixture_and_qa_data`
+   and the non-cascading `028_remove_dead_device_secret_hash`.
 2. Rotate every production device secret and verify the deployment checker.
 3. Run authenticated Admin persistence QA against the intended environment.
 4. Capture a real gateway network trace through DNS, TLS, edge ingest and
