@@ -14,8 +14,6 @@ const stations = [
   { id: 'STATION_01', name: 'Con Ho North', lat: 10.245, lng: 105.82, status: 'active' as const, secret: 'station-secret-01' },
   { id: 'STATION_02', name: 'Con Ho South', lat: 10.2385, lng: 105.826, status: 'active' as const, secret: 'station-secret-02' },
   { id: 'STATION_03', name: 'Canal Gate West', lat: 10.2421, lng: 105.832, status: 'active' as const, secret: 'station-secret-03' },
-  { id: 'STATION_04', name: 'Brackish Edge', lat: 10.2362, lng: 105.8145, status: 'maintenance' as const, secret: 'station-secret-04' },
-  { id: 'STATION_05', name: 'Mangrove Spur', lat: 10.2492, lng: 105.8362, status: 'active' as const, secret: 'station-secret-05' },
 ];
 
 const deviceSecrets = Object.fromEntries(stations.map((station) => [station.id, station.secret]));
@@ -23,8 +21,6 @@ const otaCatalog = {
   STATION_01: { update_available: true, target_version: '1.0.3', binary_url: 'https://example.com/ota/station-01.bin', sha256: 'mock', size_bytes: 1432200 },
   STATION_02: { update_available: false },
   STATION_03: { update_available: false },
-  STATION_04: { update_available: false },
-  STATION_05: { update_available: false },
 };
 
 const config: IngestConfig = {
@@ -52,8 +48,8 @@ function generatePayload(stationIndex: number, now: number): TelemetryPayloadV1 
     timestamp: now,
     salinity,
     water_level: waterLevel,
-    fault_flags: station.id === 'STATION_04' ? 1 : 0,
-    sensor_status: station.id === 'STATION_04' ? { ec_probe: 'fault', ultrasonic: 'warn' } : { ec_probe: 'ok', ultrasonic: 'ok' },
+    fault_flags: station.id === 'STATION_02' ? 1 : 0,
+    sensor_status: station.id === 'STATION_02' ? { ec_probe: 'warn', ultrasonic: 'ok' } : { ec_probe: 'ok', ultrasonic: 'ok' },
     battery_voltage: battery,
     signal_strength_dbm: signal,
     firmware_version: '1.0.2',

@@ -47,18 +47,13 @@ verified at the firmware level, not inferred from the database:
   `STATION_01`, `STATION_02`, `STATION_03` — **this is correct and
   intentional**, not a bug or an oversight.
 
-**STATION_04 and STATION_05 are simulator/seed fixtures, not operational
-stations.** `services/edge-ingestion/scripts/simulator.ts` defines a
-5-station fixture list — including "Brackish Edge" and "Mangrove Spur" at
-the exact coordinates that later appear in `infra/supabase/seed/
-pilot_seed.sql` — for local load-testing and generating `apps/web/mock/*`
-fixture JSON. `pilot_seed.sql` itself carries the comment "Dev/pilot secrets
-only — matches the placeholders used throughout tests/scripts... Real
-deployments must set unique, non-guessable secrets per device." No firmware
-environment, no admin config, and no documentation anywhere claims these
-two stations are real or planned hardware. Treat their presence in the live
-database as a seed artifact to be aware of, not as evidence of a 5-station
-requirement — do not build new features that assume 5 stations exist.
+**STATION_04 and STATION_05 are retired fixtures, not operational stations.**
+They were removed from the pilot seed, simulator and production-shaped
+cleanup path in migration 027. Older audit records may mention “Brackish
+Edge” and “Mangrove Spur”; those references are historical evidence, not a
+current topology. The development seed still uses public placeholders for
+the canonical nodes only, and physical devices require unique provisioned
+secrets.
 
 **Is the gateway meant to support arbitrary registered stations?** No.
 `ingest.ts`'s auth model *technically* allows any active, registered device

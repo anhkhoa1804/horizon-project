@@ -43,7 +43,6 @@ import { Tag } from "@/components/ui/tag";
 import { freshnessStatus, StatusIndicator } from "@/components/ui/status-indicator";
 import { getSessionContext } from "@/lib/auth/session";
 import { createRepositories } from "@/lib/repositories";
-import { listDemoReports, markDemoReportViewed } from "@/lib/reports/demoReportStore";
 import { createServiceClient } from "@/lib/supabase/service";
 import { filterSnapshotsToPilotStations, filterToPilotStations } from "@/lib/publicStations";
 import type { Station, StationReadingSnapshot } from "@/types";
@@ -106,36 +105,6 @@ function nullableUuid(value: string): string | null {
     : null;
 }
 
-function demoAdminStations(): Station[] {
-  const now = new Date().toISOString();
-  return [
-    {
-      id: "STATION_01",
-      name: "Trạm Nước",
-      lat: 10.0,
-      lng: 106.0,
-      status: "active",
-      created_at: now,
-    },
-    {
-      id: "STATION_02",
-      name: "Trạm Đất",
-      lat: 10.0,
-      lng: 106.0,
-      status: "active",
-      created_at: now,
-    },
-    {
-      id: "STATION_03",
-      name: "Gateway",
-      lat: 10.0,
-      lng: 106.0,
-      status: "active",
-      created_at: now,
-    },
-  ];
-}
-
 async function requireAdmin() {
   const { user, profile, scope } = await getSessionContext();
 
@@ -153,7 +122,7 @@ async function requireAdmin() {
 async function loadRuntimeConfigs(): Promise<RuntimeConfig[]> {
   const supabase = createServiceClient();
   if (!supabase) {
-    return managedStationIds.map(defaultConfig);
+    return [];
   }
 
   const { data, error } = await supabase
@@ -163,7 +132,7 @@ async function loadRuntimeConfigs(): Promise<RuntimeConfig[]> {
     .order("station_id");
 
   if (error) {
-    return managedStationIds.map(defaultConfig);
+    return [];
   }
 
   return managedStationIds.map(
@@ -174,15 +143,15 @@ async function loadRuntimeConfigs(): Promise<RuntimeConfig[]> {
 async function loadAdminStations(
   repos: ReturnType<typeof createRepositories> | null,
   scope: Awaited<ReturnType<typeof requireAdmin>>["scope"],
-): Promise<{ stations: Station[]; demo: boolean }> {
+): Promise<{ stations: Station[]; demo: boolean; unavailable: boolean }> {
   if (!repos) {
-    return { stations: demoAdminStations(), demo: true };
+    return { stations: [], demo: false, unavailable: true };
   }
 
   try {
-    return { stations: filterToPilotStations(await repos.stations.getAll(scope)), demo: false };
+    return { stations: filterToPilotStations(await repos.stations.getAll(scope)), demo: false, unavailable: false };
   } catch {
-    return { stations: demoAdminStations(), demo: true };
+    return { stations: [], demo: false, unavailable: true };
   }
 }
 
@@ -205,23 +174,23 @@ async function loadAdminSnapshots(
 async function loadAdminMetrics(
   repos: ReturnType<typeof createRepositories> | null,
   scope: Awaited<ReturnType<typeof requireAdmin>>["scope"],
-): Promise<{ active: number; total: number; demo: boolean }> {
+): Promise<{ active: number; total: number; demo: boolean; unavailable: boolean }> {
   if (!repos) {
-    return { active: 3, total: 3, demo: true };
+    return { active: 0, total: 0, demo: false, unavailable: true };
   }
 
   try {
     const stations = filterToPilotStations(await repos.stations.getAll(scope));
-    return { active: stations.filter((station) => station.status === "active").length, total: stations.length, demo: false };
+    return { active: stations.filter((station) => station.status === "active").length, total: stations.length, demo: false, unavailable: false };
   } catch {
-    return { active: 3, total: 3, demo: true };
+    return { active: 0, total: 0, demo: false, unavailable: true };
   }
 }
 
 async function loadCommunityReports(): Promise<CommunityReport[]> {
   const supabase = createServiceClient();
   if (!supabase) {
-    return listDemoReports().map((report) => ({ ...report, media: [] }));
+    return [];
   }
 
   const { data, error } = await supabase
@@ -231,7 +200,7 @@ async function loadCommunityReports(): Promise<CommunityReport[]> {
     .limit(20);
 
   if (error) {
-    return listDemoReports().map((report) => ({ ...report, media: [] }));
+    return [];
   }
   const reports = (data ?? []).map((row) => ({
     id: row.id as string,
@@ -384,12 +353,6 @@ async function markReportViewed(formData: FormData) {
   const reportId = String(formData.get("report_id") ?? "");
   if (!reportId) {
     redirect("/admin");
-  }
-
-  if (reportId.startsWith("demo-")) {
-    markDemoReportViewed(reportId);
-    revalidatePath("/admin");
-    return;
   }
 
   const supabase = createServiceClient();
@@ -578,7 +541,7 @@ async function resolveReport(formData: FormData) {
 
   const { user } = await requireAdmin();
   const reportId = String(formData.get("report_id") ?? "");
-  if (!reportId || reportId.startsWith("demo-")) redirect("/admin");
+  if (!reportId) redirect("/admin");
 
   const supabase = createServiceClient();
   if (!supabase) redirect("/admin?error=missing-supabase");
@@ -675,7 +638,7 @@ export default async function AdminPage({
 
   const supabase = createServiceClient();
   const repos = supabase ? createRepositories(supabase) : null;
-  const [{ stations, demo: stationsAreDemo }, metrics, runtimeConfigs, reports, allowedEmailEntries] = await Promise.all([
+  const [{ stations, demo: stationsAreDemo, unavailable: stationsUnavailable }, metrics, runtimeConfigs, reports, allowedEmailEntries] = await Promise.all([
     loadAdminStations(repos, scope),
     loadAdminMetrics(repos, scope),
     loadRuntimeConfigs(),
@@ -706,6 +669,7 @@ export default async function AdminPage({
   const unreadReports = reports.filter((report) => !report.viewed_at).length;
   const errorMessage = adminErrorMessage(params.error);
   const isDemoMode = stationsAreDemo || metrics.demo;
+  const operationalDataUnavailable = stationsUnavailable || metrics.unavailable;
 
   const reportBell = (
     <details className="relative">
@@ -741,7 +705,6 @@ export default async function AdminPage({
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-medium">{reportTitle(report.description)}</p>
-                          {report.id.startsWith("demo-") ? <Tag>Lưu tạm — chưa vào Supabase</Tag> : null}
                         </div>
                         <p className="mt-1 text-xs text-muted">{formatReportTime(report.timestamp)}</p>
                       </div>
@@ -800,6 +763,12 @@ export default async function AdminPage({
     >
       <span id="reports" className="scroll-mt-36" aria-hidden />
       {errorMessage ? <Alert tone="critical">{errorMessage}</Alert> : null}
+
+      {operationalDataUnavailable ? (
+        <Alert tone="critical">
+          Không thể tải dữ liệu vận hành từ Supabase. Không có dữ liệu minh họa nào được thay thế; thử lại sau khi kiểm tra kết nối và cấu hình server.
+        </Alert>
+      ) : null}
 
       {isDemoMode ? (
         <Alert tone="warning">

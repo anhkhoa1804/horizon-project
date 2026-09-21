@@ -1361,16 +1361,9 @@ main {
   }
 }
 
-/* The illustration is a bright daylight scene and sits far louder on a
-   graphite ground than on paper. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .hero-canvas__image {
-    opacity: 0.5;
-  }
-}
-:root[data-theme="dark"] .hero-canvas__image {
-  opacity: 0.5;
-}
+/* Keep the Cồn Hô scene legible in dark mode. The copy pool on the canvas is
+   enough contrast treatment; dimming the photograph made it read as texture
+   instead of a real place. */
 
 /*
  * THE HEADER OVER THE HERO.
@@ -1399,10 +1392,6 @@ main {
   margin-bottom: var(--rhythm-large);
 }
 
-/* The aerial has bright water and pale clouds directly behind the mobile
-   copy. Keep the picture present, but give the editorial words their own
-   crisp edge rather than darkening the entire image further. */
-.home-hero-shell h1,
-.home-hero-shell p {
-  text-shadow: 0 2px 18px rgba(8, 18, 23, 0.72);
-}
+/* Hero copy relies on the local canvas copy pool, not a text halo. Keeping
+   glyphs unshadowed makes the title read as editorial type rather than a
+   treatment pasted over the image. */

@@ -3,18 +3,18 @@ import { describe, it } from "node:test";
 import { classifyInsertError, isMissingTableError } from "@/lib/reports/reportPersistence";
 
 describe("report persistence error classification", () => {
-  it("treats a missing-table error (PGRST205) as demo-fallback-eligible", () => {
+  it("treats a missing-table error (PGRST205) as an unavailable persistence path", () => {
     const error = { code: "PGRST205", message: "table not found" };
     assert.equal(isMissingTableError(error), true);
-    assert.equal(classifyInsertError(error), "demo");
+    assert.equal(classifyInsertError(error), "insert_failed");
   });
 
-  it("treats any other Supabase error as a genuine insert failure, not demo-eligible", () => {
+  it("treats every Supabase error as a genuine insert failure", () => {
     // Regression guard: before this fix, ANY error (RLS denial, network
     // failure, permissions issue) fell back to demo mode and returned
     // ok:true — silently masquerading a real production failure as a
-    // successful submission. Only the structural "table doesn't exist yet"
-    // case should ever be treated as demo-eligible.
+    // successful submission. The route now permits demo only through its
+    // explicit request/environment boundary.
     const rlsDenied = { code: "42501", message: "permission denied" };
     const networkError = { code: "ECONNRESET", message: "connection reset" };
 

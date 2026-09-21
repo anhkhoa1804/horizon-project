@@ -56,10 +56,12 @@ choice depends on where the Supabase project lives.
 
 ## 2a. CRITICAL — device secrets are public
 
-**Every device in the production database currently authenticates with a secret
-that is committed to this repository.** Verified 2026-08-28: all six rows in
-`devices` (`GATEWAY_01`, `STATION_01`–`STATION_05`) hold the placeholder values
-from `infra/supabase/seed/pilot_seed.sql`.
+**Production device-secret rotation remains a release gate.** The former
+five-node fixture topology has been removed; the canonical registry is
+`GATEWAY_01` plus `STATION_01`–`STATION_03`. The seed contains public
+development placeholders for fresh local setups, so the release checker must
+be run against production before telemetry is exposed. This document does not
+claim the current production secrets have been rotated.
 
 `device_secret` is the HMAC key `services/edge-ingestion` uses to authenticate
 telemetry (`canonical.ts` → `signPayload`). Anyone who can read this repository
@@ -93,10 +95,9 @@ Generate with `node -e "console.log(require('crypto').randomBytes(32).toString('
 The same value must be flashed into that node's firmware. Verify with
 `npm run verify` — it now **fails** while any placeholder remains.
 
-Until ingestion is publicly reachable *and* hardware exists, the practical risk
-is bounded: no gateway is deployed, and forged rows would only pollute a table
-the dashboard already reports as stale. It is a **release blocker for the
-telemetry path**, not for the public read-only site.
+It is a **release blocker for the telemetry path**, not for the public
+read-only site. See `CURRENT_PRODUCT_STATUS.md` and the field release
+checklist for the current verification boundaries.
 
 ---
 

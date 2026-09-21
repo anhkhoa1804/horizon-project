@@ -67,19 +67,17 @@ function errorMessageFor(status: number, code: string | undefined, dict: Diction
 }
 
 // ---------------------------------------------------------------------------
-// Progress rail — the record strip
+// Progress rail
 // ---------------------------------------------------------------------------
 
 function StepRail({
   current,
   furthest,
   onJump,
-  record,
 }: {
   current: StepId;
   furthest: StepId;
   onJump: (step: StepId) => void;
-  record: { label: string; value: string | null }[];
 }) {
   const dict = useDict();
   return (
@@ -133,21 +131,6 @@ function StepRail({
         })}
       </ol>
 
-      {/* The accumulating field record — desktop only; on mobile the review
-          step itself covers this and a duplicate would just cost scroll. */}
-      <div className="hidden space-y-4 border-t border-border/60 pt-6 lg:block">
-        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">{dict.report.record}</p>
-        <dl className="space-y-3">
-          {record.map((item) => (
-            <div key={item.label} className="space-y-0.5">
-              <dt className="text-[10px] uppercase tracking-[0.14em] text-muted">{item.label}</dt>
-              <dd className={cn("text-sm leading-snug", item.value ? "text-foreground" : "text-muted/60")}>
-                {item.value ?? "—"}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </div>
     </aside>
   );
 }
@@ -345,7 +328,14 @@ export function ReportForm() {
       }
       if (station) form.set("stationId", station.id);
       attachments.forEach((file) => form.append("media", file));
-      const res = await fetch("/api/public/reports", {
+      // Demo persistence can only be reached from an explicit `?mode=demo`
+      // page visit. Normal production submissions always use the durable API
+      // path and receive a clear failure if it is unavailable.
+      const endpoint = new URL("/api/public/reports", window.location.origin);
+      if (new URLSearchParams(window.location.search).get("mode") === "demo") {
+        endpoint.searchParams.set("mode", "demo");
+      }
+      const res = await fetch(endpoint, {
         method: "POST",
         body: form,
       });
@@ -397,18 +387,11 @@ export function ReportForm() {
       ? f.byStation
       : null;
 
-  const record = [
-    { label: f.station, value: station?.name ?? (gps ? f.gpsDevice : null) },
-    { label: f.condition, value: category ? categoryLabel(category, dict) : null },
-    { label: f.location, value: locationSummary },
-    { label: f.description, value: trimmed ? fmt(f.charCount, { n: trimmed.length }) : null },
-  ];
-
   const currentStep = STEPS.find((s) => s.id === step)!;
 
   return (
     <div className="grid gap-10 lg:grid-cols-[minmax(0,0.26fr)_minmax(0,0.74fr)] lg:gap-16">
-      <StepRail current={step} furthest={furthest} onJump={goto} record={record} />
+      <StepRail current={step} furthest={furthest} onJump={goto} />
 
       {/* Capped to a reading measure rather than filling the column: these are
           field controls, and a 900px-wide row strands the station id far from
