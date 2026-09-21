@@ -11,7 +11,7 @@ import { buildSignalGroups, type SignalGroup } from "@/lib/monitoring/signals";
 import { contextLine, deviceContext, type ContextMetricKey } from "@/lib/monitoring/context";
 import { mergeWeather24hSeries, weatherHistoryToObservationSeries } from "@/lib/monitoring/weatherSeries";
 import { ThresholdTable } from "@/components/monitoring/threshold-table";
-import type { ThresholdRow, SoilWaterModel } from "@/lib/monitoring/thresholdTypes";
+import { resolveReferenceSeverity, type ThresholdRow, type SoilWaterModel } from "@/lib/monitoring/thresholdTypes";
 import { STATION_COORDS } from "@/lib/geo";
 import type { PilotStationId } from "@/lib/publicStations";
 import { statusFor, worstStatus, STATUS_SURFACE, type MetricStatus } from "@/lib/monitoring/status";
@@ -303,7 +303,7 @@ function RegionHeader({
             ·
           </span>
           <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-foreground">
-            {dict.alerts[STATUS_LABEL[status.level]]}
+            {dict.alerts[STATUS_LABEL[status.level]]} · {dict.monitoring.statusBasis[status.basis]}
           </span>
         </>
       ) : null}
@@ -316,6 +316,7 @@ function ObservatoryBento({
   dict,
   isDemo,
   salinityThreshold,
+  thresholds,
   series,
   mapStations,
   network,
@@ -324,6 +325,7 @@ function ObservatoryBento({
   dict: Dictionary;
   isDemo: boolean;
   salinityThreshold: { warningLevel: number; criticalLevel: number } | null;
+  thresholds: ThresholdRow[];
   series: ObservatoryViewModel["series"];
   mapStations: MapStation[];
   network: ObservatoryViewModel["network"];
@@ -340,6 +342,19 @@ function ObservatoryBento({
           isDemo,
         })
       : null;
+
+  const advisoryStatus = (metric: ObservatoryMetric | null | undefined, quantity: string): MetricStatus | null => {
+    if (!metric || metric.value === null) return null;
+    const resolved = resolveReferenceSeverity(thresholds, quantity, Number(metric.value));
+    if (!resolved) return null;
+    const level = resolved.severity === "normal" ? "ok" : resolved.severity === "critical" ? "critical" : resolved.severity === "warning" ? "warn" : "watch";
+    const basis = resolved.row.basis === "SENSOR_QUALITY"
+      ? "quality"
+      : resolved.row.validation_status === "PILOT"
+        ? "pilot"
+        : "reference";
+    return { level, basis };
+  };
 
   const salinity = water?.primary;
   const waterLevel = water?.secondary[0];
@@ -358,6 +373,8 @@ function ObservatoryBento({
   // One status per region — see the note above ObservatoryBento.
   const primaryStatus = worstStatus([status(salinity), status(waterLevel)]);
   const infraStatus = worstStatus([status(signal), status(battery)]);
+  const waterStatus = advisoryStatus(waterEc, "water_ec");
+  const soilStatus = advisoryStatus(soilPh, "soil_ph");
 
   // Every cell, without exception: same corner, same hairline, same inset.
   // A box differs from its neighbours only in what it spans and what colour
@@ -561,12 +578,13 @@ function ObservatoryBento({
         className={cn(
           cell,
           padded,
-          "col-start-1 col-end-5 row-start-16 row-end-18 bg-[var(--h-domain-water)]",
+          waterStatus ? regionSurface(waterStatus) : "bg-[var(--h-domain-water)]",
+          "col-start-1 col-end-5 row-start-16 row-end-18",
           "md:col-start-1 md:col-end-5 md:row-start-8 md:row-end-9",
           "lg:col-start-1 lg:col-end-3 lg:row-start-4 lg:row-end-5",
         )}
       >
-        <RegionHeader icon={Waves} title={dict.terms.water} status={null} dict={dict} />
+        <RegionHeader icon={Waves} title={dict.terms.water} status={waterStatus} dict={dict} />
         <div className="mt-auto grid grid-cols-2 gap-4 pt-2">
           <Value label={dict.metricLabels.waterEc} metric={waterEc} dict={dict} />
           <Value label={dict.metricLabels.waterTemp} metric={waterTemp} dict={dict} />
@@ -576,12 +594,13 @@ function ObservatoryBento({
       <div
         className={cn(
           cell,
-          "col-start-1 col-end-5 row-start-18 row-end-22 flex flex-col bg-[var(--h-domain-soil)] p-[var(--bento-pad)]",
+          soilStatus ? regionSurface(soilStatus) : "bg-[var(--h-domain-soil)]",
+          "col-start-1 col-end-5 row-start-18 row-end-22 flex flex-col p-[var(--bento-pad)]",
           "md:col-start-1 md:col-end-5 md:row-start-9 md:row-end-11",
           "lg:col-start-3 lg:col-end-7 lg:row-start-4 lg:row-end-5",
         )}
       >
-        <RegionHeader icon={Sprout} title={dict.terms.soil} status={null} dict={dict} />
+        <RegionHeader icon={Sprout} title={dict.terms.soil} status={soilStatus} dict={dict} />
         <div className="mt-2 grid flex-1 grid-cols-2 content-around gap-x-4 gap-y-2 lg:grid-cols-4 lg:items-end">
           <Value label={dict.metricLabels.moisture} metric={soilMoisture} dict={dict} />
           <Value label={dict.metricLabels.ec} metric={soilEc} dict={dict} />
@@ -767,6 +786,7 @@ export function ObservatoryCanvas({
           dict={dict}
           isDemo={model.mode === "demo"}
           salinityThreshold={salinityThreshold}
+          thresholds={thresholds}
           series={series}
           mapStations={mapStations}
           network={model.network}

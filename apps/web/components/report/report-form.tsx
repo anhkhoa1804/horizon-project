@@ -467,7 +467,7 @@ export function ReportForm() {
                         "relative flex cursor-pointer flex-col gap-3 rounded-lg border p-5 transition-all duration-[var(--motion-base)]",
                         "focus-within:ring-2 focus-within:ring-accent",
                         active
-                          ? "border-accent bg-accent/[0.07] shadow-[inset_0_0_0_1px_var(--color-accent)]"
+                          ? "border-accent bg-[var(--h-selection-surface)] shadow-[inset_0_0_0_1px_var(--color-accent)]"
                           : "border-border hover:border-foreground-subtle hover:bg-wash-hover",
                       )}
                     >
@@ -508,7 +508,7 @@ export function ReportForm() {
                     "relative flex cursor-pointer flex-col gap-3 rounded-lg border p-5 transition-all duration-[var(--motion-base)]",
                     "focus-within:ring-2 focus-within:ring-accent",
                     locationChoice === "gps"
-                      ? "border-accent bg-accent/[0.07] shadow-[inset_0_0_0_1px_var(--color-accent)]"
+                      ? "border-accent bg-[var(--h-selection-surface)] shadow-[inset_0_0_0_1px_var(--color-accent)]"
                       : "border-border hover:border-foreground-subtle hover:bg-wash-hover",
                   )}
                 >
@@ -526,37 +526,10 @@ export function ReportForm() {
                 </label>
               </fieldset>
 
-              {/* GPS refinement belongs TO the station choice, not beside it.
-                  It used to sit under its own "Vị trí chính xác hơn" heading
-                  behind a horizontal rule, which read as a second, unrelated
-                  location question — a reader who had just picked a station
-                  was asked to pick a location again. It is now the last row
-                  of the same fieldset: one question ("where?"), answered
-                  coarsely by the station and optionally refined by GPS. */}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-3 pt-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleLocate}
-                  disabled={gpsState === "locating"}
-                  className="gap-2 text-foreground-muted"
-                >
-                  <Crosshair className={cn("h-4 w-4", gpsState === "locating" && "animate-pulse")} aria-hidden />
-                  {gpsState === "locating" ? f.locating : gps ? f.updateLocation : f.useCurrentLocation}
-                </Button>
-                {gps ? (
-                  <p className="text-sm text-muted [font-family:var(--font-data)]">
-                    {gps.lat.toFixed(4)}, {gps.lng.toFixed(4)}
-                  </p>
-                ) : (
-                  <p className="min-w-0 flex-1 text-xs leading-relaxed text-foreground-subtle">
-                    {gpsNote ?? f.optionalGps}
-                  </p>
-                )}
-              </div>
-              {gps ? (
-                <p className="text-xs leading-relaxed text-foreground-subtle">{f.willUseGps}</p>
+              {locationChoice === "gps" ? (
+                <p className="text-xs leading-relaxed text-foreground-subtle">
+                  {gps ? `${f.locationReady}: ${gps.lat.toFixed(4)}, ${gps.lng.toFixed(4)}` : gpsNote ?? f.locating}
+                </p>
               ) : null}
             </div>
           ) : null}
@@ -584,7 +557,7 @@ export function ReportForm() {
                           "flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3.5 transition-all duration-[var(--motion-base)]",
                           "focus-within:ring-2 focus-within:ring-accent",
                           active
-                            ? "border-accent bg-accent/[0.07] shadow-[inset_0_0_0_1px_var(--color-accent)]"
+                            ? "border-accent bg-[var(--h-selection-surface)] shadow-[inset_0_0_0_1px_var(--color-accent)]"
                             : "border-border hover:border-foreground-subtle hover:bg-wash-hover",
                         )}
                       >

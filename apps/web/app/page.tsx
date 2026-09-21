@@ -181,12 +181,17 @@ async function NetworkChapter() {
         const text = stationText(id, dict);
         const Icon = KIND_ICON[profile.kind];
         const timestamp = latestTimestampFor(id, data);
+        const surface = profile.kind === "water"
+          ? "bg-[var(--h-domain-water)]"
+          : profile.kind === "soil"
+            ? "bg-[var(--h-domain-soil)]"
+            : "bg-[var(--h-domain-infrastructure)]";
 
         return (
           <Link
             key={id}
             href={OBSERVATORY_HREF}
-            className="group flex flex-col gap-6 bg-background p-6 transition-colors duration-[var(--motion-base)] hover:bg-muted/20 md:p-8"
+            className={`group flex flex-col gap-6 p-6 transition-[transform,box-shadow] duration-[var(--motion-base)] hover:-translate-y-0.5 hover:shadow-sm md:p-8 ${surface}`}
           >
             <div className="flex items-start justify-between">
               <span className="text-[11px] font-medium tracking-[0.16em] text-muted [font-family:var(--font-data)]">
@@ -204,10 +209,7 @@ async function NetworkChapter() {
             {STATION_METRICS[id].length > 0 ? (
               <ul className="flex flex-wrap gap-x-2 gap-y-1">
                 {STATION_METRICS[id].map((metric) => (
-                  <li
-                    key={metric}
-                    className="rounded-sm border border-border/70 px-1.5 py-0.5 text-[11px] text-foreground-subtle"
-                  >
+                  <li key={metric} className="border-b border-border/70 pb-0.5 text-[11px] text-foreground-subtle">
                     {metric}
                   </li>
                 ))}
@@ -308,16 +310,18 @@ const HARDWARE_GROUPS = [
 // ---------------------------------------------------------------------------
 
 const WORKFLOW = [
-  { step: "Đo", text: "Cảm biến tại trạm đọc giá trị theo chu kỳ, kèm trạng thái của chính cảm biến đó." },
-  { step: "Truyền", text: "Trạm gửi số liệu thô qua LoRa về gateway — thiết bị duy nhất cần internet." },
-  { step: "Lưu", text: "Gateway ký xác thực rồi gửi lên hệ thống; dữ liệu không hợp lệ bị từ chối thay vì lưu tạm." },
-  { step: "Diễn giải", text: "Mỗi giá trị được gắn thời điểm đo, tình trạng thiết bị và nguồn gốc của nó." },
-  { step: "Trình bày", text: "Kết quả hiển thị công khai, kể cả khi trạng thái đúng là “chưa có dữ liệu”." },
+  { step: "Sensor", text: "Đầu dò đọc nước và đất tại vị trí đặt trạm." },
+  { step: "ESP32", text: "Vi điều khiển đóng gói từng lần đo." },
+  { step: "LoRa", text: "Gửi từ trạm về gateway bằng liên kết tầm xa." },
+  { step: "Gateway", text: "Gom gói tin và kiểm tra đường truyền." },
+  { step: "Cellular", text: "Đưa dữ liệu rời cồn lên internet." },
+  { step: "Supabase", text: "Lưu giá trị, thời điểm và nguồn dữ liệu." },
+  { step: "Observatory", text: "Đọc chuỗi số liệu cùng ngưỡng và giới hạn." },
 ] as const;
 
 function WorkflowChapter() {
   return (
-    <ol className="grid gap-px overflow-hidden border-y border-border bg-border sm:grid-cols-2 lg:grid-cols-5">
+    <ol className="grid gap-px overflow-hidden border-y border-border bg-border sm:grid-cols-2 lg:grid-cols-7">
       {WORKFLOW.map(({ step, text }, index) => (
         <li key={step} className="space-y-3 bg-background p-6">
           <span className="text-[11px] tracking-[0.16em] text-accent [font-family:var(--font-data)]">
@@ -357,25 +361,25 @@ const EXPLORE = [
 ] as const;
 
 const APPLICATION_PROFILES = [
-  { index: "01", title: "Vườn cây giá trị cao", equation: "Đất × nước × thời tiết → hỗ trợ quyết định tưới", available: ["Độ ẩm, EC, pH và nhiệt độ đất", "EC, nhiệt độ và mực nước", "Bối cảnh không khí"], next: ["Đo đất nhiều tầng", "FC / PWP / MAD tại chỗ", "ET0, Kc và hiệu chuẩn theo mùa vụ"] },
-  { index: "02", title: "Lúa – Tôm", equation: "Nước × đất × mùa → theo dõi chuyển dịch mặn/ngọt", available: ["Quan trắc nước và đất trên cùng hạ tầng", "Chuỗi thời gian có nguồn gốc"], next: ["Mô hình mùa khô / mùa mưa", "So sánh nguồn nước và phân vùng ruộng/ao"] },
-  { index: "03", title: "Lúa AWD + MRV", equation: "Mực nước × thời gian → quản lý nước và hồ sơ có thể kiểm chứng", available: ["Mực nước siêu âm", "Telemetry có thời gian và lịch sử tiếp nhận"], next: ["Hình học ống đo tại ruộng", "Phương pháp AWD và quy trình thẩm tra MRV"] },
+  { index: "01", title: "Vườn cây giá trị cao", problem: "Giữ vùng rễ trong bối cảnh nước và thời tiết thay đổi.", available: ["Độ ẩm, EC, pH và nhiệt độ đất", "Nước, mực nước và bối cảnh không khí"], next: ["FC / PWP / MAD tại chỗ", "ET0, Kc và hiệu chuẩn theo mùa vụ"], surface: "bg-[var(--h-domain-soil)] lg:col-span-2" },
+  { index: "02", title: "Lúa – Tôm", problem: "Theo dõi lúc nước, đất và mùa chuyển giữa mặn và ngọt.", available: ["Quan trắc nước và đất", "Chuỗi thời gian có thời điểm"], next: ["Mô hình mùa", "So sánh nguồn nước và phân vùng"], surface: "bg-[var(--h-domain-water)]" },
+  { index: "03", title: "Lúa AWD + MRV", problem: "Giữ một hồ sơ mực nước có thể đối chiếu theo thời gian.", available: ["Mực nước siêu âm", "Telemetry và lịch sử tiếp nhận"], next: ["Hình học ống đo", "Phương pháp AWD và quy trình thẩm tra"], surface: "bg-[var(--h-domain-weather)]" },
 ] as const;
 
 function ApplicationProfilesChapter() {
   return (
     <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-border bg-border lg:grid-cols-3">
       {APPLICATION_PROFILES.map((profile) => (
-        <article key={profile.index} className="flex flex-col bg-background p-6 md:p-8">
+        <article key={profile.index} className={`flex flex-col p-6 md:p-8 ${profile.surface}`}>
           <p className="text-[11px] tracking-[0.16em] text-accent [font-family:var(--font-data)]">{profile.index}</p>
           <h3 className="mt-4 text-xl font-semibold tracking-tight">{profile.title}</h3>
-          <p className="mt-2 min-h-12 text-sm leading-relaxed text-muted">{profile.equation}</p>
+          <p className="mt-2 min-h-12 text-sm leading-relaxed text-muted">{profile.problem}</p>
           <div className="mt-6 border-t border-border pt-5">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-safe">Đang có</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-safe">Dữ liệu hiện có</p>
             <ul className="mt-2 space-y-1 text-sm leading-relaxed text-muted">{profile.available.map((item) => <li key={item}>{item}</li>)}</ul>
           </div>
           <div className="mt-5 border-t border-border pt-5">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-watch">Có thể mở rộng</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-watch">Lớp cần thêm</p>
             <ul className="mt-2 space-y-1 text-sm leading-relaxed text-muted">{profile.next.map((item) => <li key={item}>{item}</li>)}</ul>
           </div>
         </article>
@@ -499,12 +503,11 @@ export default async function HomePage() {
           <Reveal stagger as="section">
             <ChapterHeading
               eyebrow="03 · Một con đường dữ liệu"
-              title="Từ cảm biến tới Observatory."
-              lead="Sensor → ESP32 → LoRa → Gateway → cellular → Supabase → Observatory. Mỗi chặng giữ lại thời điểm và nguồn của phép đo."
+              title="Một lần đo đi từ vườn tới màn hình như thế nào?"
+              lead="Bảy chặng, từ đầu dò đặt tại Cồn Hô tới Observatory. Mỗi chặng giữ lại dấu vết cần thiết để đọc lại dữ liệu."
             />
             <p className="mt-6 text-sm leading-relaxed text-muted">
-              Firmware hiện ghi EC nước và nhiệt độ nước cùng mực nước, TDS và độ mặn. Các đại lượng này được giữ riêng;
-              HORIZON không dùng một hằng số tùy ý để đổi độ mặn ‰ thành dS/m.{" "}
+              EC nước, nhiệt độ nước, mực nước, TDS và độ mặn được lưu thành các đại lượng riêng. Không có phép đổi tắt từ độ mặn ‰ sang dS/m.{" "}
               <Link
                 href="/posts/phan-cung-cua-mot-tram-do"
                 className="text-accent underline-offset-2 hover:underline"
@@ -513,9 +516,9 @@ export default async function HomePage() {
               </Link>
             </p>
             <div className="mt-16 border-t border-border pt-10">
-              <h3 className="text-xl font-semibold tracking-tight">Từ một đầu dò đến một dòng trên màn hình.</h3>
+              <h3 className="text-xl font-semibold tracking-tight">Từ số đo đến ý nghĩa.</h3>
               <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted">
-                Dữ liệu được đo, truyền, lưu và trình bày theo một chuỗi có nguồn gốc — không lấp chỗ trống bằng số giả.
+                Một con số chỉ được đọc khi biết nó đến từ đâu, được đo lúc nào và dựa vào ngưỡng nào.
               </p>
               <div className="mt-8">
               <WorkflowChapter />
@@ -524,27 +527,22 @@ export default async function HomePage() {
           </Reveal>
 
           {/* 04 — What a number does and does not mean */}
-          <Reveal stagger as="section" className="mx-auto max-w-[var(--width-reading)]">
-            <ChapterHeading eyebrow="04 · Mỗi con số có một nguồn gốc" title="Một con số chưa phải là một kết luận." />
-            <Prose>
-              <p>
-                Độ mặn 1,2‰ có thể là bình thường với cây này và đáng lo với cây khác. Cùng một giá trị, đọc ở hai thời
-                điểm khác nhau trong con nước, cũng mang ý nghĩa khác nhau.
-              </p>
-              <p>
-                Vì vậy mọi giá trị trong HORIZON đi kèm nguồn gốc của nó: đây là số đo trực tiếp, số liệu cũ, ngưỡng
-                tham chiếu, hay dữ liệu minh họa. Người đọc cần phân biệt được “hệ thống đo và thấy ổn” với “hệ thống
-                chưa đo được”.
-              </p>
-            </Prose>
+          <Reveal stagger as="section">
+            <ChapterHeading eyebrow="04 · Từ số đo đến ý nghĩa" title="Một số đo cần bối cảnh trước khi thành kết luận." lead="Giá trị được đo, gắn thời điểm, lưu lại, đối chiếu nguồn tham chiếu rồi mới được diễn giải." />
+            <div className="mt-10 grid gap-px overflow-hidden rounded-xl border border-border bg-border lg:grid-cols-[1.2fr_0.8fr]">
+              <div className="grid gap-px bg-border sm:grid-cols-3">
+                {["EC nước", "Độ ẩm đất", "pH đất"].map((metric, index) => <div key={metric} className={index === 0 ? "bg-[var(--h-domain-water)] p-6" : "bg-[var(--h-domain-soil)] p-6"}><p className="text-[11px] font-semibold uppercase tracking-[.14em] text-foreground-subtle">Đo tại trạm</p><p className="mt-8 text-2xl font-semibold tracking-tight">{metric}</p><p className="mt-2 text-sm text-muted">Giá trị thật được đọc tại Observatory.</p></div>)}
+              </div>
+              <div className="bg-surface p-6 md:p-8"><p className="text-[11px] font-semibold uppercase tracking-[.14em] text-accent">Cách đọc</p><ol className="mt-6 space-y-4 text-sm leading-relaxed text-muted"><li>01 · Đo tại cảm biến</li><li>02 · Gắn thời điểm và trạm</li><li>03 · Lưu thành chuỗi dữ liệu</li><li>04 · Đối chiếu cơ sở tham chiếu</li><li>05 · Hiển thị giới hạn của kết luận</li></ol><p className="mt-8 border-t border-border pt-4 text-sm text-foreground">EC nước không tự động là độ mặn ‰. EC đất tại chỗ cũng không phải ECe.</p></div>
+            </div>
           </Reveal>
 
           {/* 05 — Reusable application profiles */}
           <Reveal stagger as="section">
             <ChapterHeading
-              eyebrow="05 · Một hạ tầng. Nhiều bài toán."
-              title="Từ Cồn Hô tới ba hướng ứng dụng có ranh giới rõ ràng."
-              lead="Mỗi mô hình nói riêng phần HORIZON đã có và phần còn phải đo, hiệu chuẩn hoặc kiểm chứng. Không mô hình nào được trình bày như một sản phẩm đã hoàn thiện."
+              eyebrow="05 · Nhiều bài toán từ cùng dữ liệu"
+              title="Ba câu hỏi có thể bắt đầu từ Cồn Hô."
+              lead="Mỗi hướng cho thấy dữ liệu đang có, và những phép đo còn thiếu trước khi có thể ra quyết định tốt hơn."
             />
             <ApplicationProfilesChapter />
           </Reveal>

@@ -32,7 +32,7 @@ import type { MetricLabelKey } from "./types";
  */
 
 export type StatusLevel = "ok" | "watch" | "warn" | "critical";
-export type StatusBasis = "configured" | "device" | "demo";
+export type StatusBasis = "configured" | "device" | "reference" | "pilot" | "quality" | "demo";
 
 export interface MetricStatus {
   level: StatusLevel;

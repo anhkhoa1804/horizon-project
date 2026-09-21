@@ -138,6 +138,44 @@ export function resolveSeverity(
 }
 
 /**
+ * A public, informational reading of sourced rows that are deliberately not
+ * active operational thresholds. This never creates an alert or action; it
+ * merely lets Monitoring say where a compatible measurement sits relative to
+ * a published reference or pilot band.
+ */
+export function resolveReferenceSeverity(
+  rows: ThresholdRow[],
+  quantity: string,
+  value: number | null,
+): { severity: ThresholdSeverity; row: ThresholdRow } | null {
+  if (value === null || !Number.isFinite(value)) return null;
+
+  const RANK: Record<ThresholdSeverity, number> = {
+    normal: 0,
+    low_confidence: 1,
+    watch: 2,
+    warning: 3,
+    critical: 4,
+  };
+  let worst: { severity: ThresholdSeverity; row: ThresholdRow } | null = null;
+
+  for (const row of rows) {
+    if (row.quantity !== quantity || row.is_active || row.threshold_value === null) continue;
+    const lower = row.threshold_value;
+    const upper = row.upper_value;
+    const hit = row.comparison === "above"
+      ? value > lower
+      : row.comparison === "below"
+        ? value < lower
+        : row.comparison === "between"
+          ? upper !== null && value >= lower && value <= upper
+          : upper !== null && (value < lower || value > upper);
+    if (hit && (!worst || RANK[row.severity] > RANK[worst.severity])) worst = { severity: row.severity, row };
+  }
+  return worst;
+}
+
+/**
  * A row's band as a reader reads it.
  *
  * Deliberately SYMBOLIC and language-free — `<`, `>`, an en-dash range, and
