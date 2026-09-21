@@ -54,6 +54,7 @@ static const uint32_t DASHBOARD_ONLINE_WINDOW_MS = 60000;
 //
 // Do not point this back to Pipedream except for temporary packet debugging.
 static const char *WEB_SERVER_URL = "https://edhcnccvbwuffiwzywfm.supabase.co/functions/v1/edge-ingest";
+static const char *WEB_SERVER_HOST = "edhcnccvbwuffiwzywfm.supabase.co";
 static const char *CONFIG_URL = "https://horizon-frogsleap.vercel.app/api/public/gateway/configs";
 #ifndef GATEWAY_INGEST_TOKEN_VALUE
 #define GATEWAY_INGEST_TOKEN_VALUE ""
@@ -580,6 +581,24 @@ int parseHttpActionStatus(const String &response, uint8_t method) {
   return response.substring(start, comma).toInt();
 }
 
+int parseHttpActionDataLength(const String &response, uint8_t method) {
+  const String marker = String("+HTTPACTION: ") + String(method) + ",";
+  const int p = response.indexOf(marker);
+  if (p < 0) return -1;
+
+  const int statusStart = p + marker.length();
+  const int firstComma = response.indexOf(',', statusStart);
+  if (firstComma < 0) return -1;
+
+  const int lengthStart = firstComma + 1;
+  int lengthEnd = lengthStart;
+  while (lengthEnd < response.length() && isDigit(response[lengthEnd])) {
+    lengthEnd += 1;
+  }
+  if (lengthEnd == lengthStart) return -1;
+  return response.substring(lengthStart, lengthEnd).toInt();
+}
+
 String modemReadUntil(uint32_t timeoutMs) {
   String response;
   response.reserve(512);
@@ -646,6 +665,54 @@ const String response = modemReadUntil(timeoutMs);
     Serial.printf("[MODEM FAIL] %s -> %s\n", command.c_str(), compact.length() ? compact.c_str() : "no-response");
   }
   return ok;
+}
+
+bool sendAtDiagnostic(const String &command, const char *label, uint32_t timeoutMs) {
+  if (activeModemBaud == 0) return false;
+
+  clearModemRx(30);
+  modemSerial.print(command);
+  modemSerial.print("\r\n");
+
+  String response = modemReadUntil(timeoutMs);
+  const bool ok = response.indexOf("OK") >= 0;
+  response.replace("\r", " ");
+  response.replace("\n", " ");
+  response.trim();
+  if (response.length() > 220) response = response.substring(0, 220) + "...";
+
+  Serial.printf("[MODEM DIAG] %s: %s\n",
+                label,
+                response.length() ? response.c_str() : "no-response");
+  return ok;
+}
+
+void diagnoseSupabaseDns() {
+  String dnsCommand = "AT+CDNSGIP=\"";
+  dnsCommand += WEB_SERVER_HOST;
+  dnsCommand += "\"";
+  sendAtDiagnostic(dnsCommand, "DNS Supabase", 10000);
+}
+
+void configureHttpsForHttpStack() {
+  // Supabase is HTTPS-only and requires a clean TLS/SNI handshake. SIMCom HTTP
+  // firmwares vary: some infer these defaults, others need an explicit SSL
+  // context bound to the HTTP service.
+  bool sslContextConfigured = false;
+  sslContextConfigured |= sendAt("AT+CSSLCFG=\"sslversion\",0,4", "OK", 3000);
+  sslContextConfigured |= sendAt("AT+CSSLCFG=\"authmode\",0,0", "OK", 3000);
+  sendAt("AT+CSSLCFG=\"ignorelocaltime\",0,1", "OK", 3000);
+  sendAt("AT+CSSLCFG=\"negotiatetime\",0,120", "OK", 3000);
+  sendAt("AT+CSSLCFG=\"enableSNI\",0,1", "OK", 3000);
+
+  bool httpUsesSslContext = sendAt("AT+HTTPPARA=\"SSLCFG\",0", "OK", 3000);
+  if (!httpUsesSslContext) {
+    httpUsesSslContext = sendAt("AT+HTTPPARA=\"SSLCFG\",\"0\"", "OK", 3000);
+  }
+
+  Serial.printf("[HTTP] HTTPS ctx0=%s SSLCFG=%s SNI=on auth=none\n",
+                sslContextConfigured ? "OK" : "UNSUPPORTED",
+                httpUsesSslContext ? "OK" : "UNSUPPORTED");
 }
 
 void setupWatchdog() {
@@ -754,6 +821,7 @@ Serial.println("[MODEM FAIL] Khong doc duoc CSQ");
     Serial.println("[MODEM FAIL] Khong lay duoc IP PDP (CGPADDR)");
     return false;
   }
+  diagnoseSupabaseDns();
 
   // NETOPEN belongs to the TCP/IP socket stack on many SIMCom firmwares.
   // HTTP(S) has its own service, so keep this diagnostic/non-fatal instead of blocking HTTP.
@@ -1029,6 +1097,7 @@ bool httpPostJson(const String &payload) {
   // Some SIMCom firmwares expose CID/redirect, others do not; keep them non-fatal.
   sendAt("AT+HTTPPARA=\"CID\",1", "OK", 3000);
   sendAt("AT+HTTPPARA=\"REDIR\",1", "OK", 3000);
+  configureHttpsForHttpStack();
 
   String urlCommand = "AT+HTTPPARA=\"URL\",\"";
   urlCommand += WEB_SERVER_URL;
@@ -1090,12 +1159,15 @@ sendAt("AT+HTTPTERM", "OK", 2500);
   if (MODEM_VERBOSE_AT) Serial.println(actionResponse);
 
   const int httpStatus = parseHttpActionStatus(actionResponse, 1);
-  Serial.printf("[HTTP] HTTPACTION POST status=%d\n", httpStatus);
+  const int responseLength = parseHttpActionDataLength(actionResponse, 1);
+  Serial.printf("[HTTP] HTTPACTION POST status=%d len=%d\n", httpStatus, responseLength);
 
   const bool success = (httpStatus >= 200 && httpStatus < 300);
   if (!success) {
     if (httpStatus == -1) {
       Serial.println("[HTTP FAIL] Khong thay +HTTPACTION truoc timeout");
+    } else if (httpStatus == 715) {
+      Serial.println("[HTTP FAIL] 715 = modem khong bat tay TLS/SSL duoc voi host HTTPS");
     } else if (httpStatus >= 600) {
       Serial.println("[HTTP FAIL] Ma 6xx cua modem: loi DNS/network/SSL tuy firmware");
     } else {
@@ -1106,8 +1178,18 @@ sendAt("AT+HTTPTERM", "OK", 2500);
   // Read response body for diagnostics when available; non-fatal.
   if (httpStatus > 0) {
     clearModemRx(20);
-    modemSerial.print("AT+HTTPREAD=0,512\r\n");
-    const String readResponse = modemReadUntil(5000);
+    if (responseLength > 0) {
+      const int readLength = min(responseLength, 512);
+      modemSerial.printf("AT+HTTPREAD=0,%d\r\n", readLength);
+    } else {
+      modemSerial.print("AT+HTTPREAD\r\n");
+    }
+    String readResponse = modemReadUntil(5000);
+    if (responseLength > 0 && readResponse.indexOf("+HTTPREAD") < 0) {
+      clearModemRx(20);
+      modemSerial.print("AT+HTTPREAD\r\n");
+      readResponse = modemReadUntil(5000);
+    }
     if (readResponse.length() > 0) {
       Serial.println("[HTTP RESPONSE]");
       Serial.println(readResponse);

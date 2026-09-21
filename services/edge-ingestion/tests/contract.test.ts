@@ -69,6 +69,20 @@ describe("ingest contract", () => {
     assert.equal(snapshot.auditLogs.at(-1)?.status, "accepted");
   });
 
+  it("accepts a water station powered by a 4S LiFePO4 pack", async () => {
+    const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
+    const payload = basePayload({
+      message_id: "contract-test-4s-pack-001",
+      battery_voltage: 13.2,
+      battery_percent: 82.5,
+    });
+
+    const response = await ingestTelemetry(await buildRequest(payload), db, config, NOW);
+
+    assert.equal(response.ok, true);
+    assert.equal(db.getSnapshot().healthLogs.at(-1)?.battery_voltage, 13.2);
+  });
+
   it("ignores duplicate message_id", async () => {
     const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
     const payload = basePayload({ message_id: "contract-test-duplicate-001" });

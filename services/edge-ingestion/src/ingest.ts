@@ -265,7 +265,7 @@ export async function ingestTelemetry(
           optionalInRange(payload.ec_us_cm, 0, 20000) &&
           optionalInRange(payload.temperature_c, -10, 80) &&
           optionalInRange(payload.tds_ppm, 0, 100000) &&
-          (typeof payload.battery_voltage !== "number" || inRange(payload.battery_voltage, 2.5, 5.5)) &&
+          (typeof payload.battery_voltage !== "number" || inRange(payload.battery_voltage, 2.5, 18)) &&
           optionalInRange(payload.battery_percent, 0, 100) &&
           (typeof payload.signal_strength_dbm !== "number" || inRange(payload.signal_strength_dbm, -130, -30));
 
