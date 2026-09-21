@@ -36,6 +36,16 @@ function devicesUpdateClause(sql: string): string {
 }
 
 describe("pilot seed — device secrets", () => {
+  it("seeds only the three canonical field nodes", () => {
+    const sql = seed();
+    for (const fixture of ["STATION_04", "STATION_05", "Brackish Edge", "Mangrove Spur"]) {
+      assert.ok(!sql.includes(fixture), `fixture ${fixture} must not be seeded into a production-shaped database`);
+    }
+    for (const station of ["STATION_01", "STATION_02", "STATION_03"]) {
+      assert.ok(sql.includes(station), `canonical node ${station} missing from seed`);
+    }
+  });
+
   it("never overwrites device_secret on conflict", () => {
     const clause = devicesUpdateClause(seed());
     assert.ok(clause.length > 0, "expected an upsert with a do-update clause");

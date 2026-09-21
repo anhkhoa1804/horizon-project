@@ -464,7 +464,7 @@ export function ReportForm() {
                     <label
                       key={option.id}
                       className={cn(
-                        "relative flex cursor-pointer flex-col gap-3 rounded-lg border p-5 transition-all duration-[var(--motion-base)]",
+                        "relative flex cursor-pointer flex-col gap-3 rounded-lg border bg-surface p-5 transition-all duration-[var(--motion-base)]",
                         "focus-within:ring-2 focus-within:ring-accent",
                         active
                           ? "border-accent bg-[var(--h-selection-surface)] shadow-[inset_0_0_0_1px_var(--color-accent)]"
@@ -505,7 +505,7 @@ export function ReportForm() {
                 })}
                 <label
                   className={cn(
-                    "relative flex cursor-pointer flex-col gap-3 rounded-lg border p-5 transition-all duration-[var(--motion-base)]",
+                    "relative flex cursor-pointer flex-col gap-3 rounded-lg border bg-surface p-5 transition-all duration-[var(--motion-base)]",
                     "focus-within:ring-2 focus-within:ring-accent",
                     locationChoice === "gps"
                       ? "border-accent bg-[var(--h-selection-surface)] shadow-[inset_0_0_0_1px_var(--color-accent)]"
@@ -554,7 +554,7 @@ export function ReportForm() {
                       <label
                         key={item.value}
                         className={cn(
-                          "flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3.5 transition-all duration-[var(--motion-base)]",
+                          "flex cursor-pointer items-center gap-3 rounded-lg border bg-surface px-4 py-3.5 transition-all duration-[var(--motion-base)]",
                           "focus-within:ring-2 focus-within:ring-accent",
                           active
                             ? "border-accent bg-[var(--h-selection-surface)] shadow-[inset_0_0_0_1px_var(--color-accent)]"
@@ -632,7 +632,7 @@ export function ReportForm() {
                   <img src={url} alt={file.name} className="h-full w-full object-cover" />
                 </> : file.type.startsWith("video/") ? <video src={url} controls className="h-full w-full" /> : <audio src={url} controls className="w-full pt-6" />}</div><div className="mt-2 flex items-center justify-between gap-2"><span className="truncate text-xs">{file.name}</span><button type="button" onClick={() => setAttachments((all) => all.filter((_, itemIndex) => itemIndex !== index))} className="text-critical"><Trash2 className="h-4 w-4" aria-label={f.removeEvidence} /></button></div></li>)}</ul> : null}
               </section>
-              <dl className="divide-y divide-border/50 border-y border-border/50">
+              <dl className="divide-y divide-border/50 rounded-lg border border-border bg-surface px-5">
                 {[
                   { label: f.station, value: station ? `${stationText(station.id, dict).name} · ${stationText(station.id, dict).location}` : "—", jump: 1 as StepId },
                   { label: f.condition, value: category ? categoryLabel(category, dict) : "—", jump: 2 as StepId },

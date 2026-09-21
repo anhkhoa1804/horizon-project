@@ -32,7 +32,27 @@ function dateKey(timestamp: string): string {
 
 function shortDateLabel(key: string): string {
   const date = new Date(`${key}T00:00:00+07:00`);
-  return new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit" }).format(date);
+  return new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "Asia/Ho_Chi_Minh",
+  }).format(date);
+}
+
+function localCalendarKey(daysAgo: number): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((item) => item.type === type)?.value);
+  // Vietnam has no daylight-saving transition. Build the requested local
+  // calendar day first, then convert its midnight to the same dateKey path
+  // used for readings; subtracting 24h from a runner-local instant is wrong
+  // for UTC CI during Cồn Hô's first seven hours of a day.
+  const localDate = new Date(Date.UTC(part("year"), part("month") - 1, part("day") - daysAgo, -7));
+  return dateKey(localDate.toISOString());
 }
 
 function mapReading(row: Record<string, unknown>): EnvironmentalReading {
@@ -485,8 +505,7 @@ export class ReadingRepository {
   /** The last `days` local-calendar days, oldest first. */
   private soilDayKeys(days: number): { key: string; label: string }[] {
     return Array.from({ length: days }, (_, index) => {
-      const date = new Date(Date.now() - (days - index - 1) * 24 * 60 * 60 * 1000);
-      const key = dateKey(date.toISOString());
+      const key = localCalendarKey(days - index - 1);
       return { key, label: shortDateLabel(key) };
     });
   }

@@ -54,7 +54,7 @@ static const uint32_t DASHBOARD_ONLINE_WINDOW_MS = 60000;
 //
 // Do not point this back to Pipedream except for temporary packet debugging.
 static const char *WEB_SERVER_URL = "https://edhcnccvbwuffiwzywfm.supabase.co/functions/v1/edge-ingest";
-static const char *CONFIG_URL = "https://horizon-frogsleap.vercel.app/api/public/gateway/configs";
+static const char *CONFIG_URL = "https://horizon.frogsleap.com.vn/api/public/gateway/configs";
 #ifndef GATEWAY_INGEST_TOKEN_VALUE
 #define GATEWAY_INGEST_TOKEN_VALUE ""
 #endif
@@ -580,6 +580,39 @@ int parseHttpActionStatus(const String &response, uint8_t method) {
   return response.substring(start, comma).toInt();
 }
 
+int parseHttpActionLength(const String &response, uint8_t method) {
+  const String marker = String("+HTTPACTION: ") + String(method) + ",";
+  const int p = response.indexOf(marker);
+  if (p < 0) return -1;
+  const int firstComma = response.indexOf(',', p + marker.length());
+  if (firstComma < 0) return -1;
+  const int lengthStart = firstComma + 1;
+  return response.substring(lengthStart).toInt();
+}
+
+void printHttpActionDiagnostic(const String &response, uint8_t method, uint32_t elapsedMs) {
+  const int status = parseHttpActionStatus(response, method);
+  const int bodyLength = parseHttpActionLength(response, method);
+  if (status == -1) {
+    Serial.printf("[NET] HTTPACTION timeout/no-URC after %lums (DNS/TCP/TLS not confirmed)\n", static_cast<unsigned long>(elapsedMs));
+    return;
+  }
+  Serial.printf("[HTTP] status=%d response_bytes=%d elapsed=%lums\n", status, bodyLength, static_cast<unsigned long>(elapsedMs));
+  if (status >= 600) {
+    Serial.println("[NET] modem transport code (not an HTTP status): inspect DNS, PDP/TCP and TLS diagnostics above");
+  }
+}
+
+void printSafeHttpResponse(const String &response) {
+  String compact = response;
+  if (strlen(GATEWAY_INGEST_TOKEN) > 0) compact.replace(GATEWAY_INGEST_TOKEN, "[redacted]");
+  compact.replace("\r", " ");
+  compact.replace("\n", " ");
+  compact.trim();
+  if (compact.length() > 240) compact = compact.substring(0, 240) + "...";
+  Serial.printf("[HTTP BODY] %s\n", compact.length() ? compact.c_str() : "(empty)");
+}
+
 String modemReadUntil(uint32_t timeoutMs) {
   String response;
   response.reserve(512);
@@ -817,10 +850,11 @@ String httpGet(const char *url) {
 
   clearModemRx(30);
   modemSerial.print("AT+HTTPACTION=0\r\n");
+  const uint32_t actionStartedAt = millis();
   const String actionResponse = modemWaitHttpAction(0, HTTP_TIMEOUT_MS);
   if (MODEM_VERBOSE_AT) Serial.println(actionResponse);
-const int httpStatus = parseHttpActionStatus(actionResponse, 0);
-  Serial.printf("[HTTP GET] status=%d\n", httpStatus);
+  const int httpStatus = parseHttpActionStatus(actionResponse, 0);
+  printHttpActionDiagnostic(actionResponse, 0, millis() - actionStartedAt);
   if (httpStatus != 200) {
     sendAt("AT+HTTPTERM", "OK", 3000);
     return "";
@@ -828,6 +862,7 @@ const int httpStatus = parseHttpActionStatus(actionResponse, 0);
 
   modemSerial.println("AT+HTTPREAD");
   const String readResponse = modemReadUntil(HTTP_TIMEOUT_MS);
+  printSafeHttpResponse(readResponse);
   sendAt("AT+HTTPTERM", "OK", 3000);
 
   const int headerEnd = readResponse.indexOf("\r\n");
@@ -1086,11 +1121,12 @@ sendAt("AT+HTTPTERM", "OK", 2500);
   // Wait for +HTTPACTION: 1,<status>,<length> before deciding success/failure.
   clearModemRx(30);
   modemSerial.print("AT+HTTPACTION=1\r\n");
+  const uint32_t actionStartedAt = millis();
   const String actionResponse = modemWaitHttpAction(1, HTTP_TIMEOUT_MS);
   if (MODEM_VERBOSE_AT) Serial.println(actionResponse);
 
   const int httpStatus = parseHttpActionStatus(actionResponse, 1);
-  Serial.printf("[HTTP] HTTPACTION POST status=%d\n", httpStatus);
+  printHttpActionDiagnostic(actionResponse, 1, millis() - actionStartedAt);
 
   const bool success = (httpStatus >= 200 && httpStatus < 300);
   if (!success) {
@@ -1109,8 +1145,7 @@ sendAt("AT+HTTPTERM", "OK", 2500);
     modemSerial.print("AT+HTTPREAD=0,512\r\n");
     const String readResponse = modemReadUntil(5000);
     if (readResponse.length() > 0) {
-      Serial.println("[HTTP RESPONSE]");
-      Serial.println(readResponse);
+      printSafeHttpResponse(readResponse);
     }
   }
 

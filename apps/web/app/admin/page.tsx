@@ -45,6 +45,7 @@ import { getSessionContext } from "@/lib/auth/session";
 import { createRepositories } from "@/lib/repositories";
 import { listDemoReports, markDemoReportViewed } from "@/lib/reports/demoReportStore";
 import { createServiceClient } from "@/lib/supabase/service";
+import { filterSnapshotsToPilotStations, filterToPilotStations } from "@/lib/publicStations";
 import type { Station, StationReadingSnapshot } from "@/types";
 
 const managedStationIds = ["STATION_01", "STATION_02", "STATION_03"];
@@ -179,7 +180,7 @@ async function loadAdminStations(
   }
 
   try {
-    return { stations: await repos.stations.getAll(scope), demo: false };
+    return { stations: filterToPilotStations(await repos.stations.getAll(scope)), demo: false };
   } catch {
     return { stations: demoAdminStations(), demo: true };
   }
@@ -195,7 +196,7 @@ async function loadAdminSnapshots(
   }
 
   try {
-    return await repos.readings.getSnapshots(scope);
+    return filterSnapshotsToPilotStations(await repos.readings.getSnapshots(scope));
   } catch {
     return fallbackStations.map((station) => ({ station, reading: null, health: null }));
   }
@@ -210,8 +211,8 @@ async function loadAdminMetrics(
   }
 
   try {
-    const counts = await repos.stations.getActiveCount(scope);
-    return { ...counts, demo: false };
+    const stations = filterToPilotStations(await repos.stations.getAll(scope));
+    return { active: stations.filter((station) => station.status === "active").length, total: stations.length, demo: false };
   } catch {
     return { active: 3, total: 3, demo: true };
   }
@@ -808,7 +809,7 @@ export default async function AdminPage({
         </Alert>
       ) : null}
 
-      <nav aria-label="Khu vực vận hành" className="sticky top-20 z-20 -mx-2 flex gap-1 overflow-x-auto rounded-lg border border-border bg-background/95 p-2 text-xs shadow-sm backdrop-blur">
+      <nav aria-label="Khu vực vận hành" className="-mx-2 flex gap-1 overflow-x-auto rounded-lg border border-border bg-surface p-2 text-xs">
         {[
           ["network", dict.admin.navigation.overview], ["devices", dict.admin.navigation.devices], ["thresholds", dict.admin.navigation.thresholds],
           ["profiles", dict.admin.navigation.applications], ["calibration", dict.admin.navigation.calibration], ["maintenance", dict.admin.navigation.maintenance],

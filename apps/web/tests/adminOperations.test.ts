@@ -32,6 +32,10 @@ const MIGRATION = fs.readFileSync(
   path.join(process.cwd(), "..", "..", "infra", "supabase", "migrations", "022_admin_operations.sql"),
   "utf8",
 );
+const CLEANUP_MIGRATION = fs.readFileSync(
+  path.join(process.cwd(), "..", "..", "infra", "supabase", "migrations", "027_remove_fixture_and_qa_data.sql"),
+  "utf8",
+);
 
 describe("admin form parsing", () => {
   it("accepts only the three managed stations", () => {
@@ -59,6 +63,21 @@ describe("admin form parsing", () => {
     assert.equal(optionalText("  note  "), "note");
     assert.equal(optionalText("   "), null);
     assert.equal(optionalText(null), null);
+  });
+});
+
+describe("admin production topology", () => {
+  it("filters repository snapshots to the canonical three-node registry", () => {
+    const page = SRC("app", "admin", "page.tsx");
+    assert.match(page, /filterToPilotStations\(await repos\.stations\.getAll\(scope\)\)/);
+    assert.match(page, /filterSnapshotsToPilotStations\(await repos\.readings\.getSnapshots\(scope\)\)/);
+  });
+
+  it("removes only named browser-QA artifacts in the production cleanup migration", () => {
+    for (const value of ["STATION_04", "STATION_05", "QA_BROWSER_PERSISTENCE", "QA browser persistence check"]) {
+      assert.ok(CLEANUP_MIGRATION.includes(value), `cleanup migration does not address ${value}`);
+    }
+    assert.ok(!/delete\s+from\s+public\.maintenance_logs\s*;/.test(CLEANUP_MIGRATION));
   });
 });
 
