@@ -121,6 +121,7 @@ export function SiteHeader({ register = "public", activePath, adminEmail, adminA
   const dict = useDict();
   const compact = useScrollCompact();
   const inAdmin = register === "admin";
+  const overHomeHero = !inAdmin && activePath === "/";
   const hasOperationalStrip = inAdmin && Boolean(adminEmail || adminActions);
 
   return (
@@ -136,7 +137,7 @@ export function SiteHeader({ register = "public", activePath, adminEmail, adminA
         // summary line, uppercase tracked text read straight through the nav
         // labels and looked like a collision. Still frosted, still lets the
         // page show as movement underneath; no longer readable through.
-        compact
+        compact || !overHomeHero
           ? "border-b border-border bg-canvas/95 backdrop-blur-md supports-[backdrop-filter]:bg-canvas/88"
           : "border-b border-transparent bg-transparent",
       )}

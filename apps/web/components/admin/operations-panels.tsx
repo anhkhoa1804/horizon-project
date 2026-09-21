@@ -487,7 +487,7 @@ export function ApplicationProfilesPanel({
   return (
     <SectionShell
       title="Mô hình ứng dụng"
-      lead="Ba hướng mở rộng của cùng một hạ tầng. Danh sách tách rõ dữ liệu đã có khỏi dữ liệu, mô hình và kiểm chứng còn thiếu."
+      lead="Ba hướng sử dụng cùng bộ dữ liệu. Mỗi hướng nêu rõ dữ liệu hiện có, phần còn thiếu và mức độ trưởng thành của mô hình."
     >
       <div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border lg:grid-cols-3">
         {profiles.map((profile) => (

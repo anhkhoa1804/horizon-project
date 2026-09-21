@@ -47,7 +47,6 @@ export const en: Dictionary = {
 
   footer: {
     place: "Cồn Hô · Vĩnh Long",
-    mapAttribution: "Basemap © Esri · Data © OpenStreetMap contributors.",
     copyright: "© Magnus",
   },
 
@@ -169,6 +168,14 @@ export const en: Dictionary = {
 
     referenceEyebrow: "Reference",
     referenceTitle: "REFERENCES & THRESHOLDS",
+    statusBasis: {
+      configured: "Active",
+      device: "Device",
+      reference: "Reference",
+      pilot: "Pilot",
+      quality: "Measurement quality",
+      demo: "Demo",
+    },
     standingExternal: "International source",
     standingInternal: "Project configuration",
     standingUnverified: "Unverified",
@@ -229,7 +236,7 @@ export const en: Dictionary = {
        height when a reader switches. */
     title: "This is Cồn Hô.\nThis is HORIZON.",
     subtitle:
-      "A field observatory on the islet, connecting water, soil, air and data into a traceable view.",
+      "Three field points record water, soil, and the data link at Cồn Hô.",
     ctaPrimary: "View the monitoring network",
     pilotNote: "Field infrastructure is being completed and verified at Cồn Hô.",
   },
@@ -507,6 +514,18 @@ export const en: Dictionary = {
   admin: {
     title: "Control panel",
     description: "Network status, field reports and device configuration.",
+    navigation: {
+      overview: "Overview",
+      devices: "Devices",
+      thresholds: "Thresholds",
+      applications: "Applications",
+      calibration: "Calibration",
+      maintenance: "Maintenance",
+      reports: "Reports",
+      data: "Data",
+      audit: "Audit",
+      configuration: "Configuration",
+    },
   },
 
 

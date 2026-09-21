@@ -103,20 +103,20 @@
    * badges and the report form — all tuned against the 9% chip — are
    * untouched by a change made for the observatory canvas.
    */
-  --h-status-normal: rgba(20, 158, 79, 0.40);
-  --h-status-warning: rgba(240, 146, 0, 0.52);
-  --h-status-critical: rgba(214, 46, 35, 0.38);
-  --h-status-none: rgba(91, 101, 112, 0.05);
+  --h-status-normal: #35cf6c;
+  --h-status-warning: #ffc21a;
+  --h-status-critical: #ff6b5f;
+  --h-status-none: #ffffff;
 
   /* Data visualisation */
   --h-threshold: #b02318;
   --h-salinity: #0d8285;
   --h-water-level: #2563eb;
   --h-grid: rgba(19, 29, 27, 0.1);
-  --h-domain-water: rgba(13, 130, 133, 0.10);
-  --h-domain-soil: rgba(44, 158, 87, 0.10);
-  --h-domain-weather: rgba(37, 99, 235, 0.07);
-  --h-domain-infrastructure: rgba(19, 29, 27, 0.07);
+  --h-domain-water: #ffffff;
+  --h-domain-soil: #ffffff;
+  --h-domain-weather: #ffffff;
+  --h-domain-infrastructure: #ffffff;
 
   /* ----------------------------------------------------------------- WASH
    * Interaction surfaces. These replace scattered `bg-muted/20`,
@@ -154,6 +154,7 @@
   --h-atmos-vignette: rgba(193, 180, 152, 0.2);
 
   --h-selection: rgba(12, 95, 125, 0.18);
+  --h-selection-surface: #d9f1fa;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -181,8 +182,8 @@
     --h-surface-raised: #272e38;
 
     --h-foreground: #eef2f0;
-    --h-foreground-muted: #a3afaa;
-    --h-foreground-subtle: #8a9691;
+    --h-foreground-muted: #c0cbc7;
+    --h-foreground-subtle: #aab7b2;
 
     --h-border: rgba(255, 255, 255, 0.1);
     --h-border-strong: rgba(255, 255, 255, 0.19);
@@ -204,19 +205,19 @@
     /* Region-scale status surfaces — see the note in :root. Slightly higher
        alpha than light mode: a tint has to work harder to read as colour
        against graphite than against off-white. */
-    --h-status-normal: rgba(74, 214, 136, 0.46);
-    --h-status-warning: rgba(255, 186, 66, 0.52);
-    --h-status-critical: rgba(255, 118, 106, 0.46);
-    --h-status-none: rgba(160, 175, 190, 0.06);
+    --h-status-normal: #087737;
+    --h-status-warning: #a35a00;
+    --h-status-critical: #b33438;
+    --h-status-none: #1f242c;
 
     --h-threshold: #e27066;
     --h-salinity: #34b7b0;
     --h-water-level: #5b8def;
     --h-grid: rgba(255, 255, 255, 0.1);
-    --h-domain-water: rgba(52, 183, 176, 0.15);
-    --h-domain-soil: rgba(69, 192, 120, 0.14);
-    --h-domain-weather: rgba(91, 141, 239, 0.12);
-    --h-domain-infrastructure: rgba(160, 175, 190, 0.11);
+    --h-domain-water: #1f242c;
+    --h-domain-soil: #1f242c;
+    --h-domain-weather: #1f242c;
+    --h-domain-infrastructure: #1f242c;
 
     --h-wash-hover: rgba(255, 255, 255, 0.045);
     --h-wash-active: rgba(79, 176, 212, 0.1);
@@ -236,6 +237,7 @@
        for the horizon a night sky would otherwise lose entirely. */
 
     --h-selection: rgba(79, 176, 212, 0.26);
+    --h-selection-surface: #173e4d;
   }
 }
 
@@ -254,8 +256,8 @@
   --h-surface-raised: #272e38;
 
   --h-foreground: #eef2f0;
-  --h-foreground-muted: #a3afaa;
-  --h-foreground-subtle: #8a9691;
+  --h-foreground-muted: #c0cbc7;
+  --h-foreground-subtle: #aab7b2;
 
   --h-border: rgba(255, 255, 255, 0.1);
   --h-border-strong: rgba(255, 255, 255, 0.19);
@@ -275,19 +277,19 @@
   --h-fault-bg: rgba(167, 139, 250, 0.14);
 
   /* Kept in lockstep with the media-query block above. */
-  --h-status-normal: rgba(74, 214, 136, 0.46);
-  --h-status-warning: rgba(255, 186, 66, 0.52);
-  --h-status-critical: rgba(255, 118, 106, 0.46);
-  --h-status-none: rgba(160, 175, 190, 0.06);
+  --h-status-normal: #087737;
+  --h-status-warning: #a35a00;
+  --h-status-critical: #b33438;
+  --h-status-none: #1f242c;
 
   --h-threshold: #e27066;
   --h-salinity: #34b7b0;
   --h-water-level: #5b8def;
   --h-grid: rgba(255, 255, 255, 0.1);
-  --h-domain-water: rgba(52, 183, 176, 0.15);
-  --h-domain-soil: rgba(69, 192, 120, 0.14);
-  --h-domain-weather: rgba(91, 141, 239, 0.12);
-  --h-domain-infrastructure: rgba(160, 175, 190, 0.11);
+  --h-domain-water: #1f242c;
+  --h-domain-soil: #1f242c;
+  --h-domain-weather: #1f242c;
+  --h-domain-infrastructure: #1f242c;
 
   --h-wash-hover: rgba(255, 255, 255, 0.045);
   --h-wash-active: rgba(79, 176, 212, 0.1);
@@ -303,6 +305,7 @@
   --h-atmos-vignette: rgba(10, 14, 20, 0.3);
 
   --h-selection: rgba(79, 176, 212, 0.26);
+  --h-selection-surface: #173e4d;
 }
 
 /*
@@ -393,10 +396,10 @@
   --radius-lg: 18px;
   --radius-xl: 24px;
 
-  --shadow-xs: 0 1px 2px rgb(19 29 27 / 0.04);
-  --shadow-sm: 0 4px 12px rgb(19 29 27 / 0.06);
-  --shadow-md: 0 12px 32px rgb(19 29 27 / 0.1);
-  --shadow-lg: 0 24px 64px rgb(19 29 27 / 0.14);
+  --shadow-xs: 0 1px 1px rgb(19 29 27 / 0.03);
+  --shadow-sm: 0 1px 2px rgb(19 29 27 / 0.04);
+  --shadow-md: 0 2px 6px rgb(19 29 27 / 0.05);
+  --shadow-lg: 0 4px 12px rgb(19 29 27 / 0.06);
 
   /* ------------------------------------------------------------ TYPE SCALE
    * Six page-title registers, one per page purpose. The ORDER is the
@@ -422,7 +425,7 @@
      measure gives ~34 characters a line, which is two lines for both the
      Vietnamese and the English title and keeps them within a few characters
      of each other so the hero does not resize on a language switch. */
-  --text-title-display: clamp(2rem, 1.1rem + 3.4vw, 3.75rem);
+  --text-title-display: clamp(2.5rem, 1.25rem + 4.3vw, 4.75rem);
   /* About's tier — one step down from Home, one step up from Monitoring and
      Report, so the four pages read as one ladder instead of "Home" and
      "everything else". */
@@ -1104,25 +1107,17 @@
  * asset.
  * ======================================================================== */
 
-/* ===========================================================================
- * MAP ATTRIBUTION — moved to the footer
- *
- * The credit itself has NOT been dropped. The site footer renders
- * `footer.mapAttribution` ("Nền bản đồ © Esri · Dữ liệu © OpenStreetMap
- * contributors.") on every page, which is what keeps Esri's and OSM's terms
- * satisfied: they require the credit be displayed, not that it be displayed
- * inside the map frame.
- *
- * What is gone is the second, in-map copy. Leaflet's control sat across the
- * bottom edge of the Bento's map cell as the highest-contrast element in a
- * region whose subject is a pale grey coastline — a duplicate credit costing
- * the most visually expensive place on the canvas. The control is disabled
- * at the Leaflet level (see station-network-map.tsx); this rule is a
- * belt-and-braces guard for any instance that re-enables it.
- * ======================================================================== */
-
+/* Compact legal credit belongs to the map it qualifies. It is deliberately
+   solid and readable; the footer must not carry attribution for a map that
+   is not visible there. */
 .leaflet-control-attribution {
-  display: none;
+  background: var(--h-surface-raised) !important;
+  color: var(--h-foreground-muted) !important;
+  font-size: 10px !important;
+}
+
+.leaflet-control-attribution a {
+  color: var(--h-brand-blue) !important;
 }
 
 /* ===========================================================================
@@ -1366,16 +1361,9 @@ main {
   }
 }
 
-/* The illustration is a bright daylight scene and sits far louder on a
-   graphite ground than on paper. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .hero-canvas__image {
-    opacity: 0.5;
-  }
-}
-:root[data-theme="dark"] .hero-canvas__image {
-  opacity: 0.5;
-}
+/* Keep the Cồn Hô scene legible in dark mode. The copy pool on the canvas is
+   enough contrast treatment; dimming the photograph made it read as texture
+   instead of a real place. */
 
 /*
  * THE HEADER OVER THE HERO.
@@ -1403,3 +1391,7 @@ main {
      ~112px at desktop, ~64px on a phone. */
   margin-bottom: var(--rhythm-large);
 }
+
+/* Hero copy relies on the local canvas copy pool, not a text halo. Keeping
+   glyphs unshadowed makes the title read as editorial type rather than a
+   treatment pasted over the image. */

@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
   activeThresholdsFor,
+  resolveReferenceSeverity,
   resolveSeverity,
   formatBand,
   type ThresholdRow,
@@ -63,6 +64,14 @@ describe("reference values never create alerts", () => {
     ];
     assert.equal(resolveSeverity(rows, "battery_voltage", 3.2)?.severity, "critical");
     assert.equal(resolveSeverity(rows, "battery_voltage", 4.0), null);
+  });
+
+  it("can still supply a labelled public advisory without becoming an alert", () => {
+    const rows = [
+      row({ quantity: "soil_ph", threshold_value: 5, comparison: "below", severity: "critical", validation_status: "PILOT" }),
+    ];
+    assert.equal(resolveSeverity(rows, "soil_ph", 4.8), null, "a pilot reference became an operational alert");
+    assert.equal(resolveReferenceSeverity(rows, "soil_ph", 4.8)?.severity, "critical");
   });
 
   it("the database forbids activating a REFERENCE row", () => {

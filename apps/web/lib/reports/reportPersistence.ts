@@ -14,20 +14,14 @@ export function isMissingTableError(error: unknown): boolean {
   );
 }
 
-export type ReportPersistenceOutcome = "demo" | "insert_failed";
+export type ReportPersistenceOutcome = "insert_failed";
 
 /**
- * Missing-table is a structural, disclosed "not provisioned yet" gap —
- * the same category as having no Supabase client configured at all — so
- * falling back to a local demo report is legitimate and honest.
- *
- * Any other error means Supabase IS configured, reachable, and the table
- * exists, but this specific write genuinely failed (outage, RLS
- * misconfiguration, network error). That must not be treated the same as
- * "no backend yet" — doing so would return ok:true for a report that was
- * never actually recorded anywhere durable, silently masquerading a
- * production failure as a successful submission.
+ * A missing table is still a persistence failure. Demo reports are allowed
+ * only through the route's explicit `?mode=demo` boundary; no database error
+ * may turn a public submission into an in-memory success.
  */
 export function classifyInsertError(error: unknown): ReportPersistenceOutcome {
-  return isMissingTableError(error) ? "demo" : "insert_failed";
+  void error;
+  return "insert_failed";
 }

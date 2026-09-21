@@ -21,6 +21,7 @@
     "test:all": "npm run test:all -w @eco-sense/edge-ingestion",
     "build:edge": "npm run build:edge -w @eco-sense/edge-ingestion",
     "db:migrate": "npm run migrate -w @eco-sense/supabase-infra",
+    "db:validate-migrations": "node infra/supabase/validate-migrations.mjs",
     "db:deploy": "npm run deploy -w @eco-sense/supabase-infra",
     "verify:deploy": "node infra/supabase/verify-deploy.mjs",
     "mock:ingest": "npm run mock:ingest -w @eco-sense/edge-ingestion",

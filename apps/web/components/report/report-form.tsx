@@ -67,19 +67,17 @@ function errorMessageFor(status: number, code: string | undefined, dict: Diction
 }
 
 // ---------------------------------------------------------------------------
-// Progress rail — the record strip
+// Progress rail
 // ---------------------------------------------------------------------------
 
 function StepRail({
   current,
   furthest,
   onJump,
-  record,
 }: {
   current: StepId;
   furthest: StepId;
   onJump: (step: StepId) => void;
-  record: { label: string; value: string | null }[];
 }) {
   const dict = useDict();
   return (
@@ -133,21 +131,6 @@ function StepRail({
         })}
       </ol>
 
-      {/* The accumulating field record — desktop only; on mobile the review
-          step itself covers this and a duplicate would just cost scroll. */}
-      <div className="hidden space-y-4 border-t border-border/60 pt-6 lg:block">
-        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted">{dict.report.record}</p>
-        <dl className="space-y-3">
-          {record.map((item) => (
-            <div key={item.label} className="space-y-0.5">
-              <dt className="text-[10px] uppercase tracking-[0.14em] text-muted">{item.label}</dt>
-              <dd className={cn("text-sm leading-snug", item.value ? "text-foreground" : "text-muted/60")}>
-                {item.value ?? "—"}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </div>
     </aside>
   );
 }
@@ -345,7 +328,14 @@ export function ReportForm() {
       }
       if (station) form.set("stationId", station.id);
       attachments.forEach((file) => form.append("media", file));
-      const res = await fetch("/api/public/reports", {
+      // Demo persistence can only be reached from an explicit `?mode=demo`
+      // page visit. Normal production submissions always use the durable API
+      // path and receive a clear failure if it is unavailable.
+      const endpoint = new URL("/api/public/reports", window.location.origin);
+      if (new URLSearchParams(window.location.search).get("mode") === "demo") {
+        endpoint.searchParams.set("mode", "demo");
+      }
+      const res = await fetch(endpoint, {
         method: "POST",
         body: form,
       });
@@ -397,18 +387,11 @@ export function ReportForm() {
       ? f.byStation
       : null;
 
-  const record = [
-    { label: f.station, value: station?.name ?? (gps ? f.gpsDevice : null) },
-    { label: f.condition, value: category ? categoryLabel(category, dict) : null },
-    { label: f.location, value: locationSummary },
-    { label: f.description, value: trimmed ? fmt(f.charCount, { n: trimmed.length }) : null },
-  ];
-
   const currentStep = STEPS.find((s) => s.id === step)!;
 
   return (
     <div className="grid gap-10 lg:grid-cols-[minmax(0,0.26fr)_minmax(0,0.74fr)] lg:gap-16">
-      <StepRail current={step} furthest={furthest} onJump={goto} record={record} />
+      <StepRail current={step} furthest={furthest} onJump={goto} />
 
       {/* Capped to a reading measure rather than filling the column: these are
           field controls, and a 900px-wide row strands the station id far from
@@ -464,10 +447,10 @@ export function ReportForm() {
                     <label
                       key={option.id}
                       className={cn(
-                        "relative flex cursor-pointer flex-col gap-3 rounded-lg border p-5 transition-all duration-[var(--motion-base)]",
+                        "relative flex cursor-pointer flex-col gap-3 rounded-lg border bg-surface p-5 transition-all duration-[var(--motion-base)]",
                         "focus-within:ring-2 focus-within:ring-accent",
                         active
-                          ? "border-accent bg-accent/[0.07] shadow-[inset_0_0_0_1px_var(--color-accent)]"
+                          ? "border-accent bg-[var(--h-selection-surface)] shadow-[inset_0_0_0_1px_var(--color-accent)]"
                           : "border-border hover:border-foreground-subtle hover:bg-wash-hover",
                       )}
                     >
@@ -505,10 +488,10 @@ export function ReportForm() {
                 })}
                 <label
                   className={cn(
-                    "relative flex cursor-pointer flex-col gap-3 rounded-lg border p-5 transition-all duration-[var(--motion-base)]",
+                    "relative flex cursor-pointer flex-col gap-3 rounded-lg border bg-surface p-5 transition-all duration-[var(--motion-base)]",
                     "focus-within:ring-2 focus-within:ring-accent",
                     locationChoice === "gps"
-                      ? "border-accent bg-accent/[0.07] shadow-[inset_0_0_0_1px_var(--color-accent)]"
+                      ? "border-accent bg-[var(--h-selection-surface)] shadow-[inset_0_0_0_1px_var(--color-accent)]"
                       : "border-border hover:border-foreground-subtle hover:bg-wash-hover",
                   )}
                 >
@@ -526,37 +509,10 @@ export function ReportForm() {
                 </label>
               </fieldset>
 
-              {/* GPS refinement belongs TO the station choice, not beside it.
-                  It used to sit under its own "Vị trí chính xác hơn" heading
-                  behind a horizontal rule, which read as a second, unrelated
-                  location question — a reader who had just picked a station
-                  was asked to pick a location again. It is now the last row
-                  of the same fieldset: one question ("where?"), answered
-                  coarsely by the station and optionally refined by GPS. */}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-3 pt-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleLocate}
-                  disabled={gpsState === "locating"}
-                  className="gap-2 text-foreground-muted"
-                >
-                  <Crosshair className={cn("h-4 w-4", gpsState === "locating" && "animate-pulse")} aria-hidden />
-                  {gpsState === "locating" ? f.locating : gps ? f.updateLocation : f.useCurrentLocation}
-                </Button>
-                {gps ? (
-                  <p className="text-sm text-muted [font-family:var(--font-data)]">
-                    {gps.lat.toFixed(4)}, {gps.lng.toFixed(4)}
-                  </p>
-                ) : (
-                  <p className="min-w-0 flex-1 text-xs leading-relaxed text-foreground-subtle">
-                    {gpsNote ?? f.optionalGps}
-                  </p>
-                )}
-              </div>
-              {gps ? (
-                <p className="text-xs leading-relaxed text-foreground-subtle">{f.willUseGps}</p>
+              {locationChoice === "gps" ? (
+                <p className="text-xs leading-relaxed text-foreground-subtle">
+                  {gps ? `${f.locationReady}: ${gps.lat.toFixed(4)}, ${gps.lng.toFixed(4)}` : gpsNote ?? f.locating}
+                </p>
               ) : null}
             </div>
           ) : null}
@@ -581,10 +537,10 @@ export function ReportForm() {
                       <label
                         key={item.value}
                         className={cn(
-                          "flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3.5 transition-all duration-[var(--motion-base)]",
+                          "flex cursor-pointer items-center gap-3 rounded-lg border bg-surface px-4 py-3.5 transition-all duration-[var(--motion-base)]",
                           "focus-within:ring-2 focus-within:ring-accent",
                           active
-                            ? "border-accent bg-accent/[0.07] shadow-[inset_0_0_0_1px_var(--color-accent)]"
+                            ? "border-accent bg-[var(--h-selection-surface)] shadow-[inset_0_0_0_1px_var(--color-accent)]"
                             : "border-border hover:border-foreground-subtle hover:bg-wash-hover",
                         )}
                       >
@@ -659,7 +615,7 @@ export function ReportForm() {
                   <img src={url} alt={file.name} className="h-full w-full object-cover" />
                 </> : file.type.startsWith("video/") ? <video src={url} controls className="h-full w-full" /> : <audio src={url} controls className="w-full pt-6" />}</div><div className="mt-2 flex items-center justify-between gap-2"><span className="truncate text-xs">{file.name}</span><button type="button" onClick={() => setAttachments((all) => all.filter((_, itemIndex) => itemIndex !== index))} className="text-critical"><Trash2 className="h-4 w-4" aria-label={f.removeEvidence} /></button></div></li>)}</ul> : null}
               </section>
-              <dl className="divide-y divide-border/50 border-y border-border/50">
+              <dl className="divide-y divide-border/50 rounded-lg border border-border bg-surface px-5">
                 {[
                   { label: f.station, value: station ? `${stationText(station.id, dict).name} · ${stationText(station.id, dict).location}` : "—", jump: 1 as StepId },
                   { label: f.condition, value: category ? categoryLabel(category, dict) : "—", jump: 2 as StepId },

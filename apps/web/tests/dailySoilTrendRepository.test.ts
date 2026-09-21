@@ -44,9 +44,16 @@ const unassignedFarmer: RepositoryScope = { userId: "farmer-2", role: "farmer", 
 
 /** An ISO instant `daysAgo` days back, at a given Asia/Ho_Chi_Minh wall-clock hour. */
 function localDaysAgo(daysAgo: number, localHour: number, localMinute = 0): string {
-  const now = new Date();
-  const utcMs = now.getTime() - daysAgo * 24 * 60 * 60 * 1000;
-  const day = new Date(utcMs);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((item) => item.type === type)?.value);
+  // Subtract from Cồn Hô's calendar day, not from the runner's UTC day. CI
+  // runs in UTC, where 00:00–06:59 Vietnam time is already tomorrow locally.
+  const day = new Date(Date.UTC(part("year"), part("month") - 1, part("day") - daysAgo));
   // Build the instant that reads as `localHour:localMinute` in UTC+7.
   const y = day.getUTCFullYear();
   const m = day.getUTCMonth();

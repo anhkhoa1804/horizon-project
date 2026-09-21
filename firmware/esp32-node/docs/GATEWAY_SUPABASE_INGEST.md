@@ -4,6 +4,33 @@ This is the production path for gateway telemetry:
 
 ```text
 ESP32 gateway -> Supabase Edge Function edge-ingest -> Supabase tables -> frontend
+
+## Field network diagnostics
+
+`+HTTPACTION` is emitted by the SIMCom modem, not by Supabase. In particular,
+a value such as `702` is a modem transport result, **not HTTP 702**. The
+gateway now logs the transaction stage without printing credentials:
+
+```
+[MODEM] ... PDP / IP readiness
+[HTTP] status=401 response_bytes=... elapsed=...
+[HTTP BODY] {short, redacted response}
+```
+
+For a future field test, capture the serial sequence from modem initialization
+through `HTTPACTION`. It distinguishes an AT/SIM/PDP failure from an actual
+HTTP response. A missing `+HTTPACTION` is logged as an unresolved
+DNS/TCP/TLS-stage timeout; a `6xx` action code is explicitly labelled as a
+modem transport failure. Do not disable certificate validation to work around
+it. Verify carrier DNS, PDP IP allocation, time/certificate support in the
+installed modem firmware, and the HTTPS hostname before changing credentials.
+
+The production endpoints compiled into the gateway are:
+
+- ingest: `https://edhcnccvbwuffiwzywfm.supabase.co/functions/v1/edge-ingest`
+- runtime configuration: `https://horizon.frogsleap.com.vn/api/public/gateway/configs`
+
+The legacy `horizon-frogsleap.vercel.app` hostname is not used by firmware.
 ```
 
 The gateway should not post to Pipedream in production. Pipedream is only useful

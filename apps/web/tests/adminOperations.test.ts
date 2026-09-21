@@ -32,6 +32,10 @@ const MIGRATION = fs.readFileSync(
   path.join(process.cwd(), "..", "..", "infra", "supabase", "migrations", "022_admin_operations.sql"),
   "utf8",
 );
+const CLEANUP_MIGRATION = fs.readFileSync(
+  path.join(process.cwd(), "..", "..", "infra", "supabase", "migrations", "027_remove_fixture_and_qa_data.sql"),
+  "utf8",
+);
 
 describe("admin form parsing", () => {
   it("accepts only the three managed stations", () => {
@@ -59,6 +63,49 @@ describe("admin form parsing", () => {
     assert.equal(optionalText("  note  "), "note");
     assert.equal(optionalText("   "), null);
     assert.equal(optionalText(null), null);
+  });
+});
+
+describe("admin production topology", () => {
+  it("filters repository snapshots to the canonical three-node registry", () => {
+    const page = SRC("app", "admin", "page.tsx");
+    assert.match(page, /filterToPilotStations\(await repos\.stations\.getAll\(scope\)\)/);
+    assert.match(page, /filterSnapshotsToPilotStations\(await repos\.readings\.getSnapshots\(scope\)\)/);
+  });
+
+  it("does not replace an Admin data failure with demo stations or reports", () => {
+    const page = SRC("app", "admin", "page.tsx");
+    assert.ok(!page.includes("demoReportStore"));
+    assert.ok(!page.includes("demoAdminStations"));
+    assert.match(page, /Không thể tải dữ liệu vận hành từ Supabase/);
+  });
+
+  it("removes only named browser-QA artifacts in the production cleanup migration", () => {
+    for (const value of ["STATION_04", "STATION_05", "QA_BROWSER_PERSISTENCE", "QA browser persistence check"]) {
+      assert.ok(CLEANUP_MIGRATION.includes(value), `cleanup migration does not address ${value}`);
+    }
+    assert.ok(!/delete\s+from\s+public\.maintenance_logs\s*;/.test(CLEANUP_MIGRATION));
+  });
+
+  it("keeps retired fixture stations out of the simulator as well as the seed", () => {
+    const simulator = fs.readFileSync(
+      path.join(process.cwd(), "..", "..", "services", "edge-ingestion", "scripts", "simulator.ts"),
+      "utf8",
+    );
+    for (const fixture of ["STATION_04", "STATION_05", "Brackish Edge", "Mangrove Spur"]) {
+      assert.ok(!simulator.includes(fixture), `simulator can reintroduce ${fixture}`);
+    }
+  });
+});
+
+describe("public report truthfulness", () => {
+  it("requires an explicit demo boundary instead of falling back after a persistence failure", () => {
+    const route = SRC("app", "api", "public", "reports", "route.ts");
+    assert.match(route, /function allowsDemoPersistence/);
+    assert.match(route, /if \(!supabase && !demoPersistence\)/);
+    assert.match(route, /status: 503/);
+    assert.match(route, /if \(demoPersistence\)/);
+    assert.ok(!route.includes("classifyInsertError"));
   });
 });
 

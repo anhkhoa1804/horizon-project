@@ -46,7 +46,6 @@ export const vi = {
 
   footer: {
     place: "Cồn Hô · Vĩnh Long",
-    mapAttribution: "Nền bản đồ © Esri · Dữ liệu © OpenStreetMap contributors.",
     copyright: "© Magnus",
   },
 
@@ -172,6 +171,14 @@ export const vi = {
 
     referenceEyebrow: "Tham chiếu",
     referenceTitle: "THAM CHIẾU & NGƯỠNG",
+    statusBasis: {
+      configured: "Đang áp dụng",
+      device: "Thiết bị",
+      reference: "Tham chiếu",
+      pilot: "Thí điểm",
+      quality: "Chất lượng đo",
+      demo: "Minh họa",
+    },
     standingExternal: "Nguồn quốc tế",
     standingInternal: "Cấu hình dự án",
     standingUnverified: "Chưa xác minh",
@@ -238,12 +245,8 @@ export const vi = {
     /* Identity statement: Cồn Hô is the first field context; HORIZON is the
        reusable platform being built from it. */
     title: "Đây là Cồn Hô.\nĐây là HORIZON.",
-    /* A product statement, not a description of the website. The previous
-       subtitle ended "...một trang công khai nói rõ mỗi con số đến từ đâu",
-       which talks about the page the reader is already on. This talks about
-       the network. */
     subtitle:
-      "Một hạ tầng quan trắc đặt ngay trên cù lao — kết nối nước, đất, không khí và dữ liệu thành một cách nhìn có nguồn gốc.",
+      "Ba điểm đo ghi lại nước, đất và đường truyền ngay tại Cồn Hô.",
     ctaPrimary: "Xem mạng lưới quan trắc",
     pilotNote: "Hạ tầng hiện trường đang được hoàn thiện và kiểm chứng tại Cồn Hô.",
   },
@@ -571,6 +574,18 @@ export const vi = {
   admin: {
     title: "Bảng điều khiển",
     description: "Trạng thái mạng lưới, báo cáo hiện trường và cấu hình thiết bị.",
+    navigation: {
+      overview: "Tổng quan",
+      devices: "Thiết bị",
+      thresholds: "Ngưỡng",
+      applications: "Ứng dụng",
+      calibration: "Hiệu chuẩn",
+      maintenance: "Bảo trì",
+      reports: "Báo cáo",
+      data: "Dữ liệu",
+      audit: "Nhật ký",
+      configuration: "Cấu hình",
+    },
   },
 
 

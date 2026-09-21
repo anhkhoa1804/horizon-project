@@ -6,13 +6,44 @@ on:
     - cron: "0 6 * * 1"
 
 jobs:
+  prerequisites:
+    runs-on: ubuntu-latest
+    outputs:
+      live_ready: ${{ steps.check.outputs.live_ready }}
+    steps:
+      - id: check
+        name: Check live integration prerequisites
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_POOLER_URL: ${{ secrets.DATABASE_POOLER_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          EDGE_INGEST_URL: ${{ secrets.EDGE_INGEST_URL }}
+        run: |
+          required=(DATABASE_URL DATABASE_POOLER_URL SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY EDGE_INGEST_URL)
+          missing=0
+          for name in "${required[@]}"; do
+            if [ -z "${!name}" ]; then
+              echo "Missing required secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            echo "live_ready=false" >> "$GITHUB_OUTPUT"
+            echo "Live smoke skipped: configure every required secret before enabling live database tests."
+          else
+            echo "live_ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
   live-smoke:
     runs-on: ubuntu-latest
-    if: ${{ secrets.DATABASE_URL != '' }}
+    needs: prerequisites
+    if: ${{ needs.prerequisites.outputs.live_ready == 'true' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm

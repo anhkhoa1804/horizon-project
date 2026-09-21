@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { addDemoReport } from "@/lib/reports/demoReportStore";
-import { classifyInsertError } from "@/lib/reports/reportPersistence";
 import { clientIdentifier, consumeReportQuota } from "@/lib/reports/rateLimit";
 import { logger } from "@/lib/observability/logger";
 import { REPORT_MEDIA_BUCKET, REPORT_MEDIA_MAX_FILES, validateReportMedia } from "@/lib/reports/media";
@@ -18,7 +17,19 @@ const CATEGORIES = [
 const MIN_DESCRIPTION = 10;
 const MAX_DESCRIPTION = 2000;
 
+/**
+ * Demo persistence is deliberately opt-in. A public report must never become
+ * an in-memory success merely because Supabase is missing or a migration has
+ * not been deployed. Design review can still request this endpoint explicitly
+ * with `?mode=demo`, and local operators can enable the named environment flag.
+ */
+function allowsDemoPersistence(request: Request): boolean {
+  const requested = new URL(request.url).searchParams.get("mode") === "demo";
+  return requested || process.env.HORIZON_DEMO_REPORTS === "true";
+}
+
 export async function POST(request: Request) {
+  const demoPersistence = allowsDemoPersistence(request);
   let body: Record<string, unknown>;
   let files: File[] = [];
 
@@ -70,6 +81,10 @@ export async function POST(request: Request) {
   // Created before the throttle check so the durable limiter (which shares
   // this client) is consulted rather than the per-instance fallback.
   const supabase = createServiceClient();
+
+  if (!supabase && !demoPersistence) {
+    return NextResponse.json({ ok: false, error: "persistence_unavailable" }, { status: 503 });
+  }
 
   const quota = await consumeReportQuota(supabase, clientIdentifier(request));
   if (quota.limited) {
@@ -140,13 +155,20 @@ export async function POST(request: Request) {
       timestamp: new Date().toISOString(),
     });
 
-  if (!supabase) {
+  if (demoPersistence) {
     const report = demoReport();
     return NextResponse.json({
       ok: true,
       demo: true,
       id: report.id,
     });
+  }
+
+  // The earlier branch returned a 503 when this client was unavailable. Keep
+  // the explicit guard here as well so the durable path cannot accidentally
+  // regain an implicit nullable client through a future refactor.
+  if (!supabase) {
+    return NextResponse.json({ ok: false, error: "persistence_unavailable" }, { status: 503 });
   }
 
   const { data, error } = await supabase
@@ -163,15 +185,6 @@ export async function POST(request: Request) {
     .single();
 
   if (error) {
-    if (classifyInsertError(error) === "demo") {
-      const report = demoReport();
-      return NextResponse.json({
-        ok: true,
-        demo: true,
-        id: report.id,
-      });
-    }
-
     // Message only, never the error object: a Postgres error can carry the
     // failing statement and its parameters, i.e. the reporter's own text.
     logger.error("reports.insert_failed", { message: error.message, code: error.code });
