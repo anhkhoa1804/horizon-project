@@ -514,6 +514,18 @@ export const en: Dictionary = {
   admin: {
     title: "Control panel",
     description: "Network status, field reports and device configuration.",
+    navigation: {
+      overview: "Overview",
+      devices: "Devices",
+      thresholds: "Thresholds",
+      applications: "Applications",
+      calibration: "Calibration",
+      maintenance: "Maintenance",
+      reports: "Reports",
+      data: "Data",
+      audit: "Audit",
+      configuration: "Configuration",
+    },
   },
 
 

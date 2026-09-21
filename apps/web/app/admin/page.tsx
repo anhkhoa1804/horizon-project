@@ -787,8 +787,8 @@ export default async function AdminPage({
 
   return (
     <AdminShell
-      title="Bảng điều khiển"
-      description="Trạng thái mạng lưới, báo cáo hiện trường và cấu hình thiết bị."
+      title={dict.admin.title}
+      description={dict.admin.description}
       email={profile.email}
       actions={
         <>
@@ -810,9 +810,9 @@ export default async function AdminPage({
 
       <nav aria-label="Khu vực vận hành" className="sticky top-20 z-20 -mx-2 flex gap-1 overflow-x-auto rounded-lg border border-border bg-background/95 p-2 text-xs shadow-sm backdrop-blur">
         {[
-          ["network", "Overview"], ["devices", "Devices"], ["thresholds", "Thresholds"],
-          ["profiles", "Applications"], ["calibration", "Calibration"], ["maintenance", "Maintenance"],
-          ["reports", "Reports"], ["export", "Data"], ["audit", "Audit"], ["runtime", "Configuration"],
+          ["network", dict.admin.navigation.overview], ["devices", dict.admin.navigation.devices], ["thresholds", dict.admin.navigation.thresholds],
+          ["profiles", dict.admin.navigation.applications], ["calibration", dict.admin.navigation.calibration], ["maintenance", dict.admin.navigation.maintenance],
+          ["reports", dict.admin.navigation.reports], ["export", dict.admin.navigation.data], ["audit", dict.admin.navigation.audit], ["runtime", dict.admin.navigation.configuration],
         ].map(([id, label]) => <a key={id} href={`#${id}`} className="shrink-0 rounded-md px-3 py-2 hover:bg-muted/30">{label}</a>)}
       </nav>
 

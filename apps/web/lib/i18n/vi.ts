@@ -574,6 +574,18 @@ export const vi = {
   admin: {
     title: "Bảng điều khiển",
     description: "Trạng thái mạng lưới, báo cáo hiện trường và cấu hình thiết bị.",
+    navigation: {
+      overview: "Tổng quan",
+      devices: "Thiết bị",
+      thresholds: "Ngưỡng",
+      applications: "Ứng dụng",
+      calibration: "Hiệu chuẩn",
+      maintenance: "Bảo trì",
+      reports: "Báo cáo",
+      data: "Dữ liệu",
+      audit: "Nhật ký",
+      configuration: "Cấu hình",
+    },
   },
 
 
