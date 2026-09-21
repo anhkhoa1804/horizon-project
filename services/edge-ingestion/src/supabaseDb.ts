@@ -42,30 +42,6 @@ export class SupabaseDb implements DbPort {
     return { ok: response.ok, status: response.status, text: await response.text() };
   }
 
-  public async getDeviceSecret(deviceId: string): Promise<string | null> {
-    const result = await this.request(
-      "devices",
-      "GET",
-      undefined,
-      `?device_id=eq.${encodeURIComponent(deviceId)}&select=device_secret,status&limit=1`,
-    );
-
-    if (!result.ok) {
-      return null;
-    }
-
-    const rows = JSON.parse(result.text) as Array<{ device_secret?: string; status?: string }>;
-    if (!Array.isArray(rows) || rows.length === 0) {
-      return null;
-    }
-
-    if (rows[0].status && rows[0].status !== "active") {
-      return null;
-    }
-
-    return rows[0].device_secret ?? null;
-  }
-
   public async isDeviceRegistered(deviceId: string): Promise<boolean> {
     const result = await this.request(
       "devices",

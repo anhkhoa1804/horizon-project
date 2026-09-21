@@ -329,23 +329,26 @@ function WorkflowChapter() {
 }
 
 const APPLICATION_PROFILES = [
-  { index: "01", title: "Vườn cây giá trị cao", flow: ["Đất", "Nước", "Thời tiết", "Tưới"], current: "Độ ẩm, EC, pH, nhiệt độ đất; nước và mực nước.", next: "FC / PWP / MAD, ET0, Kc và hiệu chuẩn tại chỗ." },
-  { index: "02", title: "Lúa – Tôm", flow: ["Nước", "Đất", "Mùa", "Mặn ↔ ngọt"], current: "Quan trắc nước, đất và chuỗi thời gian có thời điểm.", next: "Mô hình mùa, so sánh nguồn nước và phân vùng." },
-  { index: "03", title: "Lúa AWD + MRV", flow: ["Mực nước", "Thời gian", "Khô / ướt"], current: "Mực nước siêu âm và lịch sử telemetry.", next: "Hình học ống đo, phương pháp AWD và quy trình thẩm tra." },
+  { index: "01", title: "Vườn cây giá trị cao", image: "/assets/vuon-cay-gia-tri-cao.webp", alt: "Vườn cây giá trị cao tại vùng canh tác", flow: ["Đất", "Nước", "Thời tiết", "Tưới"], current: "Độ ẩm, EC, pH, nhiệt độ đất; nước và mực nước.", next: "FC / PWP / MAD, ET0, Kc và hiệu chuẩn tại chỗ." },
+  { index: "02", title: "Lúa – Tôm", image: "/assets/lua-tom.jpg", alt: "Mô hình canh tác lúa tôm", flow: ["Nước", "Đất", "Mùa", "Mặn ↔ ngọt"], current: "Quan trắc nước, đất và chuỗi thời gian có thời điểm.", next: "Mô hình mùa, so sánh nguồn nước và phân vùng." },
+  { index: "03", title: "Lúa AWD + MRV", image: "/assets/awd.webp", alt: "Ruộng lúa cho thực hành AWD và MRV", flow: ["Mực nước", "Thời gian", "Khô / ướt"], current: "Mực nước siêu âm và lịch sử telemetry.", next: "Hình học ống đo, phương pháp AWD và quy trình thẩm tra." },
 ] as const;
 
 function ApplicationProfilesChapter() {
   return (
-    <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-border bg-border lg:grid-cols-3">
+    <div className="mt-10 grid gap-6 lg:grid-cols-3">
       {APPLICATION_PROFILES.map((profile) => (
-        <article key={profile.index} className="flex min-h-[300px] flex-col bg-surface p-6 md:p-8">
-          <p className="text-[11px] tracking-[0.16em] text-accent [font-family:var(--font-data)]">{profile.index}</p>
-          <h3 className="mt-4 text-xl font-semibold tracking-tight">{profile.title}</h3>
-          <div className="mt-7 flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground-subtle">
+        <article key={profile.index} className="overflow-hidden rounded-lg bg-surface">
+          <Image src={profile.image} alt={profile.alt} width={900} height={600} sizes="(min-width:1024px) 31vw, 100vw" className="h-auto w-full" />
+          <div className="flex min-h-[270px] flex-col p-6 md:p-8">
+            <p className="text-[11px] tracking-[0.16em] text-accent [font-family:var(--font-data)]">{profile.index}</p>
+            <h3 className="mt-4 text-xl font-semibold tracking-tight">{profile.title}</h3>
+            <div className="mt-7 flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground-subtle">
             {profile.flow.map((item, flowIndex) => <span key={item} className="contents"><span>{item}</span>{flowIndex < profile.flow.length - 1 ? <ArrowRight className="h-3 w-3 text-accent" aria-hidden /> : null}</span>)}
+            </div>
+            <p className="mt-auto pt-8 text-sm leading-relaxed text-muted"><span className="font-medium text-foreground">Hiện tại · </span>{profile.current}</p>
+            <p className="mt-3 text-sm leading-relaxed text-muted"><span className="font-medium text-foreground">Tiếp theo · </span>{profile.next}</p>
           </div>
-          <p className="mt-auto pt-8 text-sm leading-relaxed text-muted"><span className="font-medium text-foreground">Hiện tại · </span>{profile.current}</p>
-          <p className="mt-3 text-sm leading-relaxed text-muted"><span className="font-medium text-foreground">Tiếp theo · </span>{profile.next}</p>
         </article>
       ))}
     </div>
@@ -376,10 +379,11 @@ export default async function HomePage() {
               yet. The same fact is stated here, where there is room to explain
               it rather than merely disclaim it — and again on the hardware
               chapter, which is where it actually bites. */}
-          <Reveal stagger as="section" className="grid items-center gap-10 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,0.7fr)] lg:gap-16">
+          <Reveal stagger as="section" className="mx-auto max-w-3xl">
             <div>
-              <ChapterHeading eyebrow="01 · Cồn Hô" title="Một cù lao giữa dòng sông." lead="Cồn Hô ở Vĩnh Long là một môi trường canh tác nhỏ, nơi nước, đất và không khí có thể đổi khác theo từng vị trí trong ngày." />
+              <ChapterHeading eyebrow="01 · Cồn Hô" title="Một cù lao giữa dòng sông." />
               <Prose>
+                <p>Cồn Hô ở Vĩnh Long là một môi trường canh tác nhỏ, nơi nước, đất và không khí có thể đổi khác theo từng vị trí trong ngày.</p>
                 <p>Ở một cù lao, thay đổi không luôn đến cùng lúc. Nước ngoài vườn, vùng rễ và đường truyền dữ liệu có những nhịp riêng — và đó là lý do phép đo cần ở gần nơi sản xuất.</p>
                 <p>HORIZON bắt đầu bằng việc giữ lại những thay đổi đó theo thời điểm, vị trí và nguồn đo để người làm vườn, nhà nghiên cứu và cộng đồng có thể cùng đọc lại.</p>
               </Prose>
@@ -387,29 +391,13 @@ export default async function HomePage() {
                 <span>Vĩnh Long</span>{ISLAND_STATS.map((stat) => <span key={stat.label}>{stat.label} {stat.value}</span>)}
               </div>
             </div>
-            <figure className="overflow-hidden rounded-xl bg-wash-sunken">
-              <div className="relative aspect-[4/5]">
-                <Image src="/assets/landscape/con-ho-aerial.jpg" alt="Cồn Hô nhìn từ trên cao" fill sizes="(min-width:1024px) 42vw,100vw" className="object-cover" />
-              </div>
-              <figcaption className="px-4 py-3 text-sm text-muted">Cồn Hô · nhìn từ trên cao</figcaption>
+          </Reveal>
+          <Reveal as="section" className="mx-auto max-w-[980px]">
+            <figure>
+              <Image src="/assets/landscape/con-ho-aerial.jpg" alt="Cồn Hô nhìn từ trên cao" width={1600} height={900} sizes="(min-width:1024px) 980px, 100vw" className="h-auto w-full rounded-lg" />
+              <figcaption className="mt-3 text-sm text-muted">Cồn Hô · nhìn từ trên cao</figcaption>
             </figure>
           </Reveal>
-          {/* MERGE NOTE (upstream 9d189a8): a `<LocalGatewayCard>` and an
-              `<InstallPrompt>` were added here on origin/main. Neither is
-              wired into production Home:
-                - LocalGatewayCard is bench-test scaffolding for the gateway's
-                  local ingest tunnel — hardcoded English/unaccented-Vietnamese
-                  strings, no useDict(), no HORIZON chapter grammar — reading
-                  from apps/web/.local-gateway-data.json, a fixture file, not
-                  Supabase. Shipping it as visible Home chrome would regress
-                  every i18n/visual-consistency guarantee this rebuild made.
-                - InstallPrompt is the PWA install banner explicitly removed
-                  from Home this same pass (no replacement banner wanted).
-              The component and its API route are kept in the tree — this is
-              someone else's in-progress bench-testing tool, not mine to
-              delete — just not rendered on the production landing page. */}
-
-
           {/* 02 — Where, and why here */}
           <Reveal stagger as="section">
             <ChapterHeading eyebrow="02 · Ba điểm, ba vai trò" title="Ba thiết bị ở ba vị trí khác nhau." lead="Mỗi điểm trả lời một câu hỏi rõ ràng: nước đang đổi thế nào, vùng rễ đang giữ nước ra sao, và dữ liệu có đi được về hệ thống không." />
@@ -455,15 +443,6 @@ export default async function HomePage() {
               title="Một lần đo đi từ vườn tới màn hình như thế nào?"
               lead="Bảy chặng, từ đầu dò đặt tại Cồn Hô tới Observatory. Mỗi chặng giữ lại dấu vết cần thiết để đọc lại dữ liệu."
             />
-            <p className="mt-6 text-sm leading-relaxed text-muted">
-              EC nước, nhiệt độ nước, mực nước, TDS và độ mặn được lưu thành các đại lượng riêng. Không có phép đổi tắt từ độ mặn ‰ sang dS/m.{" "}
-              <Link
-                href="/posts/phan-cung-cua-mot-tram-do"
-                className="text-accent underline-offset-2 hover:underline"
-              >
-                Vì sao chọn từng thiết bị →
-              </Link>
-            </p>
             <div className="mt-16 border-t border-border pt-10">
               <h3 className="text-xl font-semibold tracking-tight">Từ số đo đến ý nghĩa.</h3>
               <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted">
@@ -475,31 +454,20 @@ export default async function HomePage() {
             </div>
           </Reveal>
 
-          {/* 04 — What a number does and does not mean */}
-          <Reveal stagger as="section">
-            <ChapterHeading eyebrow="04 · Từ số đo đến ý nghĩa" title="Một số đo cần bối cảnh trước khi thành kết luận." lead="Giá trị được đo, gắn thời điểm, lưu lại, đối chiếu nguồn tham chiếu rồi mới được diễn giải." />
-            <div className="mt-10 grid gap-px overflow-hidden rounded-xl border border-border bg-border lg:grid-cols-[1.2fr_0.8fr]">
-              <div className="grid gap-px bg-border sm:grid-cols-3">
-                {[{ value: "106 µS/cm", label: "EC nước" }, { value: "43,9 %", label: "Độ ẩm đất" }, { value: "7,0", label: "pH đất" }].map((metric) => <div key={metric.label} className="bg-surface p-6"><p className="text-[11px] font-semibold uppercase tracking-[.14em] text-foreground-subtle">Ví dụ cách đọc</p><p className="mt-8 text-2xl font-semibold tracking-tight">{metric.value}</p><p className="mt-2 text-sm text-muted">{metric.label}</p></div>)}
-              </div>
-              <div className="bg-surface p-6 md:p-8"><p className="text-[11px] font-semibold uppercase tracking-[.14em] text-accent">Cách đọc</p><ol className="mt-6 space-y-4 text-sm leading-relaxed text-muted"><li>01 · Đo tại cảm biến</li><li>02 · Gắn thời điểm và trạm</li><li>03 · Lưu thành chuỗi dữ liệu</li><li>04 · Đối chiếu cơ sở tham chiếu</li><li>05 · Hiển thị giới hạn của kết luận</li></ol><p className="mt-8 border-t border-border pt-4 text-sm text-foreground">EC nước không tự động là độ mặn ‰. EC đất tại chỗ cũng không phải ECe.</p></div>
-            </div>
-          </Reveal>
-
-          {/* 05 — Reusable application profiles */}
+          {/* 04 — Reusable application profiles */}
           <Reveal stagger as="section">
             <ChapterHeading
-              eyebrow="05 · Nhiều bài toán từ cùng dữ liệu"
+              eyebrow="04 · Nhiều bài toán từ cùng dữ liệu"
               title="Ba câu hỏi có thể bắt đầu từ Cồn Hô."
               lead="Mỗi hướng cho thấy dữ liệu đang có, và những phép đo còn thiếu trước khi có thể ra quyết định tốt hơn."
             />
             <ApplicationProfilesChapter />
           </Reveal>
 
-          {/* 06 — Current deployment truth */}
+          {/* 05 — Current deployment truth */}
           <Reveal stagger as="section">
             <ChapterHeading
-              eyebrow="06 · Cồn Hô hôm nay"
+              eyebrow="05 · Cồn Hô hôm nay"
               title="Mạng lưới hiện có, cùng những giới hạn hiện có."
               lead="Hai trạm cảm biến và một gateway tạo thành lần triển khai đầu tiên. Trạng thái dưới đây đến từ dữ liệu hệ thống; nó không thay cho kiểm chứng lắp đặt hay hiệu chuẩn ngoài hiện trường."
             />
@@ -510,10 +478,10 @@ export default async function HomePage() {
             </div>
           </Reveal>
 
-          {/* 07 — Field notes and learning */}
+          {/* 06 — Field notes and learning */}
           <Reveal stagger as="section" id="ghi-chep" className="scroll-mt-28">
             <ChapterHeading
-              eyebrow="07 · Những gì chúng tôi đang học"
+              eyebrow="06 · Những gì chúng tôi đang học"
               title="Ghi chép trong quá trình xây dựng."
               lead="Hiệu chuẩn, nghiên cứu ngưỡng, ghi chép hiện trường và các giả định dự án đang kiểm chứng."
             />
@@ -522,10 +490,10 @@ export default async function HomePage() {
             </div>
           </Reveal>
 
-          {/* 08 — Visual material and people */}
+          {/* 07 — Visual material and people */}
           <Reveal as="section">
             <ChapterHeading
-              eyebrow="08 · Hình ảnh / con người"
+              eyebrow="07 · Hình ảnh / con người"
               title="Hình ảnh dự án."
               lead="Cù lao, dòng sông, con người và phần cứng của mạng lưới đặt trên đó."
             />
@@ -536,7 +504,7 @@ export default async function HomePage() {
             </div>
           </Reveal>
 
-          {/* 09 — Report and contact.
+          {/* 08 — Report and contact.
               CONTACT AND REPORT ARE DIFFERENT THINGS. A report is an
               environmental observation that becomes a durable row in
               Supabase; a contact is a person wanting to reach the project.
@@ -545,7 +513,7 @@ export default async function HomePage() {
               mailto/tel/https, nothing posted through this site — since no
               server-side email provider exists to back a submission form. */}
           <Reveal stagger as="section" id="lien-he" className="scroll-mt-28">
-            <ChapterHeading eyebrow="09 · Cùng theo dõi" title="Một mạng lưới để đọc lại thay đổi ở Cồn Hô." lead="Theo dõi quan trắc, gửi ghi nhận hiện trường, hoặc liên hệ với nhóm dự án." />
+            <ChapterHeading eyebrow="08 · Cùng theo dõi" title="Một mạng lưới để đọc lại thay đổi ở Cồn Hô." lead="Theo dõi quan trắc, gửi ghi nhận hiện trường, hoặc liên hệ với nhóm dự án." />
             <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-border bg-border lg:grid-cols-[0.85fr_1.15fr]">
               <div className="flex flex-col gap-4 bg-background p-8 md:p-10">
                 <div className="flex items-center gap-2 text-foreground-muted">

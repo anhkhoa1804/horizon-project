@@ -341,6 +341,7 @@ export const en: Dictionary = {
       savedToDb: "Your report has been saved to the monitoring database.",
       savedLocally:
         "The system could not reach the main database, so your report is being held on this server. What you sent is real, but it may not be kept permanently.",
+      mediaPartial: "The report was saved, but some evidence files did not upload: {files}. Keep those files to submit again in a new report.",
 
       errRateLimit: "You have sent a lot of reports in the past hour. Please try again later.",
       errTooShort: "The description needs at least {min} characters.",

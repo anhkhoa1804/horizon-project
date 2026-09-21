@@ -1,4 +1,4 @@
-import { MockDb, ingestTelemetry, signPayload } from "../src/index.js";
+import { MockDb, ingestTelemetry } from "../src/index.js";
 import type { IngestConfig } from "../src/ingest.js";
 import type { IngestRequest, TelemetryPayloadV1 } from "../src/types.js";
 
@@ -22,6 +22,7 @@ const payload: TelemetryPayloadV1 = {
 const config: IngestConfig = {
   allowedContractVersion: "v1",
   maxTimestampDriftSeconds: 300,
+  gatewayIngestToken: "gateway-token-01",
 };
 
 const db = new MockDb(
@@ -37,21 +38,18 @@ const db = new MockDb(
   },
 );
 
-async function buildRequest(body: TelemetryPayloadV1, signature: string): Promise<IngestRequest> {
+function buildRequest(body: TelemetryPayloadV1): IngestRequest {
   return {
     headers: {
-      "x-device-id": body.device_id,
-      "x-timestamp": body.timestamp.toString(),
-      "x-signature": signature,
+      "x-gateway-token": "gateway-token-01",
       "x-contract-version": body.contract_version,
     },
     payload: body,
   };
 }
 
-const signature = await signPayload(payload, "station-secret-01");
-const firstResponse = await ingestTelemetry(await buildRequest(payload, signature), db, config, now);
-const duplicateResponse = await ingestTelemetry(await buildRequest(payload, signature), db, config, now + 1);
+const firstResponse = await ingestTelemetry(buildRequest(payload), db, config, now);
+const duplicateResponse = await ingestTelemetry(buildRequest(payload), db, config, now + 1);
 
 const faultyPayload: TelemetryPayloadV1 = {
   ...payload,
@@ -59,8 +57,7 @@ const faultyPayload: TelemetryPayloadV1 = {
   fault_flags: 1,
   sensor_status: { ec_probe: "fault", ultrasonic: "ok" },
 };
-const faultySignature = await signPayload(faultyPayload, "station-secret-01");
-const faultyResponse = await ingestTelemetry(await buildRequest(faultyPayload, faultySignature), db, config, now + 2);
+const faultyResponse = await ingestTelemetry(buildRequest(faultyPayload), db, config, now + 2);
 
 console.log("inserted:", firstResponse);
 console.log("duplicate:", duplicateResponse);

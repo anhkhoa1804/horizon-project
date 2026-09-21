@@ -38,9 +38,9 @@ Supabase variables are optional for local UI work. When they are missing, the ap
 
 `ADMIN_SESSION_SECRET` signs the local admin cookie. Set a long random value before sharing the app outside your machine.
 
-`GATEWAY_INGEST_TOKEN` is the shared secret guarding `POST /api/public/gateway`, the LoRa gateway's 4G ingest path. The gateway sends it as an `x-gateway-token` header.
+`GATEWAY_INGEST_TOKEN` is the shared secret guarding Supabase `edge-ingest`, the LoRa gateway's 4G ingest path. The gateway sends it as an `x-gateway-token` header.
 
-**This route fails closed.** With no token configured the endpoint answers `503 ingest_not_configured` and stores nothing; with a token configured it answers `401` to any request whose header does not match. A deployment without this variable therefore ingests no telemetry at all — that is deliberate, and replaces earlier behaviour where a missing variable meant the endpoint accepted writes from anyone who could reach it.
+**This path fails closed.** With no token configured, the Edge Function rejects relay authentication; with a token configured it rejects a request whose header does not match. A deployment without this variable therefore ingests no telemetry at all.
 
 Server-side only. Never rename it to `NEXT_PUBLIC_GATEWAY_INGEST_TOKEN`, which would inline the secret into the client bundle at build time. The value must match `GATEWAY_INGEST_TOKEN_VALUE` in `firmware/esp32-node/src/gateway_secrets.h` (gitignored; copy `gateway_secrets.example.h` to create it).
 

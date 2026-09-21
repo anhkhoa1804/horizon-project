@@ -32,16 +32,15 @@ export function LanguageToggle({ className }: { className?: string }) {
       role="radiogroup"
       aria-label={dict.controls.languageLabel}
       className={cn(
-        "inline-flex items-center gap-1 text-[11px] tracking-[0.08em]",
+        "inline-flex h-8 items-center rounded-md border border-border bg-wash-sunken p-0.5 text-[11px] tracking-[0.08em]",
         className,
       )}
     >
       {LOCALES.map((locale) => {
         const active = locale === current;
         return (
-          <span key={locale} className="inline-flex items-center gap-1">
-          {locale === "en" ? <span aria-hidden className="text-foreground-subtle">/</span> : null}
           <button
+            key={locale}
             type="button"
             role="radio"
             aria-checked={active}
@@ -50,16 +49,15 @@ export function LanguageToggle({ className }: { className?: string }) {
             // Re-selecting the current locale would reload for no reason.
             onClick={() => (active ? undefined : setLocaleCookie(locale))}
             className={cn(
-              "relative px-1 py-1 font-medium transition-colors duration-[var(--motion-base)]",
+              "rounded-[3px] px-2 py-1 font-medium transition-colors duration-[var(--motion-base)]",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:ring-offset-canvas",
               active
-                ? "text-foreground after:absolute after:inset-x-1 after:-bottom-0.5 after:h-px after:bg-accent"
+                ? "bg-foreground text-background shadow-sm"
                 : "text-foreground-subtle hover:text-foreground",
             )}
           >
             {LOCALE_LABEL[locale]}
           </button>
-          </span>
         );
       })}
     </div>

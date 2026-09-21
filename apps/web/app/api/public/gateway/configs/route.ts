@@ -10,7 +10,7 @@ const defaultConfigs = [
 export async function GET() {
   const supabase = createServiceClient();
   if (!supabase) {
-    return NextResponse.json({ ok: true, configs: defaultConfigs });
+    return NextResponse.json({ ok: false, error: "configuration_unavailable" }, { status: 503 });
   }
 
   const { data, error } = await supabase
@@ -20,7 +20,7 @@ export async function GET() {
     .order("station_id");
 
   if (error) {
-    return NextResponse.json({ ok: true, configs: defaultConfigs, warning: error.message });
+    return NextResponse.json({ ok: false, error: "configuration_unavailable" }, { status: 503 });
   }
 
   const merged = defaultConfigs.map((fallback) => {

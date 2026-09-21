@@ -17,18 +17,14 @@ export class MockDb implements DbPort {
   private readonly healthLogs: StationHealthRow[] = [];
 
   public constructor(
-    private readonly deviceSecrets: Record<string, string> = {},
+    private readonly registeredDevices: Record<string, string> = {},
     private readonly otaCatalog: Record<string, OtaInfo> = {},
-    /** Stations registered but with no signing secret of their own — attributed via a relaying gateway's authentication instead. */
+    /** Additional registered device ids for bearer-authenticated tests. */
     private readonly registeredOnlyDevices: string[] = [],
   ) {}
 
-  public async getDeviceSecret(deviceId: string): Promise<string | null> {
-    return this.deviceSecrets[deviceId] ?? null;
-  }
-
   public async isDeviceRegistered(deviceId: string): Promise<boolean> {
-    return deviceId in this.deviceSecrets || this.registeredOnlyDevices.includes(deviceId);
+    return deviceId in this.registeredDevices || this.registeredOnlyDevices.includes(deviceId);
   }
 
   public async insertEnvironmental(row: EnvironmentalReadingRow): Promise<"inserted" | "duplicate_ignored"> {

@@ -4,6 +4,7 @@ import { clientIdentifier, consumeReportQuota } from "@/lib/reports/rateLimit";
 import { logger } from "@/lib/observability/logger";
 import { REPORT_MEDIA_BUCKET, REPORT_MEDIA_MAX_FILES, validateReportMedia } from "@/lib/reports/media";
 import { createServiceClient } from "@/lib/supabase/service";
+import { CON_HO } from "@/lib/geo";
 
 const CATEGORIES = [
   "erosion",
@@ -21,11 +22,12 @@ const MAX_DESCRIPTION = 2000;
  * Demo persistence is deliberately opt-in. A public report must never become
  * an in-memory success merely because Supabase is missing or a migration has
  * not been deployed. Design review can still request this endpoint explicitly
- * with `?mode=demo`, and local operators can enable the named environment flag.
+ * with `?mode=demo` on a non-production server. It is never a production
+ * fallback, even if a deployment accidentally sets a demo environment flag.
  */
 function allowsDemoPersistence(request: Request): boolean {
   const requested = new URL(request.url).searchParams.get("mode") === "demo";
-  return requested || process.env.HORIZON_DEMO_REPORTS === "true";
+  return process.env.NODE_ENV !== "production" && (requested || process.env.HORIZON_DEMO_REPORTS === "true");
 }
 
 export async function POST(request: Request) {
@@ -126,8 +128,8 @@ export async function POST(request: Request) {
   // description (same bracket-tag pattern already used for category/
   // station below) so it's traceable as an estimate, not fabricated
   // precision.
-  const FALLBACK_LAT = 10.2419;
-  const FALLBACK_LNG = 105.826;
+  const FALLBACK_LAT = CON_HO.lat;
+  const FALLBACK_LNG = CON_HO.lng;
   let usedFallbackLocation = false;
 
   if (

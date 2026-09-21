@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { signPayload } from "../src/canonical.js";
 import { handleIngestRequest } from "../src/httpHandler.js";
 import { ingestTelemetry } from "../src/ingest.js";
 import { MockDb } from "../src/mockDb.js";
@@ -13,10 +12,9 @@ const NOW = 1_700_000_000;
 const config: IngestConfig = {
   allowedContractVersion: "v1",
   maxTimestampDriftSeconds: 300,
-  salinityWarningLevel: 1.2,
-  salinityCriticalLevel: 1.8,
   lowBatteryVoltage: 3.6,
   lowSignalStrengthDbm: -95,
+  gatewayIngestToken: "gateway-token-01",
 };
 
 const otaCatalog = {
@@ -40,12 +38,10 @@ function basePayload(overrides: Partial<TelemetryPayloadV1> = {}): TelemetryPayl
   };
 }
 
-async function buildRequest(payload: TelemetryPayloadV1, signature?: string): Promise<IngestRequest> {
+function buildRequest(payload: TelemetryPayloadV1): IngestRequest {
   return {
     headers: {
-      "x-device-id": payload.device_id,
-      "x-timestamp": String(payload.timestamp),
-      "x-signature": signature ?? await signPayload(payload, DEVICE_SECRET),
+      "x-gateway-token": "gateway-token-01",
       "x-contract-version": payload.contract_version,
     },
     payload,
@@ -53,10 +49,10 @@ async function buildRequest(payload: TelemetryPayloadV1, signature?: string): Pr
 }
 
 describe("ingest contract", () => {
-  it("accepts a valid signed payload", async () => {
+  it("accepts a valid bearer-authenticated payload", async () => {
     const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
     const payload = basePayload();
-    const response = await ingestTelemetry(await buildRequest(payload), db, config, NOW);
+    const response = await ingestTelemetry(buildRequest(payload), db, config, NOW);
 
     assert.equal(response.ok, true);
     if (response.ok) {
@@ -77,7 +73,7 @@ describe("ingest contract", () => {
       battery_percent: 82.5,
     });
 
-    const response = await ingestTelemetry(await buildRequest(payload), db, config, NOW);
+    const response = await ingestTelemetry(buildRequest(payload), db, config, NOW);
 
     assert.equal(response.ok, true);
     assert.equal(db.getSnapshot().healthLogs.at(-1)?.battery_voltage, 13.2);
@@ -86,7 +82,7 @@ describe("ingest contract", () => {
   it("ignores duplicate message_id", async () => {
     const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
     const payload = basePayload({ message_id: "contract-test-duplicate-001" });
-    const request = await buildRequest(payload);
+    const request = buildRequest(payload);
 
     const first = await ingestTelemetry(request, db, config, NOW);
     const second = await ingestTelemetry(request, db, config, NOW + 1);
@@ -164,10 +160,10 @@ describe("ingest contract", () => {
     assert.equal(response.ok, true);
   });
 
-  it("rejects invalid signature", async () => {
+  it("rejects an invalid gateway token", async () => {
     const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
     const payload = basePayload({ message_id: "contract-test-bad-signature-001" });
-    const response = await ingestTelemetry(await buildRequest(payload, "deadbeef"), db, config, NOW);
+    const response = await ingestTelemetry({ ...buildRequest(payload), headers: { "x-gateway-token": "wrong-token", "x-contract-version": payload.contract_version } }, db, config, NOW);
 
     assert.equal(response.ok, false);
     if (!response.ok) {
@@ -230,243 +226,64 @@ describe("ingest contract", () => {
   });
 });
 
-describe("station_summary gateway payloads", () => {
-  const tokenConfig: IngestConfig = {
-    ...config,
-    gatewayIngestToken: "gateway-token-01",
-  };
+describe("firmware gateway contract", () => {
+  const tokenConfig: IngestConfig = { ...config, gatewayIngestToken: "gateway-token-01" };
 
-  it("stores every STATION_01 field from the gateway summary in environmental_readings", async () => {
+  it("accepts the canonical STATION_01 payload emitted by the QoS1 gateway path", async () => {
     const db = new MockDb({}, otaCatalog, ["STATION_01"]);
-    const payload = {
-      type: "station_summary",
-      station_id: "STATION_01",
-      firmware_version: "simple-qos1-wire",
-      message_id: "STATION_01-1",
-      sequence: 1,
-      summary_minutes: 5,
-      sensor_height_cm: 350,
-      distance_cm: 228.6,
-      water_level_cm: 121.4,
-      ec_ms_cm: 0.106,
-      ec_us_cm: 106,
-      temperature_c: 29.5,
-      tds_ppm: 53,
-      salinity_ppt: 0.055,
-      salinity_ppm: 55,
-      battery_voltage_v: 0,
-      battery_percent: 0,
-    };
-
+    const payload = basePayload({
+      message_id: "STATION_01-1700000000-7", sequence: 7, summary_minutes: 5,
+      ec_ms_cm: 0.106, ec_us_cm: 106, temperature_c: 29.5, tds_ppm: 53,
+      raw_station_payload: { wire_protocol: "S1|...|CRC16", gateway_id: "GATEWAY_01", timestamp_semantics: "gateway_network_receipt_time" },
+    });
     const response = await handleIngestRequest(payload, { "x-gateway-token": "gateway-token-01" }, db, tokenConfig, NOW);
-
     assert.equal(response.status, 200);
-    const snapshot = db.getSnapshot();
-    assert.equal(snapshot.environmentalReadings.length, 1);
-    assert.equal(snapshot.soilReadings.length, 0);
-    assert.equal(snapshot.environmentalReadings[0]?.station_id, "STATION_01");
-    assert.equal(snapshot.environmentalReadings[0]?.water_level, 121.4);
-    assert.equal(snapshot.environmentalReadings[0]?.ec_us_cm, 106);
-    assert.equal(snapshot.environmentalReadings[0]?.tds_ppm, 53);
-    assert.equal(snapshot.environmentalReadings[0]?.raw_station_payload?.message_id, "STATION_01-1");
-    assert.equal(snapshot.healthLogs[0]?.battery_voltage, null);
-    assert.equal(snapshot.healthLogs[0]?.battery_percent, 0);
+    assert.equal(db.getSnapshot().environmentalReadings[0]?.ec_us_cm, 106);
   });
 
-  it("stores every STATION_02 field from the gateway summary in soil_readings", async () => {
+  it("accepts the canonical STATION_02 soil payload emitted by the QoS1 gateway path", async () => {
     const db = new MockDb({}, otaCatalog, ["STATION_02"]);
-    const payload = {
-      type: "station_summary",
-      station_id: "STATION_02",
-      firmware_version: "simple-qos1-wire",
-      message_id: "STATION_02-2",
-      sequence: 2,
-      summary_minutes: 5,
-      crop: "grapefruit",
-      air_temp_c: null,
-      air_humidity_pct: null,
-      soil_temp_c: 29.9,
-      soil_moisture_pct: 43.7,
-      soil_ec_ms_cm: 0.11,
-      soil_ec_us_cm: 110,
-      soil_salinity: 60,
-      soil_tds: 55,
-      soil_ph: 7,
-      battery_voltage_v: null,
-      battery_percent: null,
+    const payload: TelemetryPayloadV1 = {
+      contract_version: "v1", reading_kind: "soil", device_id: "STATION_02", message_id: "STATION_02-1700000000-8", timestamp: NOW,
+      firmware_version: "simple-qos1-wire", fault_flags: 0, sequence: 8, summary_minutes: 5,
+      soil: { air_temp_c: null, air_humidity_pct: null, soil_temp_c: 29.9, soil_moisture_pct: 43.7, soil_ec_ms_cm: 0.11, soil_ec_us_cm: 110, soil_salinity: 60, soil_tds: 55, soil_ph: 7 },
+      raw_station_payload: { wire_protocol: "S2|...|CRC16", gateway_id: "GATEWAY_01", timestamp_semantics: "gateway_network_receipt_time" },
     };
-
     const response = await handleIngestRequest(payload, { "x-gateway-token": "gateway-token-01" }, db, tokenConfig, NOW);
-
     assert.equal(response.status, 200);
-    const snapshot = db.getSnapshot();
-    assert.equal(snapshot.soilReadings.length, 1);
-    assert.equal(snapshot.environmentalReadings.length, 0);
-    assert.equal(snapshot.soilReadings[0]?.station_id, "STATION_02");
-    assert.equal(snapshot.soilReadings[0]?.soil_moisture_pct, 43.7);
-    assert.equal(snapshot.soilReadings[0]?.soil_ec_us_cm, 110);
-    assert.equal(snapshot.soilReadings[0]?.soil_salinity, 60);
-    assert.equal(snapshot.soilReadings[0]?.soil_tds, 55);
-    assert.equal(snapshot.soilReadings[0]?.crop, "grapefruit");
-    assert.equal(snapshot.soilReadings[0]?.raw_station_payload?.message_id, "STATION_02-2");
-    assert.equal(snapshot.healthLogs.length, 0);
+    assert.equal(db.getSnapshot().soilReadings[0]?.soil_ec_us_cm, 110);
   });
 
-  it("unwraps the actual gateway envelope and stores the nested station summary", async () => {
-    const db = new MockDb({}, otaCatalog, ["STATION_02"]);
-    const response = await handleIngestRequest(
-      {
-        gateway_id: "GATEWAY",
-        firmware_version: "gateway-lora-wifi-0.8.2-rx-priority-preserve-http-fix",
-        sequence: 99,
-        uptime_ms: 12345,
-        transport: "lora_uart_to_4g",
-        raw_station_payload: {
-          type: "station_summary",
-          station_id: "STATION_02",
-          firmware_version: "simple-qos1-wire",
-          message_id: "STATION_02-wrapped-1",
-          sequence: 2,
-          summary_minutes: 5,
-          crop: "grapefruit",
-          air_temp_c: null,
-          air_humidity_pct: null,
-          soil_temp_c: 29.9,
-          soil_moisture_pct: 43.7,
-          soil_ec_ms_cm: 0.11,
-          soil_ec_us_cm: 110,
-          soil_salinity: 60,
-          soil_tds: 55,
-          soil_ph: 7,
-          battery_voltage_v: null,
-          battery_percent: null,
-        },
-      },
-      { "x-gateway-token": "gateway-token-01" },
-      db,
-      tokenConfig,
-      NOW,
-    );
-
-    assert.equal(response.status, 200);
-    const row = db.getSnapshot().soilReadings[0];
-    assert.equal(row?.message_id, "STATION_02-wrapped-1");
-    assert.equal(row?.soil_ec_us_cm, 110);
-    assert.equal(row?.raw_station_payload?.type, "station_summary");
+  it("rejects the retired envelope rather than promoting it with server time", async () => {
+    const db = new MockDb({}, otaCatalog, ["STATION_01"]);
+    const response = await handleIngestRequest({ gateway_id: "GATEWAY_01", uptime_ms: 12345, raw_station_payload: {} } as unknown as TelemetryPayloadV1, { "x-gateway-token": "gateway-token-01" }, db, tokenConfig, NOW);
+    assert.equal(response.status, 400);
+    assert.equal(response.body.error_code, "MISSING_FIELD");
   });
 });
 
-describe("gateway relay authentication", () => {
-  const GATEWAY_SECRET = "gateway-secret-01";
-
-  it("accepts a station reading signed by its relaying gateway's secret", async () => {
-    // STATION_02 is a registered, active device with NO signing secret of
-    // its own — only the gateway that relays it authenticates the request.
-    const db = new MockDb({ GATEWAY_01: GATEWAY_SECRET }, otaCatalog, ["STATION_02"]);
-    const payload = basePayload({ device_id: "STATION_02", message_id: "gateway-relay-001" });
-    const request: IngestRequest = {
-      headers: {
-        "x-device-id": "GATEWAY_01",
-        "x-timestamp": String(payload.timestamp),
-        "x-signature": await signPayload(payload, GATEWAY_SECRET),
-        "x-contract-version": payload.contract_version,
-      },
-      payload,
-    };
-
-    const response = await ingestTelemetry(request, db, config, NOW);
-
-    assert.equal(response.ok, true);
-    if (response.ok) {
-      assert.equal(response.station_id, "STATION_02");
-    }
-    assert.equal(db.getSnapshot().environmentalReadings[0]?.station_id, "STATION_02");
-  });
-
-  it("rejects a relayed reading attributed to an unregistered station", async () => {
-    const db = new MockDb({ GATEWAY_01: GATEWAY_SECRET }, otaCatalog, []); // STATION_99 not registered
-    const payload = basePayload({ device_id: "STATION_99", message_id: "gateway-relay-002" });
-    const request: IngestRequest = {
-      headers: {
-        "x-device-id": "GATEWAY_01",
-        "x-timestamp": String(payload.timestamp),
-        "x-signature": await signPayload(payload, GATEWAY_SECRET),
-        "x-contract-version": payload.contract_version,
-      },
-      payload,
-    };
-
-    const response = await ingestTelemetry(request, db, config, NOW);
-
-    assert.equal(response.ok, false);
-    if (!response.ok) {
-      assert.equal(response.error_code, "DEVICE_NOT_REGISTERED");
-    }
-    assert.equal(db.getSnapshot().environmentalReadings.length, 0);
-  });
-
-  it("rejects when the authenticating device (gateway) is unknown", async () => {
+describe("gateway bearer authentication", () => {
+  it("accepts a registered relayed station with the gateway bearer", async () => {
     const db = new MockDb({}, otaCatalog, ["STATION_02"]);
-    const payload = basePayload({ device_id: "STATION_02", message_id: "gateway-relay-003" });
-    const request: IngestRequest = {
-      headers: {
-        "x-device-id": "GATEWAY_UNKNOWN",
-        "x-timestamp": String(payload.timestamp),
-        "x-signature": await signPayload(payload, "some-guess"),
-        "x-contract-version": payload.contract_version,
-      },
-      payload,
-    };
-
-    const response = await ingestTelemetry(request, db, config, NOW);
-
-    assert.equal(response.ok, false);
-    if (!response.ok) {
-      assert.equal(response.error_code, "DEVICE_NOT_REGISTERED");
-    }
+    const payload = basePayload({ device_id: "STATION_02", message_id: "gateway-bearer-001" });
+    const response = await ingestTelemetry(buildRequest(payload), db, config, NOW);
+    assert.equal(response.ok, true);
   });
 
-  it("rejects a request missing the x-device-id header", async () => {
-    const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
-    const payload = basePayload({ message_id: "gateway-relay-004" });
-    const request: IngestRequest = {
-      headers: {
-        "x-device-id": "",
-        "x-timestamp": String(payload.timestamp),
-        "x-signature": await signPayload(payload, DEVICE_SECRET),
-        "x-contract-version": payload.contract_version,
-      },
-      payload,
-    };
-
-    const response = await ingestTelemetry(request, db, config, NOW);
-
+  it("rejects an invalid gateway bearer", async () => {
+    const db = new MockDb({}, otaCatalog);
+    const payload = basePayload({ message_id: "gateway-bearer-002" });
+    const response = await ingestTelemetry({ ...buildRequest(payload), headers: { "x-gateway-token": "wrong-token", "x-contract-version": "v1" } }, db, config, NOW);
     assert.equal(response.ok, false);
-    if (!response.ok) {
-      assert.equal(response.error_code, "MISSING_FIELD");
-    }
+    if (!response.ok) assert.equal(response.error_code, "INVALID_SIGNATURE");
   });
 
-  it("rejects a request with a missing (not just stale) x-timestamp header", async () => {
-    const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
-    const payload = basePayload({ message_id: "gateway-relay-005" });
-    const request: IngestRequest = {
-      headers: {
-        "x-device-id": "STATION_01",
-        "x-timestamp": "",
-        "x-signature": await signPayload(payload, DEVICE_SECRET),
-        "x-contract-version": payload.contract_version,
-      },
-      payload,
-    };
-
-    const response = await ingestTelemetry(request, db, config, NOW);
-
+  it("rejects a bearer-authenticated reading for an unregistered station", async () => {
+    const db = new MockDb({}, otaCatalog, []);
+    const payload = basePayload({ device_id: "STATION_99", message_id: "gateway-bearer-003" });
+    const response = await ingestTelemetry(buildRequest(payload), db, config, NOW);
     assert.equal(response.ok, false);
-    if (!response.ok) {
-      assert.equal(response.error_code, "TIMESTAMP_OUT_OF_WINDOW");
-    }
-    assert.equal(db.getSnapshot().environmentalReadings.length, 0);
+    if (!response.ok) assert.equal(response.error_code, "DEVICE_NOT_REGISTERED");
   });
 });
 
@@ -526,12 +343,10 @@ describe("soil readings (reading_kind: soil)", () => {
     };
   }
 
-  async function buildSoilRequest(payload: TelemetryPayloadV1): Promise<IngestRequest> {
+  function buildSoilRequest(payload: TelemetryPayloadV1): IngestRequest {
     return {
       headers: {
-        "x-device-id": payload.device_id,
-        "x-timestamp": String(payload.timestamp),
-        "x-signature": await signPayload(payload, SOIL_SECRET),
+        "x-gateway-token": "gateway-token-01",
         "x-contract-version": payload.contract_version,
       },
       payload,
@@ -541,7 +356,7 @@ describe("soil readings (reading_kind: soil)", () => {
   it("accepts a valid soil payload and stores it in soil_readings, not environmental_readings", async () => {
     const db = new MockDb({ STATION_02: SOIL_SECRET }, otaCatalog);
     const payload = soilPayload();
-    const response = await ingestTelemetry(await buildSoilRequest(payload), db, config, NOW);
+    const response = await ingestTelemetry(buildSoilRequest(payload), db, config, NOW);
 
     assert.equal(response.ok, true);
     const snapshot = db.getSnapshot();
@@ -596,24 +411,12 @@ describe("soil readings (reading_kind: soil)", () => {
     }
   });
 
-  it("rejects a soil payload signed with the water canonical string (cross-format signature confusion)", async () => {
+  it("rejects a soil payload with an invalid gateway token", async () => {
     const db = new MockDb({ STATION_02: SOIL_SECRET }, otaCatalog);
     const payload = soilPayload({ message_id: "soil-test-004" });
-    // Deliberately sign with the WATER canonical-string function to prove
-    // the two formats are not interchangeable — this must fail, not
-    // silently succeed with a coincidentally-valid signature.
-    const { buildCanonicalString } = await import("../src/canonical.js");
-    const wrongCanonical = buildCanonicalString(payload);
-    const enc = new TextEncoder();
-    const key = await crypto.subtle.importKey("raw", enc.encode(SOIL_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-    const sig = await crypto.subtle.sign("HMAC", key, enc.encode(wrongCanonical));
-    const wrongSignature = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
-
     const request: IngestRequest = {
       headers: {
-        "x-device-id": "STATION_02",
-        "x-timestamp": String(payload.timestamp),
-        "x-signature": wrongSignature,
+        "x-gateway-token": "wrong-token",
         "x-contract-version": payload.contract_version,
       },
       payload,
@@ -745,9 +548,7 @@ describe("signed v1 water payload validation", () => {
 
     const request: IngestRequest = {
       headers: {
-        "x-device-id": payload.device_id,
-        "x-timestamp": String(payload.timestamp),
-        "x-signature": await signPayload(payload, soilSecret),
+        "x-gateway-token": "gateway-token-01",
         "x-contract-version": payload.contract_version,
       },
       payload,

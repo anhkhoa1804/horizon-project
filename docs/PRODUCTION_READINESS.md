@@ -285,7 +285,7 @@ Apply with `npm run db:migrate`. Verify afterwards: anon reads of
 | Route | Method | Auth | Validation | Rate limit |
 |---|---|---|---|---|
 | `/api/public/reports` | POST | none (public by design) | category allowlist, 10–2000 chars, JSON guard | yes — §7 |
-| `/api/public/gateway/configs` | GET | none | n/a — returns duty-cycle defaults | none needed |
+| `/api/public/gateway/configs` | GET | none | returns safe defaults only when the database is reachable | none needed |
 | `/api/health` | GET | none | n/a | none needed |
 
 Verified: `400 invalid_json`, `400 invalid_category`, `400
@@ -296,8 +296,8 @@ that nothing linked to, and a session it created would have been ignored by
 `getSessionContext()`. Its exclusive dependencies (`lib/supabase/server.ts`,
 `lib/supabase/client.ts`, `lib/auth/bootstrap.ts`) went with it.
 
-`/api/public/gateway/configs` echoes `error.message` in a `warning` field —
-minor internal detail disclosure, low value to an attacker.
+`/api/public/gateway/configs` fails closed with a generic 503 when the database
+is unavailable or its query fails; it does not disclose an upstream error.
 
 ---
 

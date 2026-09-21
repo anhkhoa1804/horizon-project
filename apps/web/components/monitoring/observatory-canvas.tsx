@@ -17,7 +17,6 @@ import type { PilotStationId } from "@/lib/publicStations";
 import { statusFor, worstStatus, STATUS_SURFACE, type MetricStatus } from "@/lib/monitoring/status";
 import { cn } from "@/lib/utils";
 import type {
-  LocalGatewayReading,
   ObservationSeries,
   ObservatoryMetric,
   ObservatoryViewModel,
@@ -121,7 +120,6 @@ const STATUS_LABEL: Record<MetricStatus["level"], keyof Dictionary["alerts"]> = 
 };
 
 const WEATHER_REFRESH_MS = 15 * 60 * 1000;
-const GATEWAY_REFRESH_MS = 60 * 1000;
 
 /** A box's surface: its own status tint, or plain white.
  *
@@ -630,43 +628,8 @@ export function ObservatoryCanvas({
   weather?: ExternalWeather | null;
 }) {
   const dict = useDict();
-  const [localGatewayReading, setLocalGatewayReading] = useState<LocalGatewayReading | null>(null);
   const [weather, setWeather] = useState<ExternalWeather | null>(initialWeather);
   const [weatherSeries24h, setWeatherSeries24h] = useState<ObservationSeries | null>(null);
-
-  useEffect(() => {
-    let active = true;
-
-    async function refreshLocalGatewayReading() {
-      try {
-        const response = await fetch("/api/public/gateway", { cache: "no-store" });
-        if (!response.ok) return;
-        const payload = await response.json();
-        const next = payload.latest ?? null;
-        // Only re-render when the reading ACTUALLY changed. This effect used
-        // to setState unconditionally every 3s, and because that re-runs the
-        // whole canvas it rebuilt the map's `stations` array identity on every
-        // tick — which the map reads as new input and re-initialises against.
-        // That is the "map reloads every few seconds" symptom.
-        if (active) {
-          setLocalGatewayReading((prev) =>
-            JSON.stringify(prev) === JSON.stringify(next) ? prev : next,
-          );
-        }
-      } catch {
-        // Keep the observatory on its existing data source if the local endpoint is unavailable.
-      }
-    }
-
-    refreshLocalGatewayReading();
-    // 3s was a bench-testing cadence. The gateway reports on a duty cycle
-    // measured in minutes, so polling that fast only burns requests.
-    const id = window.setInterval(refreshLocalGatewayReading, GATEWAY_REFRESH_MS);
-    return () => {
-      active = false;
-      window.clearInterval(id);
-    };
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -729,7 +692,7 @@ export function ObservatoryCanvas({
   // why this is the information architecture rather than a layout choice.
   // Weather joins the SAME canvas here rather than being rendered as its own
   // block below it; buildSignalGroups keeps its provenance distinct.
-  const signalGroups = buildSignalGroups(model, weather, localGatewayReading);
+  const signalGroups = buildSignalGroups(model, weather, null);
   // Status colour is only permitted where a threshold genuinely exists. The
   // model carries the configured salinity levels; every other environmental
   // metric has no basis in this system and renders neutral by design.

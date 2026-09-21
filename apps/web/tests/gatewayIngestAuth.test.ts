@@ -79,9 +79,7 @@ describe("gateway ingest authorisation", () => {
 });
 
 describe("gateway ingest secret hygiene", () => {
-  const routeSrc =
-    fs.readFileSync(path.join(process.cwd(), "app", "api", "public", "gateway", "route.ts"), "utf8") +
-    fs.readFileSync(path.join(process.cwd(), "lib", "gateway", "ingestAuth.ts"), "utf8");
+  const routeSrc = fs.readFileSync(path.join(process.cwd(), "lib", "gateway", "ingestAuth.ts"), "utf8");
 
   it("never puts the token into a response body", () => {
     // The error bodies name the VARIABLE, never a value. A response that

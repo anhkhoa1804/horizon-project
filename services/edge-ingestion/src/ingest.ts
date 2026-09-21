@@ -1,12 +1,10 @@
-import { signPayload, timingSafeEqualHex } from "./canonical.js";
+import { timingSafeEqualHex } from "./canonical.js";
 import type { DbPort } from "./dbPort.js";
 import type { IngestRequest, IngestResponse, IngestionAuditLogRow, EnvironmentalEventRow, TelemetryPayloadV1 } from "./types.js";
 
 export interface IngestConfig {
   allowedContractVersion: string;
   maxTimestampDriftSeconds: number;
-  salinityWarningLevel?: number;
-  salinityCriticalLevel?: number;
   lowBatteryVoltage?: number;
   lowSignalStrengthDbm?: number;
   gatewayIngestToken?: string;
@@ -108,36 +106,15 @@ function auditRow(payload: TelemetryPayloadV1, status: IngestionAuditLogRow["sta
 }
 
 async function emitAlertEvents(db: DbPort, payload: TelemetryPayloadV1, config: IngestConfig, nowEpochSeconds: number): Promise<void> {
-  const salinityWarningLevel = config.salinityWarningLevel ?? 1.2;
-  const salinityCriticalLevel = config.salinityCriticalLevel ?? 1.8;
   const lowBatteryVoltage = config.lowBatteryVoltage ?? 3.6;
   const lowSignalStrengthDbm = config.lowSignalStrengthDbm ?? -95;
 
   const events: EnvironmentalEventRow[] = [];
 
-  // Salinity thresholds only apply to water readings — soil payloads have
-  // no payload.salinity at all.
-  if (readingKind(payload) === "water" && typeof payload.salinity === "number") {
-    if (payload.salinity >= salinityCriticalLevel) {
-      events.push({
-        station_id: payload.device_id,
-        event_type: "HIGH_SALINITY",
-        severity: "critical",
-        message_id: payload.message_id,
-        details: { salinity: payload.salinity, threshold: salinityCriticalLevel },
-        timestamp: nowEpochSeconds,
-      });
-    } else if (payload.salinity >= salinityWarningLevel) {
-      events.push({
-        station_id: payload.device_id,
-        event_type: "HIGH_SALINITY",
-        severity: "warning",
-        message_id: payload.message_id,
-        details: { salinity: payload.salinity, threshold: salinityWarningLevel },
-        timestamp: nowEpochSeconds,
-      });
-    }
-  }
+  // Water salinity has no active, site-validated operational threshold in
+  // the registry. It is therefore persisted as a measurement, but never
+  // promoted to HIGH_SALINITY from a hard-coded value here. The registry is
+  // the only authority that may activate an environmental interpretation.
 
   // Battery/signal are optional (see TelemetryPayloadV1) — only alert on
   // thresholds the device actually reported.
@@ -198,57 +175,28 @@ export async function ingestTelemetry(
       return { ok: false, error_code: "MISSING_FIELD", message: "x-contract-version header does not match payload.contract_version", retryable: false };
     }
 
-    // The device presenting the signature (x-device-id) authenticates the
-    // request; it may be a gateway relaying on behalf of a station named in
-    // payload.device_id, or the same device connecting directly.
+    // The pilot ingress has one authentication model: the physical gateway's
+    // configured bearer token. There is no direct-station or HMAC fallback.
     const gatewayToken = request.headers["x-gateway-token"] ?? "";
     const isGatewayTokenAuthorized = Boolean(config.gatewayIngestToken) && timingSafeEqualHex(gatewayToken, config.gatewayIngestToken ?? "");
-    const authenticatingDeviceId = request.headers["x-device-id"];
-    if (!isGatewayTokenAuthorized && !authenticatingDeviceId) {
-      await db.insertAuditLog(auditRow(payload, "missing_field", "missing x-device-id header", nowEpochSeconds));
-      return { ok: false, error_code: "MISSING_FIELD", message: "missing x-device-id header", retryable: false };
+    if (!isGatewayTokenAuthorized) {
+      await db.insertAuditLog(auditRow(payload, "invalid_signature", "gateway token is missing or invalid", nowEpochSeconds));
+      return { ok: false, error_code: "INVALID_SIGNATURE", message: "gateway token is missing or invalid", retryable: false };
     }
 
-    if (isGatewayTokenAuthorized) {
-      if (!(await db.isDeviceRegistered(payload.device_id))) {
-        await db.insertAuditLog(auditRow(payload, "device_not_registered", "attributed station is not a known, active device", nowEpochSeconds));
-        return { ok: false, error_code: "DEVICE_NOT_REGISTERED", message: "attributed station is not a known, active device", retryable: false };
-      }
-    } else {
-      const knownSecret = await db.getDeviceSecret(authenticatingDeviceId);
-      if (!knownSecret) {
-        await db.insertAuditLog(auditRow(payload, "device_not_registered", "unknown or inactive authenticating device", nowEpochSeconds));
-        return { ok: false, error_code: "DEVICE_NOT_REGISTERED", message: "unknown or inactive authenticating device", retryable: false };
-      }
-
-      const expectedSig = await signPayload(payload, knownSecret);
-      if (!timingSafeEqualHex(expectedSig, request.headers["x-signature"] ?? "")) {
-        await db.insertAuditLog(auditRow(payload, "invalid_signature", "signature verification failed", nowEpochSeconds));
-        return { ok: false, error_code: "INVALID_SIGNATURE", message: "signature verification failed", retryable: false };
-      }
-    }
-
-    // A valid signature only proves the authenticating device is real — the
-    // station this reading is attributed to (which may differ, e.g. a
-    // gateway relay) must independently be a known, active device too.
-    if (!isGatewayTokenAuthorized && authenticatingDeviceId !== payload.device_id && !(await db.isDeviceRegistered(payload.device_id))) {
+    if (!(await db.isDeviceRegistered(payload.device_id))) {
       await db.insertAuditLog(auditRow(payload, "device_not_registered", "attributed station is not a known, active device", nowEpochSeconds));
       return { ok: false, error_code: "DEVICE_NOT_REGISTERED", message: "attributed station is not a known, active device", retryable: false };
     }
 
-    const headerTimestamp = Number.parseInt(request.headers["x-timestamp"], 10);
-    const isHeaderValid =
-      (isGatewayTokenAuthorized && !request.headers["x-timestamp"]) ||
-      (!Number.isNaN(headerTimestamp) && Math.abs(nowEpochSeconds - headerTimestamp) <= config.maxTimestampDriftSeconds);
     const isPayloadValid = Math.abs(nowEpochSeconds - payload.timestamp) <= config.maxTimestampDriftSeconds;
 
-    if (!isHeaderValid || !isPayloadValid) {
-      const reason = !isHeaderValid ? "header timestamp is outside allowed drift window" : "payload timestamp is outside allowed drift window";
-      await db.insertAuditLog(auditRow(payload, "expired_timestamp", reason, nowEpochSeconds));
+    if (!isPayloadValid) {
+      await db.insertAuditLog(auditRow(payload, "expired_timestamp", "payload timestamp is outside allowed drift window", nowEpochSeconds));
       return {
         ok: false,
         error_code: "TIMESTAMP_OUT_OF_WINDOW",
-        message: reason,
+        message: "payload timestamp is outside allowed drift window",
         retryable: false,
       };
     }

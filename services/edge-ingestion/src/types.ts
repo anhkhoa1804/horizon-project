@@ -39,7 +39,7 @@ export interface TelemetryPayloadV1 {
    * equivalent to "water", not a different, unvalidated third state.
    */
   reading_kind?: "water" | "soil";
-  /** The station this reading is attributed to — may differ from the authenticating device (see IngestHeaders["x-device-id"]). */
+  /** The station this bearer-authenticated gateway reading is attributed to. */
   device_id: string;
   message_id: string;
   timestamp: number;
@@ -75,18 +75,9 @@ export interface TelemetryPayloadV1 {
 }
 
 export interface IngestHeaders {
-  /**
-   * The device presenting this request's signature — the secret used to
-   * verify x-signature belongs to THIS device. For a gateway relaying a
-   * station's reading, this is the gateway's ID, not the station's
-   * (payload.device_id). For a device connecting directly, it equals
-   * payload.device_id.
-   */
-  "x-device-id": string;
-  "x-timestamp": string;
-  "x-signature": string;
+  /** Pilot ingress is gateway-only and bearer-authenticated. */
+  "x-gateway-token": string;
   "x-contract-version": string;
-  "x-gateway-token"?: string;
 }
 
 export interface IngestRequest {

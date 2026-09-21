@@ -1,8 +1,8 @@
 insert into public.stations (id, name, lat, lng, status)
 values
-  ('STATION_01', 'Con Ho North', 10.2450000, 105.8200000, 'active'),
-  ('STATION_02', 'Con Ho South', 10.2385000, 105.8260000, 'active'),
-  ('STATION_03', 'Canal Gate West', 10.2421000, 105.8320000, 'active')
+  ('STATION_01', 'Con Ho Water', 10.073972, 106.250417, 'active'),
+  ('STATION_02', 'Con Ho Soil', 10.072444, 106.253056, 'active'),
+  ('STATION_03', 'Con Ho Gateway', 10.071000, 106.254167, 'active')
 on conflict (id) do update
 set name = excluded.name,
     lat = excluded.lat,

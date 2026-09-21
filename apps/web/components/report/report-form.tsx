@@ -52,6 +52,7 @@ type StepId = (typeof STEPS)[number]["id"];
 interface SubmitResult {
   id: string;
   demo: boolean;
+  mediaFailures: string[];
   stationName: string;
   categoryLabel: string;
   submittedAt: string;
@@ -175,6 +176,12 @@ function SuccessView({ result, onAnother }: { result: SubmitResult; onAnother: (
         <div className="inline-flex items-center gap-2 rounded-sm bg-watch-bg px-3 py-1.5">
           <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-watch">{f.tempRecord}</span>
         </div>
+      ) : null}
+
+      {!result.demo && result.mediaFailures.length > 0 ? (
+        <Alert tone="warning">
+          {fmt(f.mediaPartial, { files: result.mediaFailures.join(", ") })}
+        </Alert>
       ) : null}
 
       <div className="flex flex-wrap gap-3">
@@ -340,7 +347,7 @@ export function ReportForm() {
         body: form,
       });
 
-      const payload = (await res.json().catch(() => ({}))) as { ok?: boolean; id?: string; demo?: boolean; error?: string };
+      const payload = (await res.json().catch(() => ({}))) as { ok?: boolean; id?: string; demo?: boolean; error?: string; mediaFailures?: unknown };
 
       if (!res.ok || payload.ok !== true) {
         setError(errorMessageFor(res.status, payload.error, dict));
@@ -350,6 +357,9 @@ export function ReportForm() {
       setResult({
         id: payload.id ?? "—",
         demo: payload.demo === true,
+        mediaFailures: Array.isArray(payload.mediaFailures)
+          ? payload.mediaFailures.filter((name): name is string => typeof name === "string")
+          : [],
         stationName: station ? stationText(station.id, dict).name : f.gpsDevice,
         categoryLabel: categoryLabel(category, dict),
         submittedAt: new Intl.DateTimeFormat("vi-VN", { dateStyle: "medium", timeStyle: "short" }).format(new Date()),

@@ -88,27 +88,23 @@ HORIZON (originally built as "Eco-Sense Cồn Hô" — that name persists in som
 technical identifiers, e.g. npm workspace scopes, which are not renamed
 without a deliberate migration) is a serverless environmental monitoring
 platform. Field stations collect water, soil, and local air readings over
-LoRa. The current gateway sends an authenticated envelope to the Next.js
-gateway endpoint; the raw envelope is retained and its nested station payload
-is promoted into typed PostgreSQL time-series tables. A separately maintained
-HMAC-signed Edge Function contract remains available for compatible clients.
+LoRa. The current gateway transforms the CRC-framed station packet into the
+top-level `TelemetryPayloadV1` contract and sends it to `edge-ingest` over 4G.
+The raw station context is audit material, never a second ingestion shape.
 
 ## Core data flow
 
-1. ESP32 station takes a reading and sends JSON over LoRa UART to the gateway.
-2. The gateway wraps the station payload with gateway identity, sequence,
-   firmware and transport metadata.
-3. The current gateway POSTs that envelope to `/api/public/gateway`, protected
-   by `GATEWAY_INGEST_TOKEN`; the endpoint fails closed when unconfigured.
-4. `gateway_observations` retains the untouched envelope as the audit source.
-5. The nested Station 01 or Station 02 payload is also written to
-   `environmental_readings` or `soil_readings`. Null fields stay null; EC,
-   salinity, TDS and soil quantities are never substituted for one another.
+1. ESP32 station sends an S1/S2 CRC QoS1 LoRa frame to the gateway.
+2. `GATEWAY_01` validates the frame, synchronizes receipt UTC from the cellular
+   network, and emits canonical top-level telemetry.
+3. The gateway POSTs to Supabase `edge-ingest` with `x-gateway-token`.
+4. The Edge Function writes STATION_01 to `environmental_readings` and
+   STATION_02 to `soil_readings`. Null fields stay null; EC, salinity, TDS and
+   soil quantities are never substituted for one another.
 6. Public Next.js pages read typed data from Supabase using an anon-key client
    scoped by RLS; admin pages use service-role only behind an authenticated
    admin session.
-7. The signed `edge-ingest` contract is a second supported ingestion boundary,
-   with HMAC, timestamp, range, registration and idempotency validation.
+7. HMAC remains a future direct-device option; it is not the active relay path.
 
 A device with its own connectivity can also self-authenticate directly
 (`x-device-id` header equal to `payload.device_id`, signed with its own

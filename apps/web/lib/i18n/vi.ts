@@ -369,6 +369,7 @@ export const vi = {
       savedToDb: "Báo cáo đã được lưu vào cơ sở dữ liệu quan trắc.",
       savedLocally:
         "Hệ thống chưa kết nối được tới cơ sở dữ liệu chính, nên báo cáo đang được giữ trên máy chủ này. Nội dung bạn gửi là thật, nhưng có thể không được giữ lâu dài.",
+      mediaPartial: "Bản ghi đã được lưu, nhưng một số tệp bằng chứng chưa tải lên: {files}. Hãy giữ lại các tệp này để gửi lại trong một bản ghi mới.",
 
       errRateLimit: "Bạn đã gửi khá nhiều báo cáo trong một giờ qua. Vui lòng thử lại sau.",
       errTooShort: "Mô tả cần ít nhất {min} ký tự.",

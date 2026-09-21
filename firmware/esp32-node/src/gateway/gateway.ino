@@ -32,8 +32,8 @@
   - Confirm LoRa UART baud rate / transparent mode.
 */
 
-static const char *GATEWAY_ID = "GATEWAY";
-static const char *FIRMWARE_VERSION = "gateway-lora-wifi-0.8.2-rx-priority-preserve-http-fix";
+static const char *GATEWAY_ID = "GATEWAY_01";
+static const char *FIRMWARE_VERSION = "gateway-lora-qos1-canonical-v1";
 
 // Local Wi-Fi dashboard.
 static const char *WIFI_AP_SSID = "HORIZON";
@@ -55,7 +55,7 @@ static const uint32_t DASHBOARD_ONLINE_WINDOW_MS = 60000;
 // Do not point this back to Pipedream except for temporary packet debugging.
 static const char *WEB_SERVER_URL = "https://edhcnccvbwuffiwzywfm.supabase.co/functions/v1/edge-ingest";
 static const char *WEB_SERVER_HOST = "edhcnccvbwuffiwzywfm.supabase.co";
-static const char *CONFIG_URL = "https://horizon-frogsleap.vercel.app/api/public/gateway/configs";
+static const char *CONFIG_URL = "https://horizon.frogsleap.com.vn/api/public/gateway/configs";
 #ifndef GATEWAY_INGEST_TOKEN_VALUE
 #define GATEWAY_INGEST_TOKEN_VALUE ""
 #endif
@@ -201,7 +201,6 @@ static uint32_t activeModemBaud = 0;
 static uint32_t lastModemInitAttemptMs = 0;
 static uint32_t modemBinaryDropped = 0;
 static String loraLine;
-static uint32_t packetSequence = 0;
 static uint32_t lastConfigPollMs = 0;
 static uint32_t lastLoraWaitLogMs = 0;
 static uint32_t configPollIntervalMs = DEFAULT_CONFIG_POLL_INTERVAL_MS;
@@ -847,24 +846,56 @@ Serial.println("[MODEM FAIL] Khong doc duoc CSQ");
   return true;
 }
 
-String wrapGatewayPayload(const String &stationPayload) {
-  packetSequence += 1;
+// Station packets carry `summary_minutes`, not an epoch. This gateway obtains
+// UTC from the cellular network and records it as an explicit receipt time;
+// `millis()` is never sent as a measurement timestamp.
+static uint32_t networkEpochAtSync = 0;
+static uint32_t networkClockSyncedAtMs = 0;
 
-  String payload;
-  payload.reserve(stationPayload.length() + 220);
-  payload += "{";
-  payload += "\"gateway_id\":\"";
-  payload += GATEWAY_ID;
-  payload += "\",\"firmware_version\":\"";
-  payload += FIRMWARE_VERSION;
-  payload += "\",\"sequence\":";
-  payload += String(packetSequence);
-  payload += ",\"uptime_ms\":";
-  payload += String(millis());
-  payload += ",\"transport\":\"lora_uart_to_4g\"";
-  payload += ",\"raw_station_payload\":";
-  payload += stationPayload;
-  payload += "}";
+bool isLeapYear(int year) {
+  return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+}
+
+uint32_t unixSecondsUtc(int year, int month, int day, int hour, int minute, int second) {
+  static const uint8_t daysBeforeMonth[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+  uint32_t days = 0;
+  for (int y = 1970; y < year; ++y) days += isLeapYear(y) ? 366 : 365;
+  days += daysBeforeMonth[month - 1] + day - 1;
+  if (month > 2 && isLeapYear(year)) days += 1;
+  return days * 86400UL + hour * 3600UL + minute * 60UL + second;
+}
+
+bool syncGatewayClock() {
+  clearModemRx(30);
+  modemSerial.print("AT+CCLK?\r\n");
+  const String response = modemReadUntil(5000);
+  const int start = response.indexOf('\"');
+  const int end = start >= 0 ? response.indexOf('\"', start + 1) : -1;
+  if (start < 0 || end < 0) return false;
+  const String value = response.substring(start + 1, end);
+  int yy, month, day, hour, minute, second, zoneQuarterHours;
+  char sign;
+  if (sscanf(value.c_str(), "%d/%d/%d,%d:%d:%d%c%d", &yy, &month, &day, &hour, &minute, &second, &sign, &zoneQuarterHours) != 8 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const uint32_t localEpoch = unixSecondsUtc(2000 + yy, month, day, hour, minute, second);
+  const int32_t offsetSeconds = zoneQuarterHours * 15L * 60L;
+  const int64_t utc = sign == '+' ? static_cast<int64_t>(localEpoch) - offsetSeconds : static_cast<int64_t>(localEpoch) + offsetSeconds;
+  if (utc < 1704067200LL || utc > 4102444800LL) return false;
+  networkEpochAtSync = static_cast<uint32_t>(utc);
+  networkClockSyncedAtMs = millis();
+  Serial.printf("[CLOCK] network UTC=%lu\n", static_cast<unsigned long>(networkEpochAtSync));
+  return true;
+}
+
+uint32_t gatewayReceiptTimestamp() {
+  return networkEpochAtSync + ((millis() - networkClockSyncedAtMs) / 1000UL);
+}
+
+String attachGatewayReceiptTimestamp(String payload) {
+  const String timestamp = String(gatewayReceiptTimestamp());
+  payload.replace("\"timestamp\":0", "\"timestamp\":" + timestamp);
+  // The receipt epoch plus station sequence makes retries idempotent while
+  // avoiding a message-id collision when a station restarts its sequence.
+  payload.replace("RECEIPT", timestamp);
   return payload;
 }
 
@@ -1469,8 +1500,7 @@ void handleStationPayload(const String &stationPayload) {
                 payloadType.c_str(),
                 messageId.c_str(),
                 static_cast<unsigned int>(stationPayload.length()));
-  Serial.printf("[DATA][%s] payload=", stationId.c_str());
-  Serial.println(stationPayload);
+  Serial.println("[DATA] legacy JSON frame received (content suppressed)");
 
   // ACK immediately so the station can close its transaction.
   sendStationAck(messageId);
@@ -1485,19 +1515,9 @@ String &lastAccepted = lastAcceptedMessageIdFor(stationId);
   lastAccepted = messageId;
   lastAcceptedAtFor(stationId) = millis();
 
-  const String gatewayPayload = wrapGatewayPayload(stationPayload);
-  Serial.print("[GATEWAY] Du lieu dong goi: ");
-  Serial.println(gatewayPayload);
-
-  if (MODEM_ENABLED && httpPostJson(gatewayPayload)) {
-    Serial.println("[HTTP] Da gui len webserver");
-  } else {
-    if (MODEM_ENABLED) {
-      Serial.println("[HTTP] Gui that bai");
-    } else {
-      Serial.println("[HTTP] Modem dang tat, chi nhan LoRa va gui ACK");
-    }
-  }
+  // Legacy JSON is acknowledged during transition but never forwarded.
+  // Only the CRC QoS1 path below produces canonical TelemetryPayloadV1.
+  Serial.println("[LORA] legacy JSON frame not forwarded to edge-ingest");
 
   finishCurrentPoll("data_ok");
 }
@@ -1884,22 +1904,25 @@ String simplePacketToStationJson(const String &line, bool station1, uint32_t seq
     const String batV = simpleField(line, 9);
     const String batP = simpleField(line, 10);
 
-    json += "{\"type\":\"station_summary\",\"station_id\":\"STATION_01\",\"firmware_version\":\"simple-qos1-wire\",\"message_id\":\"STATION_01-";
+    json += "{\"contract_version\":\"v1\",\"reading_kind\":\"water\",\"device_id\":\"STATION_01\",\"firmware_version\":\"simple-qos1-wire\",\"message_id\":\"STATION_01-RECEIPT-";
     json += String(seq);
-    json += "\",\"sequence\":"; json += String(seq);
+    json += "\",\"timestamp\":0,\"fault_flags\":0,\"sequence\":"; json += String(seq);
     json += ",\"summary_minutes\":"; json += jsonNumberOrNullFromWire(minCount);
     json += ",\"sensor_height_cm\":350.0";
     json += ",\"distance_cm\":"; json += jsonNumberOrNullFromWire(distance);
-    json += ",\"water_level_cm\":"; json += jsonNumberOrNullFromWire(water);
+    json += ",\"water_level\":"; json += jsonNumberOrNullFromWire(water);
     json += ",\"ec_ms_cm\":"; json += jsonNumberOrNullFromWire(ecMs);
     json += ",\"ec_us_cm\":"; json += scaledWireNumber(ecMs, 1000.0f, 0);
     json += ",\"temperature_c\":"; json += jsonNumberOrNullFromWire(temp);
     json += ",\"tds_ppm\":"; json += jsonNumberOrNullFromWire(tds);
-json += ",\"salinity_ppt\":"; json += jsonNumberOrNullFromWire(salPpt);
+    json += ",\"salinity\":"; json += jsonNumberOrNullFromWire(salPpt);
     json += ",\"salinity_ppm\":"; json += scaledWireNumber(salPpt, 1000.0f, 0);
-    json += ",\"battery_voltage_v\":"; json += jsonNumberOrNullFromWire(batV);
+    json += ",\"battery_voltage\":"; json += jsonNumberOrNullFromWire(batV);
     json += ",\"battery_percent\":"; json += jsonNumberOrNullFromWire(batP);
-    json += "}";
+    json += ",\"sensor_status\":{\"ec_probe\":\""; json += ecMs != "null" ? "ok" : "fault";
+    json += "\",\"ultrasonic\":\""; json += water != "null" ? "ok" : "fault";
+    json += "\"},\"raw_station_payload\":{\"wire_protocol\":\"S1|...|CRC16\",\"gateway_id\":\""; json += GATEWAY_ID;
+    json += "\",\"timestamp_semantics\":\"gateway_network_receipt_time\"}}";
   } else {
     // S2|seq|min|airT|airH|soilT|moist|ec_ms|sal|tds|ph|bat_v|bat_pct|crc
     const String minCount = simpleField(line, 2);
@@ -1914,12 +1937,11 @@ json += ",\"salinity_ppt\":"; json += jsonNumberOrNullFromWire(salPpt);
     const String batV = simpleField(line, 11);
     const String batP = simpleField(line, 12);
 
-    json += "{\"type\":\"station_summary\",\"station_id\":\"STATION_02\",\"firmware_version\":\"simple-qos1-wire\",\"message_id\":\"STATION_02-";
+    json += "{\"contract_version\":\"v1\",\"reading_kind\":\"soil\",\"device_id\":\"STATION_02\",\"firmware_version\":\"simple-qos1-wire\",\"message_id\":\"STATION_02-RECEIPT-";
     json += String(seq);
-    json += "\",\"sequence\":"; json += String(seq);
+    json += "\",\"timestamp\":0,\"fault_flags\":0,\"sequence\":"; json += String(seq);
     json += ",\"summary_minutes\":"; json += jsonNumberOrNullFromWire(minCount);
-    json += ",\"crop\":\"grapefruit\"";
-    json += ",\"air_temp_c\":"; json += jsonNumberOrNullFromWire(airT);
+    json += ",\"crop\":\"grapefruit\",\"soil\":{\"air_temp_c\":"; json += jsonNumberOrNullFromWire(airT);
     json += ",\"air_humidity_pct\":"; json += jsonNumberOrNullFromWire(airH);
     json += ",\"soil_temp_c\":"; json += jsonNumberOrNullFromWire(soilT);
     json += ",\"soil_moisture_pct\":"; json += jsonNumberOrNullFromWire(moist);
@@ -1928,9 +1950,10 @@ json += ",\"salinity_ppt\":"; json += jsonNumberOrNullFromWire(salPpt);
     json += ",\"soil_salinity\":"; json += jsonNumberOrNullFromWire(sal);
     json += ",\"soil_tds\":"; json += jsonNumberOrNullFromWire(tds);
     json += ",\"soil_ph\":"; json += jsonNumberOrNullFromWire(ph);
-    json += ",\"battery_voltage_v\":"; json += jsonNumberOrNullFromWire(batV);
+    json += "},\"battery_voltage\":"; json += jsonNumberOrNullFromWire(batV);
     json += ",\"battery_percent\":"; json += jsonNumberOrNullFromWire(batP);
-    json += "}";
+    json += ",\"raw_station_payload\":{\"wire_protocol\":\"S2|...|CRC16\",\"gateway_id\":\""; json += GATEWAY_ID;
+    json += "\",\"timestamp_semantics\":\"gateway_network_receipt_time\"}}";
   }
   return json;
 }
@@ -2022,9 +2045,16 @@ void servicePairedBatchUpload() {
     return;
   }
 
+  if (!syncGatewayClock()) {
+    Serial.println("[BATCH] Khong co gio UTC tu mang; giu goi de thu lai");
+    powerOffModem();
+    modemHttpBusy = false;
+    return;
+  }
+
   if (!batchStation1Uploaded) {
     Serial.println("[BATCH] Upload STATION_01...");
-    batchStation1Uploaded = httpPostJson(pendingUploadStation1);
+    batchStation1Uploaded = httpPostJson(attachGatewayReceiptTimestamp(pendingUploadStation1));
     Serial.printf("[BATCH] S1 upload=%s\n", batchStation1Uploaded ? "OK" : "FAIL");
   }
 
@@ -2033,7 +2063,7 @@ void servicePairedBatchUpload() {
 
   if (!batchStation2Uploaded) {
     Serial.println("[BATCH] Upload STATION_02...");
-    batchStation2Uploaded = httpPostJson(pendingUploadStation2);
+    batchStation2Uploaded = httpPostJson(attachGatewayReceiptTimestamp(pendingUploadStation2));
     Serial.printf("[BATCH] S2 upload=%s\n", batchStation2Uploaded ? "OK" : "FAIL");
   }
 
@@ -2091,15 +2121,10 @@ const uint32_t seq = static_cast<uint32_t>(simpleField(line, 1).toInt());
                 station1 ? "STATION_01" : "STATION_02",
                 static_cast<unsigned long>(seq),
                 static_cast<unsigned int>(line.length()));
-  Serial.printf("[WIRE] %s\n", line.c_str());
-  Serial.printf("[JSON] %s\n", stationPayload.c_str());
-
-  const String gatewayPayload = wrapGatewayPayload(stationPayload);
-  Serial.print("[GATEWAY] Du lieu dong goi: ");
-  Serial.println(gatewayPayload);
+  Serial.println("[LORA] CRC valid; canonical telemetry staged without payload dump");
 
   if (MODEM_ENABLED) {
-    stagePairedUpload(gatewayPayload, station1);
+    stagePairedUpload(stationPayload, station1);
   } else {
     Serial.println("[HTTP] Modem dang tat, LoRa da ACK thanh cong");
   }

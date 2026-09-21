@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { isAdminAuthConfigured } from "@/lib/auth/localAdminSession";
+import { CON_HO } from "@/lib/geo";
 
 /**
  * Operational health, for a deploy check or an uptime ping.
@@ -54,7 +55,7 @@ async function probeWeather(): Promise<ProbeState> {
     // HEAD against the same host the weather adapter uses. Keyless, so there
     // is nothing to configure and nothing to leak.
     const response = await fetch(
-      "https://api.open-meteo.com/v1/forecast?latitude=10.2419&longitude=105.826&current=temperature_2m",
+      `https://api.open-meteo.com/v1/forecast?latitude=${CON_HO.lat}&longitude=${CON_HO.lng}&current=temperature_2m`,
       { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS), cache: "no-store" },
     );
     return response.ok ? "ok" : "unreachable";

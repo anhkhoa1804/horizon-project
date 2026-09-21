@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ingestTelemetry, signPayload, MockDb } from '../src/index.js';
+import { ingestTelemetry, MockDb } from '../src/index.js';
 import type { IngestConfig } from '../src/ingest.js';
 import type { TelemetryPayloadV1 } from '../src/types.js';
 
@@ -11,9 +11,9 @@ const repoRoot = path.resolve(__dirname, '..', '..', '..');
 const webMockDir = path.join(repoRoot, 'apps', 'web', 'mock');
 
 const stations = [
-  { id: 'STATION_01', name: 'Con Ho North', lat: 10.245, lng: 105.82, status: 'active' as const, secret: 'station-secret-01' },
-  { id: 'STATION_02', name: 'Con Ho South', lat: 10.2385, lng: 105.826, status: 'active' as const, secret: 'station-secret-02' },
-  { id: 'STATION_03', name: 'Canal Gate West', lat: 10.2421, lng: 105.832, status: 'active' as const, secret: 'station-secret-03' },
+  { id: 'STATION_01', name: 'Con Ho Water', lat: 10.073972, lng: 106.250417, status: 'active' as const, secret: 'station-secret-01' },
+  { id: 'STATION_02', name: 'Con Ho Soil', lat: 10.072444, lng: 106.253056, status: 'active' as const, secret: 'station-secret-02' },
+  { id: 'STATION_03', name: 'Con Ho Gateway', lat: 10.071, lng: 106.254167, status: 'active' as const, secret: 'station-secret-03' },
 ];
 
 const deviceSecrets = Object.fromEntries(stations.map((station) => [station.id, station.secret]));
@@ -26,6 +26,7 @@ const otaCatalog = {
 const config: IngestConfig = {
   allowedContractVersion: 'v1',
   maxTimestampDriftSeconds: 300,
+  gatewayIngestToken: 'gateway-token-01',
 };
 
 function round(value: number, digits = 2) {
@@ -98,13 +99,10 @@ async function runBatch() {
 
   for (let index = 0; index < stations.length; index += 1) {
     const payload = generatePayload(index, now + index);
-    const signature = await signPayload(payload, deviceSecrets[payload.device_id]);
     const response = await ingestTelemetry(
       {
         headers: {
-          'x-device-id': payload.device_id,
-          'x-timestamp': String(payload.timestamp),
-          'x-signature': signature,
+          'x-gateway-token': 'gateway-token-01',
           'x-contract-version': payload.contract_version,
         },
         payload,
