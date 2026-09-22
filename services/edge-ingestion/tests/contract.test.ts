@@ -231,27 +231,47 @@ describe("firmware gateway contract", () => {
 
   it("accepts the canonical STATION_01 payload emitted by the QoS1 gateway path", async () => {
     const db = new MockDb({}, otaCatalog, ["STATION_01"]);
-    const payload = basePayload({
-      message_id: "STATION_01-1700000000-7", sequence: 7, summary_minutes: 5,
-      ec_ms_cm: 0.106, ec_us_cm: 106, temperature_c: 29.5, tds_ppm: 53,
+    // Matches gateway.ino's S1 serializer field-for-field after the cellular
+    // receipt timestamp replaces the RECEIPT marker. Keep this explicit: a
+    // convenient base payload can hide a firmware/backend shape mismatch.
+    const payload: TelemetryPayloadV1 = {
+      contract_version: "v1", reading_kind: "water", device_id: "STATION_01",
+      firmware_version: "simple-qos1-wire", message_id: "STATION_01-1700000000-7", timestamp: NOW,
+      fault_flags: 0, sequence: 7, summary_minutes: 5, sensor_height_cm: 350,
+      distance_cm: 228.6, water_level: 121.4, ec_ms_cm: 0.106, ec_us_cm: 106,
+      temperature_c: 29.5, tds_ppm: 53, salinity: 0.055, salinity_ppm: 55,
+      battery_voltage: 3.92, battery_percent: 82,
+      sensor_status: { ec_probe: "ok", ultrasonic: "ok" },
       raw_station_payload: { wire_protocol: "S1|...|CRC16", gateway_id: "GATEWAY_01", timestamp_semantics: "gateway_network_receipt_time" },
-    });
+    };
     const response = await handleIngestRequest(payload, { "x-gateway-token": "gateway-token-01" }, db, tokenConfig, NOW);
     assert.equal(response.status, 200);
-    assert.equal(db.getSnapshot().environmentalReadings[0]?.ec_us_cm, 106);
+    const row = db.getSnapshot().environmentalReadings[0];
+    assert.equal(row?.station_id, "STATION_01");
+    assert.equal(row?.water_level, 121.4);
+    assert.equal(row?.ec_us_cm, 106);
+    assert.equal(row?.raw_station_payload?.gateway_id, "GATEWAY_01");
+    assert.equal("signal_strength_dbm" in payload, false);
   });
 
   it("accepts the canonical STATION_02 soil payload emitted by the QoS1 gateway path", async () => {
     const db = new MockDb({}, otaCatalog, ["STATION_02"]);
+    // Matches gateway.ino's S2 serializer field-for-field after receipt-time
+    // attachment. Null fields remain sensor non-reports, never zero values.
     const payload: TelemetryPayloadV1 = {
       contract_version: "v1", reading_kind: "soil", device_id: "STATION_02", message_id: "STATION_02-1700000000-8", timestamp: NOW,
-      firmware_version: "simple-qos1-wire", fault_flags: 0, sequence: 8, summary_minutes: 5,
+      firmware_version: "simple-qos1-wire", fault_flags: 0, sequence: 8, summary_minutes: 5, crop: "grapefruit",
       soil: { air_temp_c: null, air_humidity_pct: null, soil_temp_c: 29.9, soil_moisture_pct: 43.7, soil_ec_ms_cm: 0.11, soil_ec_us_cm: 110, soil_salinity: 60, soil_tds: 55, soil_ph: 7 },
+      battery_voltage: 3.87, battery_percent: 77,
       raw_station_payload: { wire_protocol: "S2|...|CRC16", gateway_id: "GATEWAY_01", timestamp_semantics: "gateway_network_receipt_time" },
     };
     const response = await handleIngestRequest(payload, { "x-gateway-token": "gateway-token-01" }, db, tokenConfig, NOW);
     assert.equal(response.status, 200);
-    assert.equal(db.getSnapshot().soilReadings[0]?.soil_ec_us_cm, 110);
+    const row = db.getSnapshot().soilReadings[0];
+    assert.equal(row?.station_id, "STATION_02");
+    assert.equal(row?.soil_ec_us_cm, 110);
+    assert.equal(row?.air_temp_c, null);
+    assert.equal(row?.raw_station_payload?.gateway_id, "GATEWAY_01");
   });
 
   it("rejects the retired envelope rather than promoting it with server time", async () => {

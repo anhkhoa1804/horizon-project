@@ -52,7 +52,7 @@ export function loadSupabaseEnv(): Record<string, string> {
  * WARNING: as of the Phase E/F reconciliation, `infra/supabase/.env.supabase`
  * (if present) points at a REAL, LIVE Supabase project. Setting
  * LIVE_SUPABASE_INTEGRATION=1 with that file present does not simulate
- * anything — it POSTs real signed telemetry through the live edge-ingest
+ * anything — it POSTs real gateway-token telemetry through the live edge-ingest
  * endpoint and writes real rows to `environmental_readings`/
  * `ingestion_audit_logs`. Do not set this flag casually, and never as part
  * of a default/CI test run. Run only `npm run test` (contract.test.ts,

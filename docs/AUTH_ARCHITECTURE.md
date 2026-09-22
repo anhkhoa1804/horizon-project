@@ -38,9 +38,9 @@ login feature is scoped — do not let new work quietly start depending on
 `auth.uid()` being populated, because for the admin flow it never will
 be.
 
-**B. Device/gateway HMAC authentication for machines — adopted, already
-correct.** The gateway-relay model (gateway authenticates with its own
-secret; the payload can be attributed to a different, independently-
+**B. Gateway-token authentication for machines — adopted for the pilot.**
+The gateway-relay model (the physical relay presents its configured token;
+the payload can be attributed to a different, independently-
 registered device) is a deliberate, sound design for LoRa-only stations
 that can't carry their own crypto/clock. Keep it. One real gap: no
 gateway↔station ownership check — any active gateway can relay for any
@@ -69,7 +69,7 @@ scope discipline (point C) is what actually protects it.
 
 **E. Combination — this is what's actually in place**, and it's the
 right shape: anon+RLS for public reads, service-role for the two trusted
-server boundaries (ingestion, admin), HMAC for machines, Supabase-Auth
+server boundaries (ingestion, admin), a gateway token for machines, Supabase-Auth
 reserved for a not-yet-built farmer tier. No system should be collapsed
 into another — they serve genuinely different trust boundaries.
 
@@ -113,23 +113,16 @@ oversight.
 
 ## Gateway access (machine)
 
-`x-device-id` + `x-timestamp` + `x-signature` + `x-contract-version`
-headers; secret looked up server-side by `x-device-id` from
-`devices.device_secret` (plaintext column — see below); HMAC-SHA256 over
-a canonical string that embeds the *attributed* device_id (which may
-differ from the authenticating one). Constant-time comparison
-(`timingSafeEqualHex`, works in both Node and Deno since it avoids
-`node:crypto`).
+`x-gateway-token` + `x-contract-version: v1` headers; the configured token
+is compared server-side in constant time. `payload.device_id` is the
+attributed station identity and must be an active station. The pilot does
+not accept direct station uploads or request-body HMAC signatures.
 
 ## Device access (direct-connect, non-relayed)
 
-Same contract, same header set — a station connecting directly (not
-through a gateway) would authenticate as itself, `x-device-id ===
-payload.device_id`. No such device is deployed today (both stations are
-LoRa-only, relay-only), but the contract supports it without change —
-confirmed by re-reading `ingest.ts`'s branch logic, which treats "same
-device" and "relayed" as the same validated path, just skipping the
-extra `isDeviceRegistered` check when they're equal.
+No direct-connect station path is active or accepted. Both stations are
+LoRa-only and relay-only; adding a different device authentication model is
+a future architecture decision, not an implicit fallback.
 
 ## Service-role usage — the trust boundary, explicitly
 

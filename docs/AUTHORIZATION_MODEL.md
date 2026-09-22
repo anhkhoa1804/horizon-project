@@ -12,7 +12,7 @@ because it mixes what's live today with the target model. Full reasoning:
 | `operator`, `researcher` | **Not implemented.** No code path constructs these roles. Aspirational. |
 | `service` | **Implemented** as "service-role, server-only" — used by admin operations and ingestion, never reachable from the browser. |
 | Farmer / station-scoped human access | **Designed, not built.** `station_assignments` and `has_station_access()` are correct and ready in the database; there is no sign-up/login UI and no session layer that would populate `auth.uid()` for a real farmer. See `ARCHITECTURE_DECISIONS.md` §2 for the intended shape when this is built. |
-| Device (gateway / station) ingestion auth | **Implemented** — HMAC-SHA256, see `API_CONTRACTS.md`. |
+| Device ingestion auth | **Implemented** — `GATEWAY_01` token relay only, see `API_CONTRACTS.md`. |
 
 ## Purpose
 
@@ -22,7 +22,7 @@ HORIZON separates public environmental transparency from privileged operations. 
 
 - Public pages may read approved environmental summaries and station status.
 - Public pages must never expose secrets, private user data, privileged audit detail, or admin controls.
-- Device ingestion is authenticated through signed telemetry and gateway controls, not user sessions.
+- Device ingestion is authenticated through the configured gateway token and validation controls, not user sessions.
 - Admin pages require authenticated users with explicit roles.
 - Database Row Level Security should enforce data boundaries even if application code has a bug.
 - Sensitive actions should be logged.
@@ -56,7 +56,7 @@ Public users may access:
 Public users must not access:
 
 - device secrets,
-- raw HMAC fields beyond safe display,
+- raw telemetry payloads or gateway credentials,
 - internal operator notes,
 - private user identities,
 - threshold edit controls,
@@ -80,10 +80,10 @@ Admin actions should use clear confirmation for destructive or high-impact chang
 
 ## Device ingestion access
 
-Devices authenticate with:
+The pilot gateway authenticates with:
 
 - active device registration,
-- signed payloads,
+- `x-gateway-token` and `x-contract-version: v1`,
 - timestamp drift checks,
 - replay protection,
 - idempotent message IDs.

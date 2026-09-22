@@ -7,7 +7,7 @@
 | Station 1 → gateway | `S1|seq|min|distance|water|ec_ms|temp|tds|sal_ppt|bat_v|bat_pct|CRC16` |
 | Station 2 → gateway | `S2|seq|min|airT|airH|soilT|moist|ec_ms|sal|tds|ph|bat_v|bat_pct|CRC16` |
 | Gateway acceptance | UART stream parser finds `S1|`/`S2|`, checks field count and CRC16, ACKs the same sequence. |
-| Gateway → Edge | One top-level `TelemetryPayloadV1` per accepted packet, authenticated by `x-gateway-token`. |
+| Gateway → Edge | One top-level `TelemetryPayloadV1` per accepted packet, with `x-contract-version: v1` and authenticated by `x-gateway-token`. |
 
 The older JSON receive branch is transition-only: it may ACK an already
 deployed bench frame but never forwards it to `edge-ingest`.

@@ -340,13 +340,13 @@ function ApplicationProfilesChapter() {
       {APPLICATION_PROFILES.map((profile) => (
         <article key={profile.index} className="overflow-hidden rounded-lg bg-surface">
           <Image src={profile.image} alt={profile.alt} width={900} height={600} sizes="(min-width:1024px) 31vw, 100vw" className="h-auto w-full" />
-          <div className="flex min-h-[270px] flex-col p-6 md:p-8">
+          <div className="p-5 md:p-6">
             <p className="text-[11px] tracking-[0.16em] text-accent [font-family:var(--font-data)]">{profile.index}</p>
-            <h3 className="mt-4 text-xl font-semibold tracking-tight">{profile.title}</h3>
-            <div className="mt-7 flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground-subtle">
+            <h3 className="mt-3 text-xl font-semibold tracking-tight">{profile.title}</h3>
+            <div className="mt-5 flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground-subtle">
             {profile.flow.map((item, flowIndex) => <span key={item} className="contents"><span>{item}</span>{flowIndex < profile.flow.length - 1 ? <ArrowRight className="h-3 w-3 text-accent" aria-hidden /> : null}</span>)}
             </div>
-            <p className="mt-auto pt-8 text-sm leading-relaxed text-muted"><span className="font-medium text-foreground">Hiện tại · </span>{profile.current}</p>
+            <p className="mt-6 text-sm leading-relaxed text-muted"><span className="font-medium text-foreground">Hiện tại · </span>{profile.current}</p>
             <p className="mt-3 text-sm leading-relaxed text-muted"><span className="font-medium text-foreground">Tiếp theo · </span>{profile.next}</p>
           </div>
         </article>
@@ -443,14 +443,8 @@ export default async function HomePage() {
               title="Một lần đo đi từ vườn tới màn hình như thế nào?"
               lead="Bảy chặng, từ đầu dò đặt tại Cồn Hô tới Observatory. Mỗi chặng giữ lại dấu vết cần thiết để đọc lại dữ liệu."
             />
-            <div className="mt-16 border-t border-border pt-10">
-              <h3 className="text-xl font-semibold tracking-tight">Từ số đo đến ý nghĩa.</h3>
-              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted">
-                Một con số chỉ được đọc khi biết nó đến từ đâu, được đo lúc nào và dựa vào ngưỡng nào.
-              </p>
-              <div className="mt-8">
+            <div className="mt-10">
               <WorkflowChapter />
-              </div>
             </div>
           </Reveal>
 

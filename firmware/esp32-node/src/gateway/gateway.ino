@@ -921,6 +921,7 @@ String httpGet(const char *url) {
   (void)url;
 
   String headerCommand = "AT+HTTPPARA=\"USERDATA\",\"User-Agent: HORIZON-Gateway/1.0\\r\\n";
+  headerCommand += "x-contract-version: v1\\r\\n";
   if (strlen(GATEWAY_INGEST_TOKEN) > 0) {
     headerCommand += "x-gateway-token: ";
     headerCommand += GATEWAY_INGEST_TOKEN;
@@ -1162,6 +1163,7 @@ bool httpPostJson(const String &payload) {
   // on the tested firmware and only creates log noise, so it is intentionally skipped.
 
   String headerCommand = "AT+HTTPPARA=\"USERDATA\",\"User-Agent: HORIZON-Gateway/1.0\\r\\n";
+  headerCommand += "x-contract-version: v1\\r\\n";
   if (strlen(GATEWAY_INGEST_TOKEN) > 0) {
     headerCommand += "x-gateway-token: ";
     headerCommand += GATEWAY_INGEST_TOKEN;

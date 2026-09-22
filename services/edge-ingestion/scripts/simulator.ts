@@ -17,6 +17,8 @@ const stations = [
 ];
 
 const deviceSecrets = Object.fromEntries(stations.map((station) => [station.id, station.secret]));
+// STATION_03 is the mapped gateway location, not a water telemetry source.
+const telemetryStations = stations.filter((station) => station.id !== 'STATION_03');
 const otaCatalog = {
   STATION_01: { update_available: true, target_version: '1.0.3', binary_url: 'https://example.com/ota/station-01.bin', sha256: 'mock', size_bytes: 1432200 },
   STATION_02: { update_available: false },
@@ -42,6 +44,28 @@ function generatePayload(stationIndex: number, now: number): TelemetryPayloadV1 
   const battery = round(3.98 - stationIndex * 0.09, 2);
   const signal = -82 - stationIndex * 4;
 
+  if (station.id === 'STATION_02') {
+    return {
+      contract_version: 'v1',
+      reading_kind: 'soil',
+      device_id: station.id,
+      message_id: `${station.id}-${now}`,
+      timestamp: now,
+      fault_flags: 0,
+      soil: {
+        air_temp_c: round(29 + drift, 1),
+        air_humidity_pct: round(75 + drift * 4, 1),
+        soil_temp_c: round(28 + drift, 1),
+        soil_moisture_pct: round(43 + drift * 2, 1),
+        soil_ec_ms_cm: round(0.11 + drift * 0.01, 3),
+        soil_ph: round(6.8 + drift * 0.1, 1),
+      },
+      battery_voltage: battery,
+      signal_strength_dbm: signal,
+      firmware_version: 'simulator-soil-v1',
+    };
+  }
+
   return {
     contract_version: 'v1',
     device_id: station.id,
@@ -49,8 +73,8 @@ function generatePayload(stationIndex: number, now: number): TelemetryPayloadV1 
     timestamp: now,
     salinity,
     water_level: waterLevel,
-    fault_flags: station.id === 'STATION_02' ? 1 : 0,
-    sensor_status: station.id === 'STATION_02' ? { ec_probe: 'warn', ultrasonic: 'ok' } : { ec_probe: 'ok', ultrasonic: 'ok' },
+    fault_flags: 0,
+    sensor_status: { ec_probe: 'ok', ultrasonic: 'ok' },
     battery_voltage: battery,
     signal_strength_dbm: signal,
     firmware_version: '1.0.2',
@@ -72,8 +96,8 @@ async function writeMockFiles(db: MockDb) {
       ec_probe: reading.ec_probe_status,
       ultrasonic: reading.ultrasonic_status,
     },
-    battery_voltage: snapshot.healthLogs.find((health) => health.station_id === reading.station_id)?.battery_voltage ?? 0,
-    signal_strength_dbm: snapshot.healthLogs.find((health) => health.station_id === reading.station_id)?.signal_strength_dbm ?? 0,
+    battery_voltage: snapshot.healthLogs.find((health) => health.station_id === reading.station_id)?.battery_voltage ?? null,
+    signal_strength_dbm: snapshot.healthLogs.find((health) => health.station_id === reading.station_id)?.signal_strength_dbm ?? null,
   }));
 
   const alerts = snapshot.environmentalEvents.map((event) => ({
@@ -97,7 +121,7 @@ async function runBatch() {
   const db = new MockDb(deviceSecrets, otaCatalog);
   const responses = [] as unknown[];
 
-  for (let index = 0; index < stations.length; index += 1) {
+  for (let index = 0; index < telemetryStations.length; index += 1) {
     const payload = generatePayload(index, now + index);
     const response = await ingestTelemetry(
       {

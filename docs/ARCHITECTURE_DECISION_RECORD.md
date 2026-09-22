@@ -31,8 +31,8 @@ tracked in git (confirmed via `git ls-tree -r HEAD`) — #11(a) below's
 ## 1. Canonical ingestion architecture
 
 **One path**: ESP32 stations → LoRa UART (unsigned, no clock) → gateway
-(HMAC-signs on stations' behalf, using its own secret, over a canonical
-string carrying the station's device_id) → HTTPS POST → Supabase Edge
+(adds its configured `x-gateway-token` while retaining the station's
+`device_id` in the top-level payload) → HTTPS POST → Supabase Edge
 Function `edge-ingest` → `environmental_readings` / `soil_readings`.
 The former competing path (`/api/public/gateway` → `gateway_
 observations`) is confirmed deleted from disk. Settled, already acted
@@ -60,12 +60,10 @@ real farmer-facing feature is scoped with an actual UI.
 
 ## 4. Machine authentication system
 
-HMAC-SHA256 over a pipe-delimited canonical string, gateway-relay model:
-the authenticating device (`x-device-id`) may differ from the attributed
-device (`payload.device_id`), both independently validated as
-registered/active. Sound as designed. One real gap, not fixed this pass
-because it doesn't matter at current scale: no gateway↔station
-ownership check — any active gateway can relay for any active station.
+The configured `x-gateway-token` authenticates the single pilot relay;
+`payload.device_id` is independently validated as an active station. There
+is no direct-device or HMAC fallback. Gateway-to-station ownership remains
+an explicit future concern if the pilot grows beyond one relay.
 
 ## 5. Where RLS is used
 
@@ -195,10 +193,8 @@ embedding queries perform correctly at real data volume; whether the
 physical gateway's SIM
 module's `AT+CCLK?` response actually matches the assumed SIMCom format;
 whether `AT+HTTPPARA="USERDATA"` actually appends rather than overwrites
-across repeated calls; whether mbedtls HMAC produces byte-identical
-output to the TypeScript `crypto.subtle` implementation when run on real
-ESP32 hardware (should, per spec, but "should" isn't "verified"); and
-whether the firmware compiles at all (no PlatformIO toolchain has been
+across repeated calls; whether the configured `x-gateway-token` reaches the
+current Edge Function unchanged; and whether the firmware compiles at all (no PlatformIO toolchain has been
 available in any session to date). None of this can be responsibly
 resolved from source review alone, and none of it has been fabricated
 or assumed working in this document.

@@ -14,7 +14,7 @@ Two questions are kept separate throughout, because the answers differ:
 
 ```
 ESP32 nodes (trạm 1 water, trạm 2 soil)
-   └─ LoRa ─> gateway.ino ─ HTTPS + HMAC ─> edge-ingest (Supabase Edge Function)
+   └─ LoRa ─> gateway.ino ─ HTTPS + x-gateway-token ─> edge-ingest (Supabase Edge Function)
                                                  └─> Postgres (Supabase)
                                                         └─> apps/web (Next.js 15, Vercel)
                                                                ├─ anon key   : public reads (RLS-bound)
@@ -54,50 +54,29 @@ choice depends on where the Supabase project lives.
 
 ---
 
-## 2a. CRITICAL — device secrets are public
+## 2a. CRITICAL — gateway token provisioning
 
-**Production device-secret rotation remains a release gate.** The former
-five-node fixture topology has been removed; the canonical registry is
-`GATEWAY_01` plus `STATION_01`–`STATION_03`. The seed contains public
-development placeholders for fresh local setups, so the release checker must
-be run against production before telemetry is exposed. This document does not
-claim the current production secrets have been rotated.
+**Production `GATEWAY_INGEST_TOKEN` provisioning remains a release gate.**
+The canonical registry is `GATEWAY_01` plus `STATION_01`–`STATION_03`.
+The active field path accepts only the configured gateway token; this document
+does not claim that the deployed Edge Function and physical gateway have been
+provisioned with matching values.
 
-`device_secret` is the HMAC key `services/edge-ingestion` uses to authenticate
-telemetry (`canonical.ts` → `signPayload`). Anyone who can read this repository
-can therefore forge signed readings into `environmental_readings` — fabricated
-salinity and water levels, indistinguishable downstream from real ones. That is
-the precise failure this project's data-honesty rules exist to prevent.
+`device_secret` remains only as a historical schema/local-fixture field. It
+does not authenticate current gateway telemetry. The production credential is
+the separately provisioned `GATEWAY_INGEST_TOKEN`, which must never be
+committed or exposed to the browser.
 
-Two things made it durable, and one is now fixed:
+The seed deliberately never overwrites an existing `device_secret`; that
+protects historical rows and local fixtures from an accidental migration
+rewrite. It is not a gateway-token provisioning mechanism. Provisioning or
+rotating `GATEWAY_INGEST_TOKEN` is an external deployment operation and has
+not been run from this repository.
 
-- The seed re-runs on **every** `npm run db:migrate`, and its upsert carried
-  `device_secret = excluded.device_secret` — so a rotated production secret was
-  silently reset to the public placeholder on the next deploy. **Fixed:**
-  `device_secret` no longer appears in the update clause. New rows still get a
-  placeholder (that is what makes a fresh clone work); existing rows keep
-  whatever the operator set.
-- The secrets themselves are still the placeholders in the live database.
-  **This requires an operator action and has not been performed** — rotating
-  them is a production mutation, and it would break a deployed gateway that is
-  still holding the old value.
-
-### Rotation procedure (required before exposing ingestion)
-
-```sql
--- Per device, against the production database. Use a distinct, random value.
-update public.devices
-   set device_secret = '<32+ random bytes, unique per device>'
- where device_id = 'STATION_01';
-```
-
-Generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
-The same value must be flashed into that node's firmware. Verify with
-`npm run verify` — it now **fails** while any placeholder remains.
-
-It is a **release blocker for the telemetry path**, not for the public
+Matching token values in the Supabase Function secret set and gateway
+firmware are a **release blocker for telemetry**, not for the public
 read-only site. See `CURRENT_PRODUCT_STATUS.md` and the field release
-checklist for the current verification boundaries.
+checklist for verification boundaries.
 
 ---
 
@@ -139,6 +118,7 @@ nothing for the site:
 | `SUPABASE_ANON_KEY` (as a *verifier* input) | `infra/supabase/verify-deploy.mjs` |
 | `EDGE_INGEST_URL` | ingestion integration tests / gateway config — **no web code path reads it** |
 | `MAX_TIMESTAMP_DRIFT_SECONDS` | `services/edge-ingestion/src/config.ts` (the Edge Function's own secret set, not Vercel) |
+| `GATEWAY_INGEST_TOKEN` | `services/edge-ingestion` and the physical gateway — provision outside the web app |
 
 `EDGE_INGEST_URL` and `MAX_TIMESTAMP_DRIFT_SECONDS` are consumed by the
 Supabase Edge Function and its tests, which read their configuration from
@@ -378,10 +358,10 @@ Per stage, **without hardware available**:
 | Firmware (water) | EC, water temperature, TDS, salinity and ultrasonic water-level reads implemented. **Hardware/site calibration unverified.** |
 | Firmware (soil) | Implemented. **Hardware-unverified.** |
 | Gateway relay | Implemented. **Hardware-unverified.** |
-| Ingestion contract | Implemented + tested (25 tests) |
-| Signature verification | Implemented — HMAC, timing-safe |
+| Ingestion contract | Implemented + tested (gateway-token fixtures) |
+| Gateway-token verification | Implemented — constant-time, fail closed |
 | Replay protection | Implemented — `message_id` idempotency + audit log |
-| Database | Ready; gateway observations are retained and promoted into typed water and soil histories by migration 025 and the current ingest route |
+| Database | Typed water and soil histories are active; `gateway_observations` is historical only and not written by the current ingest route |
 | Repository layer | Implemented + tested (latest, 24h trend, daily trend; ordering, nulls, VN timezone) |
 | Dashboard | Implemented; renders real rows whenever they appear |
 

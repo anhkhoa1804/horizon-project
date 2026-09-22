@@ -97,18 +97,15 @@ The raw station context is audit material, never a second ingestion shape.
 1. ESP32 station sends an S1/S2 CRC QoS1 LoRa frame to the gateway.
 2. `GATEWAY_01` validates the frame, synchronizes receipt UTC from the cellular
    network, and emits canonical top-level telemetry.
-3. The gateway POSTs to Supabase `edge-ingest` with `x-gateway-token`.
+3. The gateway POSTs to Supabase `edge-ingest` with `x-contract-version: v1`
+   and `x-gateway-token`.
 4. The Edge Function writes STATION_01 to `environmental_readings` and
    STATION_02 to `soil_readings`. Null fields stay null; EC, salinity, TDS and
    soil quantities are never substituted for one another.
 6. Public Next.js pages read typed data from Supabase using an anon-key client
    scoped by RLS; admin pages use service-role only behind an authenticated
    admin session.
-7. HMAC remains a future direct-device option; it is not the active relay path.
-
-A device with its own connectivity can also self-authenticate directly
-(`x-device-id` header equal to `payload.device_id`, signed with its own
-secret) — the gateway-relay and direct-connect paths are the same contract.
+7. The current pilot is gateway-only; there is no direct-device fallback.
 
 ## Deployment status: CURRENT vs FUTURE
 
@@ -122,9 +119,8 @@ secret) — the gateway-relay and direct-connect paths are the same contract.
   admin). The retained gateway history currently promotes to typed Station 01
   water rows and Station 02 soil rows; EC and water temperature have real
   series sources.
-- The deployed signed `edge-ingest` Function was exercised against the live
-  project on 2026-09-18: valid signed telemetry was accepted, a duplicate was
-  idempotently ignored, and stale/future replay attempts were rejected.
+- A prior HMAC integration check ran on 2026-09-18. It does not verify the
+  current `x-gateway-token` contract or a physical gateway upload.
 - `readWaterEc()` reads the configured EC, water-temperature, TDS and salinity
   registers. Its values are hardware-unverified at the installation site; the
   code no longer estimates salinity from EC when the salinity register is
@@ -199,7 +195,7 @@ Required integrity behaviors:
 - `message_id` is unique and used for idempotency.
 - Device must be registered and active.
 - Payload must match contract version.
-- HMAC signature must match canonical fields.
+- Gateway token must match the configured token in constant time.
 - Timestamp must be within replay window.
 - Numeric readings must be within safe validation bounds.
 - Sensor faults should create fault events and avoid treating bad readings as trustworthy.
@@ -251,7 +247,8 @@ The platform should tolerate:
 - Supabase service role keys must never be shipped to the browser.
 - Public data access must be intentionally scoped.
 - Admin access must use explicit roles and database policies.
-- Ingestion must validate both transport-level gateway auth and device-level signatures.
+- Ingestion must validate the transport-level gateway token and attributed
+  station registration.
 - Audit logs should preserve security-relevant decisions.
 
 ## Extending the architecture

@@ -14,10 +14,10 @@ raw telemetry.
 
 ## Current pilot authentication
 
-The relay uses `x-gateway-token`, sent only by `GATEWAY_01` from
-`gateway_secrets.h`. The token authenticates the relay; `payload.device_id`
-identifies STATION_01 or STATION_02. No service-role credential, anon key, or
-production token is committed to firmware.
+The relay sends `x-contract-version: v1` and uses `x-gateway-token`, sent only
+by `GATEWAY_01` from `gateway_secrets.h`. The token authenticates the relay;
+`payload.device_id` identifies STATION_01 or STATION_02. No service-role
+credential, anon key, or production token is committed to firmware.
 
 The observed `MISSING_FIELD` HTTP 400 proves a 4G request reached the Edge
 Function application handler; the failure was the old body shape, not DNS,

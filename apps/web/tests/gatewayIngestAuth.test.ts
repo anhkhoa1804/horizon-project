@@ -8,8 +8,8 @@ import { authorizeGatewayRequest } from "@/lib/gateway/ingestAuth";
 /**
  * THE FAIL-OPEN THIS FILE EXISTS TO PREVENT.
  *
- * `/api/public/gateway` writes to `gateway_observations`. Its authorisation
- * check used to read:
+ * The retired `/api/public/gateway` route once wrote to
+ * `gateway_observations`. Its authorisation check used to read:
  *
  *     const expectedToken = process.env.GATEWAY_INGEST_TOKEN;
  *     if (!expectedToken) return true;

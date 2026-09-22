@@ -14,17 +14,17 @@ actually did — see the "what changed" note at the end of each section).
 
 ## 1. Ingestion data flow
 
-### Decision: one canonical path — gateway relays a standard signed contract
+### Decision: one canonical path — gateway relays a token-authenticated contract
 
 ```
 ESP32 station (Trạm 1 / Trạm 2)
   → raw sensor JSON over LoRa UART (unchanged, no crypto, no clock needed)
 Gateway (GATEWAY_01)
   → reshapes into TelemetryPayloadV1, stamps real network time (AT+CCLK?),
-    HMAC-SHA256 signs with ITS OWN device secret
+    adds x-contract-version: v1 and its configured x-gateway-token
   → HTTPS POST to the Supabase Edge Function (edge-ingest)
 edge-ingest (services/edge-ingestion)
-  → validates signature, replay window, value ranges, sensor faults,
+  → validates gateway token, replay window, value ranges, sensor faults,
     idempotency
   → environmental_readings / station_health_logs / environmental_events
 repositories (apps/web/lib/repositories)
@@ -65,25 +65,15 @@ after boot. Options considered:
    drift-tracking logic to every station, for a security property (blast
    radius if the gateway is compromised) that doesn't matter much at this
    scale — one gateway, a handful of stations, physically co-located.
-2. **Gateway signs on stations' behalf (chosen).** The gateway already has
-   real network time (cellular) and the only device in the topology with
-   power/compute headroom for crypto. Stations stay exactly as simple as
-   they are today — no crypto library, no clock, unchanged firmware
-   structure. `devices.kind` (migration 018) distinguishes gateway-class
-   devices (hold a secret, authenticate requests) from station-class
-   devices (attributed via `payload.device_id`, no secret required).
+2. **Gateway token relay (chosen).** The gateway already has real network
+   time (cellular) and is the only networked device. It supplies the
+   configured `x-gateway-token`; stations remain simple LoRa-only sources
+   with no clock or network credential. `payload.device_id` remains the
+   attributed station identity and is independently checked as active.
 
-The contract itself didn't need to change to support this — `ingest.ts`
-already had two independent identifiers available: `x-device-id` (header,
-who's authenticating) and `payload.device_id` (body, who the reading is
-about). They were always allowed to differ; nothing enforced they must be
-equal. The fix was using that latent flexibility: `getDeviceSecret` now
-resolves against the header (the authenticating device), and a *separate*
-`isDeviceRegistered` check confirms the attributed station is real when it
-differs from the authenticator. **This also means a station with its own
-future connectivity can self-authenticate with zero backend changes** — set
-`x-device-id` equal to `payload.device_id`, sign with its own secret. The
-gateway-relay and direct-connect models are the same contract, not two.
+The pilot deliberately has no direct-station fallback. Adding one later
+requires a separately scoped authentication design rather than silently
+reusing a retired HMAC path.
 
 ### Why battery_voltage / signal_strength_dbm became optional
 
@@ -114,7 +104,7 @@ Three distinct identities, three distinct enforcement mechanisms:
 |---|---|---|
 | Public / anonymous visitor | none | Postgres `anon` role grants + RLS (migration 018) |
 | Admin (single shared operator) | custom HMAC-signed cookie, password login | Application-layer `requireAdmin()`; DB access via service-role |
-| Device (gateway or direct-connect station) | HMAC-SHA256 over a canonical payload string | `services/edge-ingestion` signature + replay + registration checks |
+| Device (gateway relay) | `x-gateway-token` + `x-contract-version: v1` | `services/edge-ingestion` token + replay + station-registration checks |
 | Farmer / station-scoped human | **not built** — see below | Would be Supabase Auth + RLS's `has_station_access()` |
 
 **Public reads now go through the anon-key client, not service-role**
@@ -181,12 +171,10 @@ waiting.
 
 ## 3. Device authentication (detail)
 
-- **Mechanism:** HMAC-SHA256 over a pipe-delimited canonical string
-  (`services/edge-ingestion/src/canonical.ts`), unchanged from before this
-  pass. Realistic for ESP32-class hardware — the Arduino-ESP32 core bundles
-  mbedtls, which the gateway firmware now uses directly (no added library).
-- **Replay protection:** ±300s window on both the payload's own `timestamp`
-  and the `x-timestamp` header, checked independently. Unchanged.
+- **Mechanism:** configured `x-gateway-token` and `x-contract-version: v1`.
+  The gateway is the sole authenticated relay; stations are attributed by
+  the top-level `payload.device_id` only.
+- **Replay protection:** ±300s window on the gateway receipt `timestamp`.
 - **Idempotency:** `environmental_readings.message_id` unique constraint,
   unchanged. Stations now include a boot-randomized nonce in their
   `message_id` (`trạm 1.ino` / `trạm 2.ino`) specifically because the
@@ -194,12 +182,10 @@ waiting.
   to 0 after a true power loss, which without the nonce would produce a
   repeat `message_id` that the unique constraint would silently treat as a
   duplicate of the *original* reading rather than storing the new one.
-- **Key rotation:** manual — update the `device_secret` column for the
-  affected row in `devices`. No automated rotation exists or was built;
-  for a handful of devices this is an acceptable operational task, not an
-  architecture gap.
-- **Gateway vs. direct-connect:** see section 1. One contract, `x-device-id`
-  header decides who's authenticating.
+- **Token rotation:** provision a new `GATEWAY_INGEST_TOKEN` into the Edge
+  Function and gateway together. This is an operator action and is not
+  performed by this repository.
+- **Gateway vs. direct-connect:** the current contract is gateway-only.
 
 ---
 

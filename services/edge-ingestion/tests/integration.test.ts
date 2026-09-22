@@ -1,20 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { signPayload } from "../src/canonical.js";
 import type { TelemetryPayloadV1 } from "../src/types.js";
 import { hasLiveSupabaseEnv, loadSupabaseEnv } from "./testEnv.js";
 
 const env = loadSupabaseEnv();
-const live = hasLiveSupabaseEnv(env);
-const DEVICE_SECRET = "station-secret-01";
-
-function authHeaders(): Record<string, string> {
-  const key = env.SUPABASE_ANON_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
-  return {
-    Authorization: `Bearer ${key}`,
-    apikey: key,
-  };
-}
+const live = hasLiveSupabaseEnv(env) && Boolean(env.GATEWAY_INGEST_TOKEN);
 
 function basePayload(messageId: string, timestamp: number): TelemetryPayloadV1 {
   return {
@@ -32,16 +22,13 @@ function basePayload(messageId: string, timestamp: number): TelemetryPayloadV1 {
   };
 }
 
-async function postToEdge(payload: TelemetryPayloadV1, headerTimestamp: number, signature: string) {
+async function postToEdge(payload: TelemetryPayloadV1) {
   const response = await fetch(env.EDGE_INGEST_URL!, {
     method: "POST",
     headers: {
-      ...authHeaders(),
       "Content-Type": "application/json",
-      "x-device-id": payload.device_id,
-      "x-timestamp": String(headerTimestamp),
-      "x-signature": signature,
       "x-contract-version": payload.contract_version,
+      "x-gateway-token": env.GATEWAY_INGEST_TOKEN!,
     },
     body: JSON.stringify(payload),
   });
@@ -83,13 +70,11 @@ async function latestAuditStatus(messageId: string): Promise<string | null> {
 }
 
 describe("live supabase edge integration", { skip: !live }, () => {
-  it("accepts signed telemetry via edge-ingest", async () => {
+  it("accepts gateway-token telemetry via edge-ingest", async () => {
     const now = Math.floor(Date.now() / 1000);
     const messageId = `integration-live-${now}`;
     const payload = basePayload(messageId, now);
-    const signature = await signPayload(payload, DEVICE_SECRET);
-
-    const result = await postToEdge(payload, now, signature);
+    const result = await postToEdge(payload);
     assert.equal(result.status, 200);
     assert.equal(result.body.ok, true);
     assert.equal(result.body.status, "inserted");
@@ -102,10 +87,8 @@ describe("live supabase edge integration", { skip: !live }, () => {
     const now = Math.floor(Date.now() / 1000);
     const messageId = `integration-duplicate-${now}`;
     const payload = basePayload(messageId, now);
-    const signature = await signPayload(payload, DEVICE_SECRET);
-
-    const first = await postToEdge(payload, now, signature);
-    const second = await postToEdge(payload, now, signature);
+    const first = await postToEdge(payload);
+    const second = await postToEdge(payload);
 
     assert.equal(first.status, 200);
     assert.equal(first.body.status, "inserted");
@@ -120,9 +103,7 @@ describe("live supabase edge integration", { skip: !live }, () => {
     const staleTimestamp = now - 600;
     const messageId = `integration-replay-old-${now}`;
     const payload = basePayload(messageId, staleTimestamp);
-    const signature = await signPayload(payload, DEVICE_SECRET);
-
-    const result = await postToEdge(payload, staleTimestamp, signature);
+    const result = await postToEdge(payload);
     assert.equal(result.status, 400);
     assert.equal(result.body.ok, false);
     assert.equal(result.body.error_code, "TIMESTAMP_OUT_OF_WINDOW");
@@ -135,9 +116,7 @@ describe("live supabase edge integration", { skip: !live }, () => {
     const futureTimestamp = now + 600;
     const messageId = `integration-replay-future-${now}`;
     const payload = basePayload(messageId, futureTimestamp);
-    const signature = await signPayload(payload, DEVICE_SECRET);
-
-    const result = await postToEdge(payload, futureTimestamp, signature);
+    const result = await postToEdge(payload);
     assert.equal(result.status, 400);
     assert.equal(result.body.ok, false);
     assert.equal(result.body.error_code, "TIMESTAMP_OUT_OF_WINDOW");

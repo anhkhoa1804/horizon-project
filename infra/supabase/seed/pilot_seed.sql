@@ -14,11 +14,10 @@ set name = excluded.name,
 -- services/edge-ingestion/tests and scripts/simulator.ts so a local checkout
 -- can run the ingestion path without configuration.
 --
--- device_secret is the HMAC key that authenticates telemetry (see
--- services/edge-ingestion/src/canonical.ts signPayload). A deployment still
--- holding these values will accept forged readings from anyone who has read
--- the repo. Every production device MUST be rotated to a unique,
--- non-guessable secret — `npm run verify` fails if any remain.
+-- device_secret remains a legacy schema field for historical rows and local
+-- fixtures. The active pilot ingest path authenticates only GATEWAY_01 with
+-- the separately provisioned GATEWAY_INGEST_TOKEN; these placeholders must
+-- never be treated as a production gateway credential.
 --
 -- NOTE THE MISSING `device_secret` IN THE UPDATE CLAUSE BELOW. This seed is
 -- re-run by apply-migrations.mjs on EVERY `npm run db:migrate`, and it
