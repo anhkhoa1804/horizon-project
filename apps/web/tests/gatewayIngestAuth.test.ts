@@ -114,3 +114,24 @@ describe("gateway ingest secret hygiene", () => {
     );
   });
 });
+
+describe("public telemetry field boundary", () => {
+  const repositorySrc = fs.readFileSync(path.join(process.cwd(), "lib", "repositories", "readingRepository.ts"), "utf8");
+  const migrationSrc = fs.readFileSync(
+    path.join(process.cwd(), "..", "..", "infra", "supabase", "migrations", "030_restrict_public_raw_telemetry.sql"),
+    "utf8",
+  );
+
+  it("does not select raw relay payloads through the public repository", () => {
+    assert.ok(!repositorySrc.includes('.from("environmental_readings")\n      .select("*")'));
+    assert.ok(!repositorySrc.includes('.from("soil_readings")\n      .select("*")'));
+    assert.ok(!/environmental_readings\s*\(\s*\*\s*\)/.test(repositorySrc));
+    assert.ok(!/\.select\([^)]*raw_station_payload/.test(repositorySrc));
+  });
+
+  it("revokes table-wide anonymous telemetry reads before granting typed columns", () => {
+    assert.match(migrationSrc, /revoke select on public\.environmental_readings from anon/i);
+    assert.match(migrationSrc, /revoke select on public\.soil_readings from anon/i);
+    assert.doesNotMatch(migrationSrc, /raw_station_payload/);
+  });
+});

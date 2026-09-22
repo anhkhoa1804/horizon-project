@@ -25,10 +25,8 @@
 /**
  * The project's official production domain.
  *
- * `horizon-frogsleap.vercel.app` is a legacy deployment host and must never
- * appear as canonical: two hostnames serving identical content is duplicate
- * content, and the one that gets indexed should be the one on the project's
- * own domain.
+ * This must remain the only canonical origin: duplicate production hosts
+ * dilute indexing and make share links inconsistent.
  */
 export const PRODUCTION_ORIGIN = "https://horizon.frogsleap.com.vn";
 

@@ -21,8 +21,8 @@ function readingKind(payload: TelemetryPayloadV1): "water" | "soil" {
   return payload.reading_kind === "soil" ? "soil" : "water";
 }
 
-function hasRequiredFields(payload: TelemetryPayloadV1): boolean {
-  const baseFieldsOk = Boolean(
+function hasBaseRequiredFields(payload: TelemetryPayloadV1): boolean {
+  return Boolean(
     payload.contract_version &&
       payload.device_id &&
       payload.message_id &&
@@ -30,9 +30,9 @@ function hasRequiredFields(payload: TelemetryPayloadV1): boolean {
       payload.firmware_version &&
       Number.isFinite(payload.fault_flags),
   );
-  if (!baseFieldsOk) {
-    return false;
-  }
+}
+
+function hasRequiredReadingFields(payload: TelemetryPayloadV1): boolean {
 
   if (readingKind(payload) === "soil") {
     const soil = payload.soil;
@@ -155,7 +155,7 @@ export async function ingestTelemetry(
     const payload = request.payload;
     const kind = readingKind(payload);
 
-    if (!hasRequiredFields(payload)) {
+    if (!hasBaseRequiredFields(payload)) {
       await db.insertAuditLog(auditRow(payload, "missing_field", "required field missing", nowEpochSeconds));
       return { ok: false, error_code: "MISSING_FIELD", message: "required field missing", retryable: false };
     }
@@ -201,6 +201,28 @@ export async function ingestTelemetry(
       };
     }
 
+    // A station that explicitly reports a water-sensor fault is a valid
+    // contract message even when its affected measurement is null. Reject it
+    // as a terminal SENSOR_FAULT rather than mislabelling it MISSING_FIELD.
+    // We still never manufacture a number or store a partial water row.
+    if (isFaulty(payload)) {
+      await db.insertAuditLog(auditRow(payload, "sensor_fault", "sensor fault reported by node", nowEpochSeconds));
+      await db.insertEvent({
+        station_id: payload.device_id,
+        event_type: "SENSOR_FAULT",
+        severity: "critical",
+        message_id: payload.message_id,
+        details: { fault_flags: payload.fault_flags, sensor_status: payload.sensor_status },
+        timestamp: nowEpochSeconds,
+      });
+      return { ok: false, error_code: "SENSOR_FAULT", message: "sensor fault reported by node", retryable: false };
+    }
+
+    if (!hasRequiredReadingFields(payload)) {
+      await db.insertAuditLog(auditRow(payload, "missing_field", "required reading field missing", nowEpochSeconds));
+      return { ok: false, error_code: "MISSING_FIELD", message: "required reading field missing", retryable: false };
+    }
+
     const valuesInRange =
       kind === "soil"
         ? soilValuesInRange(payload)
@@ -220,19 +242,6 @@ export async function ingestTelemetry(
     if (!valuesInRange) {
       await db.insertAuditLog(auditRow(payload, "value_out_of_range", "value out of accepted range", nowEpochSeconds));
       return { ok: false, error_code: "VALUE_OUT_OF_RANGE", message: "value out of accepted range", retryable: false };
-    }
-
-    if (isFaulty(payload)) {
-      await db.insertAuditLog(auditRow(payload, "sensor_fault", "sensor fault reported by node", nowEpochSeconds));
-      await db.insertEvent({
-        station_id: payload.device_id,
-        event_type: "SENSOR_FAULT",
-        severity: "critical",
-        message_id: payload.message_id,
-        details: { fault_flags: payload.fault_flags, sensor_status: payload.sensor_status },
-        timestamp: nowEpochSeconds,
-      });
-      return { ok: false, error_code: "SENSOR_FAULT", message: "sensor fault reported by node", retryable: false };
     }
 
     const status =

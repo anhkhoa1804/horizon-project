@@ -134,7 +134,7 @@ export class ReadingRepository {
 
     const { data, error } = await this.supabase
       .from("environmental_readings")
-      .select("*")
+      .select("id, message_id, station_id, salinity, water_level, water_ec_ms_cm, water_temp_c, fault_flags, ec_probe_status, ultrasonic_status, timestamp, created_at")
       .eq("station_id", stationId)
       .order("timestamp", { ascending: false })
       .limit(1)
@@ -152,7 +152,7 @@ export class ReadingRepository {
 
     const { data, error } = await this.supabase
       .from("soil_readings")
-      .select("*")
+      .select("id, message_id, station_id, air_temp_c, air_humidity_pct, soil_temp_c, soil_moisture_pct, soil_ec_ms_cm, soil_ph, fault_flags, timestamp, created_at")
       .eq("station_id", stationId)
       .order("timestamp", { ascending: false })
       .limit(1)
@@ -249,7 +249,9 @@ export class ReadingRepository {
       .select(`
         id,
         environmental_readings (
-          *
+          id, message_id, station_id, salinity, water_level, water_ec_ms_cm,
+          water_temp_c, fault_flags, ec_probe_status, ultrasonic_status,
+          timestamp, created_at
         )
       `)
       .gte("environmental_readings.timestamp", since)

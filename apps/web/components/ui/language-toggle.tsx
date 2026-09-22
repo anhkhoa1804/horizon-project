@@ -27,6 +27,25 @@ export function LanguageToggle({ className }: { className?: string }) {
     en: dict.controls.switchToEnglish,
   };
 
+  const selectLocale = (locale: Locale) => {
+    if (locale !== current) setLocaleCookie(locale);
+  };
+
+  const moveSelection = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const keyToIndex: Record<string, number> = {
+      ArrowLeft: (index + LOCALES.length - 1) % LOCALES.length,
+      ArrowUp: (index + LOCALES.length - 1) % LOCALES.length,
+      ArrowRight: (index + 1) % LOCALES.length,
+      ArrowDown: (index + 1) % LOCALES.length,
+      Home: 0,
+      End: LOCALES.length - 1,
+    };
+    const nextIndex = keyToIndex[event.key];
+    if (nextIndex === undefined) return;
+    event.preventDefault();
+    selectLocale(LOCALES[nextIndex]);
+  };
+
   return (
     <div
       role="radiogroup"
@@ -36,7 +55,7 @@ export function LanguageToggle({ className }: { className?: string }) {
         className,
       )}
     >
-      {LOCALES.map((locale) => {
+      {LOCALES.map((locale, index) => {
         const active = locale === current;
         return (
           <button
@@ -47,14 +66,16 @@ export function LanguageToggle({ className }: { className?: string }) {
             aria-label={accessibleName[locale]}
             title={LOCALE_FULL_LABEL[locale]}
             // Re-selecting the current locale would reload for no reason.
-            onClick={() => (active ? undefined : setLocaleCookie(locale))}
+            onClick={() => selectLocale(locale)}
+            onKeyDown={(event) => moveSelection(event, index)}
             className={cn(
-              "inline-flex h-8 w-8 items-center justify-center rounded-full font-medium transition-colors duration-[var(--motion-base)]",
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center !rounded-full font-medium transition-colors duration-[var(--motion-base)]",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:ring-offset-canvas",
               active
                 ? "bg-foreground text-background shadow-sm"
                 : "text-foreground-subtle hover:text-foreground",
             )}
+            style={{ borderRadius: "9999px" }}
           >
             {LOCALE_LABEL[locale]}
           </button>

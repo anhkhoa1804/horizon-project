@@ -28,13 +28,12 @@ function inRange(value, min, max) {
 function readingKind(payload) {
   return payload.reading_kind === "soil" ? "soil" : "water";
 }
-function hasRequiredFields(payload) {
-  const baseFieldsOk = Boolean(
+function hasBaseRequiredFields(payload) {
+  return Boolean(
     payload.contract_version && payload.device_id && payload.message_id && Number.isFinite(payload.timestamp) && payload.firmware_version && Number.isFinite(payload.fault_flags)
   );
-  if (!baseFieldsOk) {
-    return false;
-  }
+}
+function hasRequiredReadingFields(payload) {
   if (readingKind(payload) === "soil") {
     const soil = payload.soil;
     if (!soil) {
@@ -119,7 +118,7 @@ async function ingestTelemetry(request, db, config, nowEpochSeconds = Math.floor
   try {
     const payload = request.payload;
     const kind = readingKind(payload);
-    if (!hasRequiredFields(payload)) {
+    if (!hasBaseRequiredFields(payload)) {
       await db.insertAuditLog(auditRow(payload, "missing_field", "required field missing", nowEpochSeconds));
       return { ok: false, error_code: "MISSING_FIELD", message: "required field missing", retryable: false };
     }
@@ -152,11 +151,6 @@ async function ingestTelemetry(request, db, config, nowEpochSeconds = Math.floor
         retryable: false
       };
     }
-    const valuesInRange = kind === "soil" ? soilValuesInRange(payload) : inRange(payload.salinity, 0, 50) && inRange(payload.water_level, -100, 1e3) && optionalInRange(payload.salinity_ppm, 0, 1e5) && optionalInRange(payload.sensor_height_cm, 0, 1e4) && optionalInRange(payload.distance_cm, -100, 1e4) && optionalInRange(payload.ec_ms_cm, 0, 20) && optionalInRange(payload.ec_us_cm, 0, 2e4) && optionalInRange(payload.temperature_c, -10, 80) && optionalInRange(payload.tds_ppm, 0, 1e5) && (typeof payload.battery_voltage !== "number" || inRange(payload.battery_voltage, 2.5, 18)) && optionalInRange(payload.battery_percent, 0, 100) && (typeof payload.signal_strength_dbm !== "number" || inRange(payload.signal_strength_dbm, -130, -30));
-    if (!valuesInRange) {
-      await db.insertAuditLog(auditRow(payload, "value_out_of_range", "value out of accepted range", nowEpochSeconds));
-      return { ok: false, error_code: "VALUE_OUT_OF_RANGE", message: "value out of accepted range", retryable: false };
-    }
     if (isFaulty(payload)) {
       await db.insertAuditLog(auditRow(payload, "sensor_fault", "sensor fault reported by node", nowEpochSeconds));
       await db.insertEvent({
@@ -168,6 +162,15 @@ async function ingestTelemetry(request, db, config, nowEpochSeconds = Math.floor
         timestamp: nowEpochSeconds
       });
       return { ok: false, error_code: "SENSOR_FAULT", message: "sensor fault reported by node", retryable: false };
+    }
+    if (!hasRequiredReadingFields(payload)) {
+      await db.insertAuditLog(auditRow(payload, "missing_field", "required reading field missing", nowEpochSeconds));
+      return { ok: false, error_code: "MISSING_FIELD", message: "required reading field missing", retryable: false };
+    }
+    const valuesInRange = kind === "soil" ? soilValuesInRange(payload) : inRange(payload.salinity, 0, 50) && inRange(payload.water_level, -100, 1e3) && optionalInRange(payload.salinity_ppm, 0, 1e5) && optionalInRange(payload.sensor_height_cm, 0, 1e4) && optionalInRange(payload.distance_cm, -100, 1e4) && optionalInRange(payload.ec_ms_cm, 0, 20) && optionalInRange(payload.ec_us_cm, 0, 2e4) && optionalInRange(payload.temperature_c, -10, 80) && optionalInRange(payload.tds_ppm, 0, 1e5) && (typeof payload.battery_voltage !== "number" || inRange(payload.battery_voltage, 2.5, 18)) && optionalInRange(payload.battery_percent, 0, 100) && (typeof payload.signal_strength_dbm !== "number" || inRange(payload.signal_strength_dbm, -130, -30));
+    if (!valuesInRange) {
+      await db.insertAuditLog(auditRow(payload, "value_out_of_range", "value out of accepted range", nowEpochSeconds));
+      return { ok: false, error_code: "VALUE_OUT_OF_RANGE", message: "value out of accepted range", retryable: false };
     }
     const status = kind === "soil" ? await db.insertSoilReading({
       message_id: payload.message_id,

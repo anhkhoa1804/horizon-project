@@ -236,7 +236,7 @@ describe("firmware gateway contract", () => {
     // convenient base payload can hide a firmware/backend shape mismatch.
     const payload: TelemetryPayloadV1 = {
       contract_version: "v1", reading_kind: "water", device_id: "STATION_01",
-      firmware_version: "simple-qos1-wire", message_id: "STATION_01-1700000000-7", timestamp: NOW,
+      firmware_version: "simple-qos1-wire", message_id: "STATION_01-7-5C0F62A1E941907D", timestamp: NOW,
       fault_flags: 0, sequence: 7, summary_minutes: 5, sensor_height_cm: 350,
       distance_cm: 228.6, water_level: 121.4, ec_ms_cm: 0.106, ec_us_cm: 106,
       temperature_c: 29.5, tds_ppm: 53, salinity: 0.055, salinity_ppm: 55,
@@ -259,7 +259,7 @@ describe("firmware gateway contract", () => {
     // Matches gateway.ino's S2 serializer field-for-field after receipt-time
     // attachment. Null fields remain sensor non-reports, never zero values.
     const payload: TelemetryPayloadV1 = {
-      contract_version: "v1", reading_kind: "soil", device_id: "STATION_02", message_id: "STATION_02-1700000000-8", timestamp: NOW,
+      contract_version: "v1", reading_kind: "soil", device_id: "STATION_02", message_id: "STATION_02-8-5C0F62A1E941907D", timestamp: NOW,
       firmware_version: "simple-qos1-wire", fault_flags: 0, sequence: 8, summary_minutes: 5, crop: "grapefruit",
       soil: { air_temp_c: null, air_humidity_pct: null, soil_temp_c: 29.9, soil_moisture_pct: 43.7, soil_ec_ms_cm: 0.11, soil_ec_us_cm: 110, soil_salinity: 60, soil_tds: 55, soil_ph: 7 },
       battery_voltage: 3.87, battery_percent: 77,
@@ -490,13 +490,12 @@ describe("soil readings (reading_kind: soil)", () => {
 });
 
 /**
- * The signed v1 edge contract still treats salinity + water level as its
- * required water pair. The active gateway HTTP path retains the richer raw
- * Station 01 payload and promotes EC/temperature through the web route; these
- * cases only pin validation at the older signed-contract boundary.
+ * A water-sensor fault is terminal and auditable, while a healthy water row
+ * still needs the complete salinity/water-level pair. Soil remains partial by
+ * design because each soil sensor is independently nullable.
  */
 describe("signed v1 water payload validation", () => {
-  it("discards a valid water_level when salinity is null, via MISSING_FIELD", async () => {
+  it("reports an explicit EC fault as SENSOR_FAULT even when salinity is null", async () => {
     const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
     const payload = basePayload({
       message_id: "water-ec-blocker-001",
@@ -509,13 +508,13 @@ describe("signed v1 water payload validation", () => {
 
     assert.equal(response.ok, false, "payload is rejected outright");
     if (!response.ok) {
-      assert.equal(response.error_code, "MISSING_FIELD");
+      assert.equal(response.error_code, "SENSOR_FAULT");
       assert.equal(response.retryable, false);
     }
 
     const snapshot = db.getSnapshot();
     assert.equal(snapshot.environmentalReadings.length, 0, "an incomplete signed-v1 row is not stored");
-    assert.equal(snapshot.auditLogs.at(-1)?.status, "missing_field");
+    assert.equal(snapshot.auditLogs.at(-1)?.status, "sensor_fault");
   });
 
   it("also discards it via SENSOR_FAULT when a salinity value IS present but the EC probe is faulted", async () => {

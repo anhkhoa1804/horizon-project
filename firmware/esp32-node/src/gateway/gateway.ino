@@ -46,11 +46,9 @@ static const uint32_t DASHBOARD_ONLINE_WINDOW_MS = 60000;
 // Production ingest endpoint.
 //
 // The gateway posts JSON to Supabase Edge Function `edge-ingest` with the
-// `x-gateway-token` header from gateway_secrets.h. The JSON body is a gateway
-// envelope containing `raw_station_payload`; the Edge Function unwraps that
-// station payload, stores STATION_01 water data in environmental_readings,
-// stores STATION_02 soil data in soil_readings, and keeps the original station
-// fields in raw_station_payload for audit/debugging.
+// `x-gateway-token` header from gateway_secrets.h. The JSON body itself is a
+// top-level TelemetryPayloadV1 attributed to STATION_01 or STATION_02; the
+// gateway identity is retained only as private relay provenance.
 //
 // Do not point this back to Pipedream except for temporary packet debugging.
 static const char *WEB_SERVER_URL = "https://edhcnccvbwuffiwzywfm.supabase.co/functions/v1/edge-ingest";
@@ -893,9 +891,6 @@ uint32_t gatewayReceiptTimestamp() {
 String attachGatewayReceiptTimestamp(String payload) {
   const String timestamp = String(gatewayReceiptTimestamp());
   payload.replace("\"timestamp\":0", "\"timestamp\":" + timestamp);
-  // The receipt epoch plus station sequence makes retries idempotent while
-  // avoiding a message-id collision when a station restarts its sequence.
-  payload.replace("RECEIPT", timestamp);
   return payload;
 }
 
@@ -1121,15 +1116,21 @@ void maybeEnterGatewaySleep() {
   esp_deep_sleep_start();
 }
 
-bool httpPostJson(const String &payload) {
+enum HttpPostOutcome : uint8_t {
+  HTTP_POST_DELIVERED,
+  HTTP_POST_TERMINAL_REJECTION,
+  HTTP_POST_RETRY,
+};
+
+HttpPostOutcome httpPostJson(const String &payload) {
   if (!MODEM_ENABLED) {
     Serial.println("[HTTP] Bo POST: MODEM_ENABLED=false");
-    return false;
+    return HTTP_POST_RETRY;
   }
 
   if (!ensureModemReady()) {
     Serial.println("[HTTP] Bo POST: modem chua san sang / chua co data network");
-    return false;
+    return HTTP_POST_RETRY;
   }
 
   Serial.printf("[HTTP] POST %u byte -> %s\n",
@@ -1140,7 +1141,7 @@ bool httpPostJson(const String &payload) {
 
   if (!sendAt("AT+HTTPINIT", "OK", 5000)) {
     Serial.println("[HTTP FAIL] HTTPINIT");
-    return false;
+    return HTTP_POST_RETRY;
   }
 
   // Some SIMCom firmwares expose CID/redirect, others do not; keep them non-fatal.
@@ -1154,7 +1155,7 @@ bool httpPostJson(const String &payload) {
   if (!sendAt(urlCommand, "OK", 5000)) {
     Serial.println("[HTTP FAIL] Khong set duoc URL");
     sendAt("AT+HTTPTERM", "OK", 2500);
-    return false;
+    return HTTP_POST_RETRY;
   }
 
   // HTTPS handling differs slightly by SIMCom firmware. A76xx often accepts an
@@ -1175,7 +1176,7 @@ bool httpPostJson(const String &payload) {
   if (!sendAt("AT+HTTPPARA=\"CONTENT\",\"application/json\"", "OK", 5000)) {
     Serial.println("[HTTP FAIL] CONTENT application/json");
     sendAt("AT+HTTPTERM", "OK", 2500);
-    return false;
+    return HTTP_POST_RETRY;
   }
 
   String dataCommand = "AT+HTTPDATA=";
@@ -1189,7 +1190,7 @@ bool httpPostJson(const String &payload) {
   if (prompt.indexOf("DOWNLOAD") < 0) {
     Serial.println("[HTTP FAIL] Khong nhan duoc DOWNLOAD sau HTTPDATA");
 sendAt("AT+HTTPTERM", "OK", 2500);
-    return false;
+    return HTTP_POST_RETRY;
   }
 
   modemSerial.print(payload);
@@ -1198,7 +1199,7 @@ sendAt("AT+HTTPTERM", "OK", 2500);
   if (dataResponse.indexOf("OK") < 0) {
     Serial.println("[HTTP FAIL] Modem khong xac nhan payload OK");
     sendAt("AT+HTTPTERM", "OK", 2500);
-    return false;
+    return HTTP_POST_RETRY;
   }
 
   // AT+HTTPACTION is ASYNCHRONOUS: immediate OK is NOT the HTTP result.
@@ -1227,7 +1228,10 @@ sendAt("AT+HTTPTERM", "OK", 2500);
     }
   }
 
-  // Read response body for diagnostics when available; non-fatal.
+  // Read response body for diagnostics. A non-retryable Edge rejection is
+  // intentionally not retried forever: it did not create a DB row, and the
+  // serial log names it as a rejected payload rather than an upload success.
+  bool terminalRejection = false;
   if (httpStatus > 0) {
     clearModemRx(20);
     if (responseLength > 0) {
@@ -1244,11 +1248,17 @@ sendAt("AT+HTTPTERM", "OK", 2500);
     }
     if (readResponse.length() > 0) {
       printSafeHttpResponse(readResponse);
+      terminalRejection = readResponse.indexOf("\"retryable\":false") >= 0;
     }
   }
 
   sendAt("AT+HTTPTERM", "OK", 3000);
-  return success;
+  if (success) return HTTP_POST_DELIVERED;
+  if (terminalRejection) {
+    Serial.println("[HTTP REJECTED] Payload khong retryable; khong co DB reading duoc tao");
+    return HTTP_POST_TERMINAL_REJECTION;
+  }
+  return HTTP_POST_RETRY;
 }
 
 bool isLikelyJson(const String &json) {
@@ -1653,6 +1663,10 @@ String jsonNumberOrNullFromWire(const String &v) {
   return v;
 }
 
+bool wireValueMissing(const String &v) {
+  return v.length() == 0 || v == "x" || v == "X";
+}
+
 
 String dashboardWireText(const String &value) {
   if (value.length() == 0 || value == "x" || value == "X") return "-";
@@ -1856,8 +1870,32 @@ dashboardServer.on("/favicon.ico", HTTP_GET, []() { dashboardServer.send(204); }
 }
 
 String scaledWireNumber(const String &v, float scale, uint8_t decimals) {
-  if (v.length() == 0 || v == "x" || v == "X") return "null";
+  if (wireValueMissing(v)) return "null";
   return String(v.toFloat() * scale, static_cast<unsigned int>(decimals));
+}
+
+// A receipt timestamp must never be part of the idempotency key: the same
+// staged frame can be posted again if the server committed it but the modem
+// lost the response. Hashing the complete CRC-validated LoRa frame makes that
+// retry stable while distinguishing a station reboot that reuses a sequence.
+uint64_t simpleFrameFingerprint(const String &line) {
+  uint64_t hash = 1469598103934665603ULL;  // FNV-1a 64-bit.
+  for (size_t i = 0; i < line.length(); ++i) {
+    hash ^= static_cast<uint8_t>(line[i]);
+    hash *= 1099511628211ULL;
+  }
+  return hash;
+}
+
+String stableStationMessageId(bool station1, const String &line, uint32_t seq) {
+  char messageId[64];
+  const uint64_t fingerprint = simpleFrameFingerprint(line);
+  snprintf(messageId, sizeof(messageId), "%s-%lu-%08lX%08lX",
+           station1 ? "STATION_01" : "STATION_02",
+           static_cast<unsigned long>(seq),
+           static_cast<unsigned long>(fingerprint >> 32),
+           static_cast<unsigned long>(fingerprint & 0xFFFFFFFFULL));
+  return String(messageId);
 }
 
 void sendSimpleAck(bool station1, uint32_t seq) {
@@ -1893,6 +1931,7 @@ bool validateSimplePacket(const String &line, String &body) {
 String simplePacketToStationJson(const String &line, bool station1, uint32_t seq) {
   String json;
   json.reserve(650);
+  const String messageId = stableStationMessageId(station1, line, seq);
 
   if (station1) {
     // S1|seq|min|distance|water|ec_ms|temp|tds|sal_ppt|bat_v|bat_pct|crc
@@ -1906,9 +1945,13 @@ String simplePacketToStationJson(const String &line, bool station1, uint32_t seq
     const String batV = simpleField(line, 9);
     const String batP = simpleField(line, 10);
 
-    json += "{\"contract_version\":\"v1\",\"reading_kind\":\"water\",\"device_id\":\"STATION_01\",\"firmware_version\":\"simple-qos1-wire\",\"message_id\":\"STATION_01-RECEIPT-";
-    json += String(seq);
-    json += "\",\"timestamp\":0,\"fault_flags\":0,\"sequence\":"; json += String(seq);
+    const bool ecMissing = wireValueMissing(ecMs);
+    const bool ultrasonicMissing = wireValueMissing(water);
+    const uint8_t faultFlags = (ecMissing ? 0x01 : 0x00) | (ultrasonicMissing ? 0x02 : 0x00);
+
+    json += "{\"contract_version\":\"v1\",\"reading_kind\":\"water\",\"device_id\":\"STATION_01\",\"firmware_version\":\"simple-qos1-wire\",\"message_id\":\"";
+    json += messageId;
+    json += "\",\"timestamp\":0,\"fault_flags\":"; json += String(faultFlags); json += ",\"sequence\":"; json += String(seq);
     json += ",\"summary_minutes\":"; json += jsonNumberOrNullFromWire(minCount);
     json += ",\"sensor_height_cm\":350.0";
     json += ",\"distance_cm\":"; json += jsonNumberOrNullFromWire(distance);
@@ -1921,8 +1964,8 @@ String simplePacketToStationJson(const String &line, bool station1, uint32_t seq
     json += ",\"salinity_ppm\":"; json += scaledWireNumber(salPpt, 1000.0f, 0);
     json += ",\"battery_voltage\":"; json += jsonNumberOrNullFromWire(batV);
     json += ",\"battery_percent\":"; json += jsonNumberOrNullFromWire(batP);
-    json += ",\"sensor_status\":{\"ec_probe\":\""; json += ecMs != "null" ? "ok" : "fault";
-    json += "\",\"ultrasonic\":\""; json += water != "null" ? "ok" : "fault";
+    json += ",\"sensor_status\":{\"ec_probe\":\""; json += ecMissing ? "fault" : "ok";
+    json += "\",\"ultrasonic\":\""; json += ultrasonicMissing ? "fault" : "ok";
     json += "\"},\"raw_station_payload\":{\"wire_protocol\":\"S1|...|CRC16\",\"gateway_id\":\""; json += GATEWAY_ID;
     json += "\",\"timestamp_semantics\":\"gateway_network_receipt_time\"}}";
   } else {
@@ -1939,9 +1982,19 @@ String simplePacketToStationJson(const String &line, bool station1, uint32_t seq
     const String batV = simpleField(line, 11);
     const String batP = simpleField(line, 12);
 
-    json += "{\"contract_version\":\"v1\",\"reading_kind\":\"soil\",\"device_id\":\"STATION_02\",\"firmware_version\":\"simple-qos1-wire\",\"message_id\":\"STATION_02-RECEIPT-";
-    json += String(seq);
-    json += "\",\"timestamp\":0,\"fault_flags\":0,\"sequence\":"; json += String(seq);
+    const uint8_t faultFlags =
+      (wireValueMissing(airT) ? 0x01 : 0x00) |
+      (wireValueMissing(airH) ? 0x02 : 0x00) |
+      (wireValueMissing(soilT) ? 0x04 : 0x00) |
+      (wireValueMissing(moist) ? 0x08 : 0x00) |
+      (wireValueMissing(ecMs) ? 0x10 : 0x00) |
+      (wireValueMissing(sal) ? 0x20 : 0x00) |
+      (wireValueMissing(tds) ? 0x40 : 0x00) |
+      (wireValueMissing(ph) ? 0x80 : 0x00);
+
+    json += "{\"contract_version\":\"v1\",\"reading_kind\":\"soil\",\"device_id\":\"STATION_02\",\"firmware_version\":\"simple-qos1-wire\",\"message_id\":\"";
+    json += messageId;
+    json += "\",\"timestamp\":0,\"fault_flags\":"; json += String(faultFlags); json += ",\"sequence\":"; json += String(seq);
     json += ",\"summary_minutes\":"; json += jsonNumberOrNullFromWire(minCount);
     json += ",\"crop\":\"grapefruit\",\"soil\":{\"air_temp_c\":"; json += jsonNumberOrNullFromWire(airT);
     json += ",\"air_humidity_pct\":"; json += jsonNumberOrNullFromWire(airH);
@@ -2056,8 +2109,9 @@ void servicePairedBatchUpload() {
 
   if (!batchStation1Uploaded) {
     Serial.println("[BATCH] Upload STATION_01...");
-    batchStation1Uploaded = httpPostJson(attachGatewayReceiptTimestamp(pendingUploadStation1));
-    Serial.printf("[BATCH] S1 upload=%s\n", batchStation1Uploaded ? "OK" : "FAIL");
+    const HttpPostOutcome outcome = httpPostJson(attachGatewayReceiptTimestamp(pendingUploadStation1));
+    batchStation1Uploaded = outcome != HTTP_POST_RETRY;
+    Serial.printf("[BATCH] S1 upload=%s\n", outcome == HTTP_POST_DELIVERED ? "ACCEPTED" : outcome == HTTP_POST_TERMINAL_REJECTION ? "REJECTED_TERMINAL" : "RETRY");
   }
 
   // Give LoRa parser a chance between the two HTTP transactions.
@@ -2065,8 +2119,9 @@ void servicePairedBatchUpload() {
 
   if (!batchStation2Uploaded) {
     Serial.println("[BATCH] Upload STATION_02...");
-    batchStation2Uploaded = httpPostJson(attachGatewayReceiptTimestamp(pendingUploadStation2));
-    Serial.printf("[BATCH] S2 upload=%s\n", batchStation2Uploaded ? "OK" : "FAIL");
+    const HttpPostOutcome outcome = httpPostJson(attachGatewayReceiptTimestamp(pendingUploadStation2));
+    batchStation2Uploaded = outcome != HTTP_POST_RETRY;
+    Serial.printf("[BATCH] S2 upload=%s\n", outcome == HTTP_POST_DELIVERED ? "ACCEPTED" : outcome == HTTP_POST_TERMINAL_REJECTION ? "REJECTED_TERMINAL" : "RETRY");
   }
 
   Serial.println("[BATCH] Tat 4G sau phien upload");
