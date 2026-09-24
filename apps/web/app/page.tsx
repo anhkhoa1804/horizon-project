@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { GalleryStrip } from "@/components/about/gallery-strip";
 import { FieldNotesCarousel } from "@/components/home/field-notes-carousel";
+import { AutoPlayVideo } from "@/components/home/auto-play-video";
 import { Hero } from "@/components/home/hero";
 import { HeroBackdrop } from "@/components/home/hero-backdrop";
 import { Reveal } from "@/components/ui/reveal";
@@ -339,7 +340,9 @@ function ApplicationProfilesChapter() {
     <div className="mt-10 grid gap-6 lg:grid-cols-3">
       {APPLICATION_PROFILES.map((profile) => (
         <article key={profile.index} className="overflow-hidden rounded-lg bg-surface">
-          <Image src={profile.image} alt={profile.alt} width={900} height={600} sizes="(min-width:1024px) 31vw, 100vw" className="h-auto w-full" />
+          <div className="relative aspect-[4/3]">
+            <Image src={profile.image} alt={profile.alt} fill sizes="(min-width:1024px) 31vw, 100vw" className="object-cover" />
+          </div>
           <div className="p-5 md:p-6">
             <p className="text-[11px] tracking-[0.16em] text-accent [font-family:var(--font-data)]">{profile.index}</p>
             <h3 className="mt-3 text-xl font-semibold tracking-tight">{profile.title}</h3>
@@ -352,6 +355,32 @@ function ApplicationProfilesChapter() {
         </article>
       ))}
     </div>
+  );
+}
+
+const PROJECT_START_VIDEO = {
+  id: "SCH_xDue6xg",
+  title: "[HORIZON] NGÀY DỰ ÁN KHỞI ĐẦU",
+} as const;
+
+const FIELD_STORY_VIDEO = {
+  id: "nxzUXsiGGFU",
+  title: "[HORIZON] HÀNH TRÌNH ĐẾN CỒN HÔ 2026",
+} as const;
+
+function FieldStoryVideo() {
+  const captionId = `field-video-${FIELD_STORY_VIDEO.id}`;
+
+  return (
+    <section aria-labelledby="field-videos-heading" className="mx-auto max-w-[980px]">
+      <ChapterHeading eyebrow="04 · Ghi hình tại Cồn Hô" title="Từ hiện trường." />
+      <figure className="mt-8 space-y-3">
+        <AutoPlayVideo {...FIELD_STORY_VIDEO} captionId={captionId} />
+        <figcaption id={captionId} className="text-sm text-muted">
+          {FIELD_STORY_VIDEO.title}
+        </figcaption>
+      </figure>
+    </section>
   );
 }
 
@@ -379,8 +408,8 @@ export default async function HomePage() {
               yet. The same fact is stated here, where there is room to explain
               it rather than merely disclaim it — and again on the hardware
               chapter, which is where it actually bites. */}
-          <Reveal stagger as="section" className="mx-auto max-w-3xl">
-            <div>
+          <Reveal stagger as="section">
+            <div className="mx-auto max-w-3xl">
               <ChapterHeading eyebrow="01 · Cồn Hô" title="Một cù lao giữa dòng sông." />
               <Prose>
                 <p>Cồn Hô ở Vĩnh Long là một môi trường canh tác nhỏ, nơi nước, đất và không khí có thể đổi khác theo từng vị trí trong ngày.</p>
@@ -391,11 +420,11 @@ export default async function HomePage() {
                 <span>Vĩnh Long</span>{ISLAND_STATS.map((stat) => <span key={stat.label}>{stat.label} {stat.value}</span>)}
               </div>
             </div>
-          </Reveal>
-          <Reveal as="section" className="mx-auto max-w-[980px]">
-            <figure>
-              <Image src="/assets/landscape/con-ho-aerial.jpg" alt="Cồn Hô nhìn từ trên cao" width={1600} height={900} sizes="(min-width:1024px) 980px, 100vw" className="h-auto w-full rounded-lg" />
-              <figcaption className="mt-3 text-sm text-muted">Cồn Hô · nhìn từ trên cao</figcaption>
+            <figure className="mx-auto mt-10 max-w-[980px] space-y-3">
+              <AutoPlayVideo {...PROJECT_START_VIDEO} captionId="project-start-video-caption" />
+              <figcaption id="project-start-video-caption" className="text-sm text-muted">
+                {PROJECT_START_VIDEO.title}
+              </figcaption>
             </figure>
           </Reveal>
           {/* 02 — Where, and why here */}
@@ -406,40 +435,49 @@ export default async function HomePage() {
             </div>
           </Reveal>
 
-          <section className="full-bleed">
-            <Reveal className="h-spatial">
-              <figure className="space-y-4" aria-label="Minh họa ba điểm quan trắc tại Cồn Hô">
-                {/* THE BRANDED NETWORK ILLUSTRATION.
-                    Replaces con-ho-station-map.png, which had "TRẠM 1 / TRẠM 2
-                    / TRẠM 3" baked into its pixels — obsolete station-number
-                    semantics that contradicted the role model everywhere else
-                    in the product, and unfixable in code because it was raster
-                    text. This is the owner's own HORIZON/FrogsLeap illustration
-                    and labels the three nodes correctly: Nước, Đất, Gateway.
+          <Reveal as="section" aria-labelledby="project-illustration-heading">
+            <div className="mx-auto max-w-3xl">
+              <ChapterHeading eyebrow="03 · Minh họa dự án" title="Ba điểm quan trắc tại Cồn Hô." />
+            </div>
+            <div className="full-bleed mt-8">
+              <div className="h-spatial">
+                <figure className="space-y-4" aria-label="Minh họa ba điểm quan trắc tại Cồn Hô">
+                  {/* THE BRANDED NETWORK ILLUSTRATION.
+                      Replaces con-ho-station-map.png, which had "TRẠM 1 / TRẠM 2
+                      / TRẠM 3" baked into its pixels — obsolete station-number
+                      semantics that contradicted the role model everywhere else
+                      in the product, and unfixable in code because it was raster
+                      text. This is the owner's own HORIZON/FrogsLeap illustration
+                      and labels the three nodes correctly: Nước, Đất, Gateway.
 
-                    No border. A bordered full-bleed image draws a hard rule the
-                    width of the viewport, which is one of the "horizontal line"
-                    reports; the illustration has its own soft edges and needs
-                    no frame. */}
-                {/* eslint-disable-next-line @next/next/no-img-element -- local static asset with known aspect ratio; next/image has previously failed to resolve in this project (see wordmark.tsx) */}
-                <img
-                  src="/assets/map/con-ho-network-illustration.png"
-                  alt="Minh họa Cồn Hô với ba điểm quan trắc: Nước (quan trắc nước), Đất (quan trắc đất) và Gateway (truyền dữ liệu)"
-                  width={2000}
-                  height={1414}
-                  loading="lazy"
-                  className="w-full rounded-lg"
-                />
-                <figcaption className="text-sm text-muted">Minh họa dự án: ba điểm đo, không phải bản đồ vận hành. Bản đồ và trạng thái trạm nằm tại Quan trắc.</figcaption>
-              </figure>
-            </Reveal>
-          </section>
+                      No border. A bordered full-bleed image draws a hard rule the
+                      width of the viewport, which is one of the "horizontal line"
+                      reports; the illustration has its own soft edges and needs
+                      no frame. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element -- local static asset with known aspect ratio; next/image has previously failed to resolve in this project (see wordmark.tsx) */}
+                  <img
+                    src="/assets/map/con-ho-network-illustration.png"
+                    alt="Minh họa Cồn Hô với ba điểm quan trắc: Nước (quan trắc nước), Đất (quan trắc đất) và Gateway (truyền dữ liệu)"
+                    width={2000}
+                    height={1414}
+                    loading="lazy"
+                    className="w-full rounded-lg"
+                  />
+                  <figcaption className="text-sm text-muted">Minh họa dự án: ba điểm đo, không phải bản đồ vận hành. Bản đồ và trạng thái trạm nằm tại Quan trắc.</figcaption>
+                </figure>
+              </div>
+            </div>
+          </Reveal>
 
-          {/* 03 — The data path is a distinct story beat; the hardware roles
+          <Reveal>
+            <FieldStoryVideo />
+          </Reveal>
+
+          {/* 05 — The data path is a distinct story beat; the hardware roles
               above stay visual while this chapter explains the hand-off. */}
           <Reveal stagger as="section">
             <ChapterHeading
-              eyebrow="03 · Một con đường dữ liệu"
+              eyebrow="05 · Một con đường dữ liệu"
               title="Một lần đo đi từ vườn tới màn hình như thế nào?"
               lead="Bảy chặng, từ đầu dò đặt tại Cồn Hô tới Observatory. Mỗi chặng giữ lại dấu vết cần thiết để đọc lại dữ liệu."
             />
@@ -448,20 +486,20 @@ export default async function HomePage() {
             </div>
           </Reveal>
 
-          {/* 04 — Reusable application profiles */}
+          {/* 06 — Reusable application profiles */}
           <Reveal stagger as="section">
             <ChapterHeading
-              eyebrow="04 · Nhiều bài toán từ cùng dữ liệu"
+              eyebrow="06 · Nhiều bài toán từ cùng dữ liệu"
               title="Ba câu hỏi có thể bắt đầu từ Cồn Hô."
               lead="Mỗi hướng cho thấy dữ liệu đang có, và những phép đo còn thiếu trước khi có thể ra quyết định tốt hơn."
             />
             <ApplicationProfilesChapter />
           </Reveal>
 
-          {/* 05 — Current deployment truth */}
+          {/* 07 — Current deployment truth */}
           <Reveal stagger as="section">
             <ChapterHeading
-              eyebrow="05 · Cồn Hô hôm nay"
+              eyebrow="07 · Cồn Hô hôm nay"
               title="Mạng lưới hiện có, cùng những giới hạn hiện có."
               lead="Hai trạm cảm biến và một gateway tạo thành lần triển khai đầu tiên. Trạng thái dưới đây đến từ dữ liệu hệ thống; nó không thay cho kiểm chứng lắp đặt hay hiệu chuẩn ngoài hiện trường."
             />
@@ -472,10 +510,10 @@ export default async function HomePage() {
             </div>
           </Reveal>
 
-          {/* 06 — Field notes and learning */}
+          {/* 08 — Field notes and learning */}
           <Reveal stagger as="section" id="ghi-chep" className="scroll-mt-28">
             <ChapterHeading
-              eyebrow="06 · Những gì chúng tôi đang học"
+              eyebrow="08 · Những gì chúng tôi đang học"
               title="Ghi chép trong quá trình xây dựng."
               lead="Hiệu chuẩn, nghiên cứu ngưỡng, ghi chép hiện trường và các giả định dự án đang kiểm chứng."
             />
@@ -484,10 +522,10 @@ export default async function HomePage() {
             </div>
           </Reveal>
 
-          {/* 07 — Visual material and people */}
+          {/* 09 — Visual material and people */}
           <Reveal as="section">
             <ChapterHeading
-              eyebrow="07 · Hình ảnh / con người"
+              eyebrow="09 · Hình ảnh / con người"
               title="Hình ảnh dự án."
               lead="Cù lao, dòng sông, con người và phần cứng của mạng lưới đặt trên đó."
             />
@@ -498,7 +536,7 @@ export default async function HomePage() {
             </div>
           </Reveal>
 
-          {/* 08 — Report and contact.
+          {/* 10 — Report and contact.
               CONTACT AND REPORT ARE DIFFERENT THINGS. A report is an
               environmental observation that becomes a durable row in
               Supabase; a contact is a person wanting to reach the project.
@@ -507,7 +545,7 @@ export default async function HomePage() {
               mailto/tel/https, nothing posted through this site — since no
               server-side email provider exists to back a submission form. */}
           <Reveal stagger as="section" id="lien-he" className="scroll-mt-28">
-            <ChapterHeading eyebrow="08 · Cùng theo dõi" title="Một mạng lưới để đọc lại thay đổi ở Cồn Hô." lead="Theo dõi quan trắc, gửi ghi nhận hiện trường, hoặc liên hệ với nhóm dự án." />
+            <ChapterHeading eyebrow="10 · Cùng theo dõi" title="Một mạng lưới để đọc lại thay đổi ở Cồn Hô." lead="Theo dõi quan trắc, gửi ghi nhận hiện trường, hoặc liên hệ với nhóm dự án." />
             <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-border bg-border lg:grid-cols-[0.85fr_1.15fr]">
               <div className="flex flex-col gap-4 bg-background p-8 md:p-10">
                 <div className="flex items-center gap-2 text-foreground-muted">
