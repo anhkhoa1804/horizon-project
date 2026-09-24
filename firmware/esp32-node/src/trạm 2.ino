@@ -78,7 +78,7 @@ static const bool LORA_TEST_SHORT_PACKET = false;
 static const bool DEBUG_DISABLE_LORA_UART = false;
 static const uint8_t RAW_SAMPLES_PER_MINUTE = LORA_TEST_FAST_SEND ? 1 : 8;
 static const uint8_t MIN_VALID_RAW_SAMPLES = LORA_TEST_FAST_SEND ? 1 : 3;
-static const uint8_t MINUTE_RECORDS_PER_PACKET = LORA_TEST_FAST_SEND ? 1 : 5;
+static const uint8_t MINUTE_RECORDS_PER_PACKET = 1;
 static const uint32_t SAMPLE_INTERVAL_MS = LORA_TEST_FAST_SEND ? 5UL * 1000UL : 60UL * 1000UL;
 static const uint32_t RAW_SAMPLE_GAP_MS = 450;
 static const uint32_t RS485_INTER_REQUEST_GAP_MS = 500;
@@ -1425,8 +1425,9 @@ void sendAggregateIfReadySimple() {
     sequenceNumber += 1;
     pendingSequence = sequenceNumber;
     simpleTxAttempts = 0;
-    // Station 2 starts in a later window to reduce first-attempt collision.
-    simpleNextTxMs = millis() + 1100 + (esp_random() % 900);
+    // Station 2 uses a later slot so it does not collide with Station 1's
+    // one-minute first attempt.
+    simpleNextTxMs = millis() + 2600 + (esp_random() % 900);
     return;
   }
 
@@ -1453,8 +1454,8 @@ void sendAggregateIfReadySimple() {
     return;
   }
 
-  // Never give up. Different random window from Station 1 reduces lock-step collisions.
-  simpleNextTxMs = millis() + 2200 + (esp_random() % 3000);
+  // Never give up. Keep Station 2 retries in the later retry slot.
+  simpleNextTxMs = millis() + 4200 + (esp_random() % 2000);
 }
 
 void setup() {
@@ -1534,7 +1535,7 @@ void loop() {
   // Reply immediately when this station is selected by the gateway.
   sendAggregateIfReadySimple();
 
-  // Do not start another long sensor cycle while a five-minute packet is
+  // Do not start another long sensor cycle while a packet is
   // waiting for its ACK. This is especially important when sensors are
   // disconnected and their Modbus reads consume several seconds.
   if (pendingSequence != 0) {

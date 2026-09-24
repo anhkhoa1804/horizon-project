@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <driver/gpio.h>
 #include <esp_sleep.h>
+#include <esp_system.h>
 #include <esp_task_wdt.h>
 #include <WiFi.h>
 #include <WebServer.h>
@@ -73,7 +74,7 @@ static const uint32_t LORA_UART_BAUD = 9600;
 // RX hardening: larger UART buffer + pull-up + fast frame completion.
 static const size_t LORA_RX_BUFFER_BYTES = 8192;
 static const uint32_t SIMPLE_FRAME_IDLE_TIMEOUT_MS = 600;
-static const uint8_t SIMPLE_ACK_REPEAT_COUNT = 1;
+static const uint8_t SIMPLE_ACK_REPEAT_COUNT = 3;
 static const uint32_t SIMPLE_ACK_START_DELAY_MS = 50;
 static const uint32_t SIMPLE_ACK_REPEAT_GAP_MS = 150;
 static const uint32_t MODEM_BAUD_CANDIDATES[] = {115200, 9600, 57600, 38400, 19200, 230400};
@@ -156,6 +157,8 @@ static const uint8_t POLL_STATION_COUNT = 2;
 HardwareSerial loraSerial(1);
 HardwareSerial modemSerial(2);
 WebServer dashboardServer(80);
+
+RTC_DATA_ATTR static uint32_t rtcBootCount = 0;
 
 struct Station1DashboardSnapshot {
   bool valid = false;
@@ -334,6 +337,22 @@ void watchdogDelay(uint32_t ms) {
   while (millis() - startedAt < ms) {
     serviceWatchdog();
     delay(10);
+  }
+}
+
+const char *resetReasonName(esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON: return "POWERON/EN";
+    case ESP_RST_EXT: return "EXT_RESET";
+    case ESP_RST_SW: return "SOFTWARE";
+    case ESP_RST_PANIC: return "PANIC";
+    case ESP_RST_INT_WDT: return "INT_WDT";
+    case ESP_RST_TASK_WDT: return "TASK_WDT";
+    case ESP_RST_WDT: return "OTHER_WDT";
+    case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
+    case ESP_RST_BROWNOUT: return "BROWNOUT";
+    case ESP_RST_SDIO: return "SDIO";
+    default: return "UNKNOWN";
   }
 }
 
@@ -1211,7 +1230,7 @@ sendAt("AT+HTTPTERM", "OK", 2500);
   if (MODEM_VERBOSE_AT) Serial.println(actionResponse);
 
   const int httpStatus = parseHttpActionStatus(actionResponse, 1);
-  const int responseLength = parseHttpActionDataLength(actionResponse, 1);
+  const int responseLength = parseHttpActionLength(actionResponse, 1);
   Serial.printf("[HTTP] HTTPACTION POST status=%d len=%d\n", httpStatus, responseLength);
   printHttpActionDiagnostic(actionResponse, 1, millis() - actionStartedAt);
 
@@ -2495,7 +2514,13 @@ void setup() {
   // BO self-test relay luc boot: tranh xung dong/noise lam LoRa khoi dong sai.
 
   Serial.println();
+  rtcBootCount += 1;
+  const esp_reset_reason_t resetReason = esp_reset_reason();
   Serial.println("[HORIZON] Gateway dang khoi dong");
+  Serial.printf("[RESET] reason=%d (%s) rtc_boot=%lu\n",
+                static_cast<int>(resetReason),
+                resetReasonName(resetReason),
+                static_cast<unsigned long>(rtcBootCount));
   Serial.printf("[HORIZON] Gateway: %s\n", GATEWAY_ID);
   Serial.printf("[STATUS] green=%d yellow=%d red=%d buzzer=%d active=%s\n",
                 RELAY_GREEN_PIN,
@@ -2546,8 +2571,7 @@ loraSerial.setRxBufferSize(LORA_RX_BUFFER_BYTES);
 
 void loop() {
   serviceWatchdog();
-  updateStatusOutputs();
-
+                updateStatusOutputs();
   // LoRa has priority over the local web dashboard. Drain RX first,
   // service HTTP only while the UART is idle, then drain RX once more.
   readSimpleLoRaUart();

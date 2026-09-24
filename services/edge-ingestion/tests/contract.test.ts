@@ -174,7 +174,7 @@ describe("ingest contract", () => {
     assert.equal(db.getSnapshot().auditLogs.at(-1)?.status, "invalid_signature");
   });
 
-  it("rejects sensor fault payloads", async () => {
+  it("stores sensor fault payloads and records a fault event", async () => {
     const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
     const payload = basePayload({
       message_id: "contract-test-sensor-fault-001",
@@ -183,14 +183,12 @@ describe("ingest contract", () => {
     });
     const response = await ingestTelemetry(await buildRequest(payload), db, config, NOW);
 
-    assert.equal(response.ok, false);
-    if (!response.ok) {
-      assert.equal(response.error_code, "SENSOR_FAULT");
-    }
-
-    assert.equal(db.getSnapshot().environmentalReadings.length, 0);
-    assert.equal(db.getSnapshot().auditLogs.at(-1)?.status, "sensor_fault");
-    assert.equal(db.getSnapshot().environmentalEvents.some((event) => event.event_type === "SENSOR_FAULT"), true);
+    assert.equal(response.ok, true);
+    const snapshot = db.getSnapshot();
+    assert.equal(snapshot.environmentalReadings.length, 1);
+    assert.equal(snapshot.environmentalReadings[0]?.ec_probe_status, "fault");
+    assert.equal(snapshot.auditLogs.at(-1)?.status, "accepted");
+    assert.equal(snapshot.environmentalEvents.some((event) => event.event_type === "SENSOR_FAULT"), true);
   });
 
   it("rejects replay attack with timestamp too old", async () => {
@@ -252,6 +250,44 @@ describe("firmware gateway contract", () => {
     assert.equal(row?.ec_us_cm, 106);
     assert.equal(row?.raw_station_payload?.gateway_id, "GATEWAY_01");
     assert.equal("signal_strength_dbm" in payload, false);
+  });
+
+  it("stores a partial STATION_01 canonical payload when the EC probe is unavailable", async () => {
+    const db = new MockDb({}, otaCatalog, ["STATION_01"]);
+    const payload = {
+      contract_version: "v1",
+      reading_kind: "water",
+      device_id: "STATION_01",
+      firmware_version: "simple-qos1-wire",
+      message_id: "STATION_01-partial-1",
+      timestamp: NOW,
+      fault_flags: 1,
+      sequence: 2,
+      summary_minutes: 1,
+      sensor_height_cm: 350,
+      distance_cm: 262.6,
+      water_level: 87.4,
+      ec_ms_cm: null,
+      ec_us_cm: null,
+      temperature_c: null,
+      tds_ppm: null,
+      salinity: null,
+      salinity_ppm: null,
+      battery_voltage: 13.2,
+      battery_percent: 81.5,
+      sensor_status: { ec_probe: "fault", ultrasonic: "ok" },
+      raw_station_payload: { wire_protocol: "S1|...|CRC16", gateway_id: "GATEWAY_01", timestamp_semantics: "gateway_network_receipt_time" },
+    } as unknown as TelemetryPayloadV1;
+
+    const response = await handleIngestRequest(payload, { "x-gateway-token": "gateway-token-01" }, db, tokenConfig, NOW);
+
+    assert.equal(response.status, 200);
+    const snapshot = db.getSnapshot();
+    const row = snapshot.environmentalReadings[0];
+    assert.equal(row?.salinity, null);
+    assert.equal(row?.ec_probe_status, "fault");
+    assert.equal(row?.water_level, 87.4);
+    assert.equal(snapshot.environmentalEvents.some((event) => event.event_type === "SENSOR_FAULT"), true);
   });
 
   it("accepts the canonical STATION_02 soil payload emitted by the QoS1 gateway path", async () => {
@@ -409,10 +445,36 @@ describe("soil readings (reading_kind: soil)", () => {
     assert.equal(row?.soil_moisture_pct, 41.5);
   });
 
-  it("rejects a soil payload where every sensor is null (no information at all)", async () => {
+  it("accepts a soil heartbeat where every sensor is null but station health is present", async () => {
     const db = new MockDb({ STATION_02: SOIL_SECRET }, otaCatalog);
     const payload = soilPayload({
       message_id: "soil-test-003",
+      battery_voltage: 13.1,
+      battery_percent: 78.4,
+      soil: {
+        air_temp_c: null,
+        air_humidity_pct: null,
+        soil_temp_c: null,
+        soil_moisture_pct: null,
+        soil_ec_ms_cm: null,
+        soil_ph: null,
+      },
+    });
+
+    const response = await ingestTelemetry(await buildSoilRequest(payload), db, config, NOW);
+
+    assert.equal(response.ok, true);
+    const snapshot = db.getSnapshot();
+    assert.equal(snapshot.soilReadings.length, 1);
+    assert.equal(snapshot.soilReadings[0]?.soil_moisture_pct, null);
+    assert.equal(snapshot.soilReadings[0]?.soil_ph, null);
+    assert.equal(snapshot.healthLogs[0]?.battery_voltage, 13.1);
+  });
+
+  it("rejects a soil payload where every sensor and health field is null", async () => {
+    const db = new MockDb({ STATION_02: SOIL_SECRET }, otaCatalog);
+    const payload = soilPayload({
+      message_id: "soil-test-003-empty",
       soil: {
         air_temp_c: null,
         air_humidity_pct: null,
@@ -449,7 +511,7 @@ describe("soil readings (reading_kind: soil)", () => {
     }
   });
 
-  it("does not affect water-payload validation — salinity/water_level still required when reading_kind is absent", async () => {
+  it("still rejects a water payload with no water fields or health when reading_kind is absent", async () => {
     const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
     const payload = soilPayload({
       device_id: "STATION_01",
@@ -490,15 +552,15 @@ describe("soil readings (reading_kind: soil)", () => {
 });
 
 /**
- * A water-sensor fault is terminal and auditable, while a healthy water row
- * still needs the complete salinity/water-level pair. Soil remains partial by
- * design because each soil sensor is independently nullable.
+ * Water readings preserve partial station data too. A null salinity means the
+ * EC/salinity probe did not report, not that salinity was zero.
  */
 describe("signed v1 water payload validation", () => {
-  it("reports an explicit EC fault as SENSOR_FAULT even when salinity is null", async () => {
+  it("accepts a valid water_level when salinity is null and records the EC fault", async () => {
     const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
     const payload = basePayload({
       message_id: "water-ec-blocker-001",
+      fault_flags: 1,
       salinity: undefined,
       water_level: 51.0,
       sensor_status: { ec_probe: "fault", ultrasonic: "ok" },
@@ -506,21 +568,19 @@ describe("signed v1 water payload validation", () => {
 
     const response = await ingestTelemetry(await buildRequest(payload), db, config, NOW);
 
-    assert.equal(response.ok, false, "payload is rejected outright");
-    if (!response.ok) {
-      assert.equal(response.error_code, "SENSOR_FAULT");
-      assert.equal(response.retryable, false);
-    }
-
+    assert.equal(response.ok, true);
     const snapshot = db.getSnapshot();
-    assert.equal(snapshot.environmentalReadings.length, 0, "an incomplete signed-v1 row is not stored");
-    assert.equal(snapshot.auditLogs.at(-1)?.status, "sensor_fault");
+    assert.equal(snapshot.environmentalReadings.length, 1);
+    assert.equal(snapshot.environmentalReadings[0]?.salinity, null);
+    assert.equal(snapshot.environmentalReadings[0]?.water_level, 51.0);
+    assert.equal(snapshot.environmentalEvents.some((event) => event.event_type === "SENSOR_FAULT"), true);
   });
 
-  it("also discards it via SENSOR_FAULT when a salinity value IS present but the EC probe is faulted", async () => {
+  it("stores sensor fault status without rejecting the whole water row", async () => {
     const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
     const payload = basePayload({
       message_id: "water-ec-blocker-002",
+      fault_flags: 1,
       salinity: 1.1,
       water_level: 51.0,
       sensor_status: { ec_probe: "fault", ultrasonic: "ok" },
@@ -528,14 +588,11 @@ describe("signed v1 water payload validation", () => {
 
     const response = await ingestTelemetry(await buildRequest(payload), db, config, NOW);
 
-    assert.equal(response.ok, false);
-    if (!response.ok) {
-      assert.equal(response.error_code, "SENSOR_FAULT");
-    }
-
+    assert.equal(response.ok, true);
     const snapshot = db.getSnapshot();
-    assert.equal(snapshot.environmentalReadings.length, 0, "a faulted signed-v1 row is not stored");
-    assert.equal(snapshot.environmentalEvents.at(-1)?.event_type, "SENSOR_FAULT");
+    assert.equal(snapshot.environmentalReadings.length, 1);
+    assert.equal(snapshot.environmentalReadings[0]?.ec_probe_status, "fault");
+    assert.equal(snapshot.environmentalEvents.some((event) => event.event_type === "SENSOR_FAULT"), true);
   });
 
   it("contrasts with soil, which deliberately preserves a partial reading", async () => {

@@ -41,20 +41,28 @@ function hasRequiredReadingFields(payload: TelemetryPayloadV1): boolean {
     }
     // At least one sensor must have reported something — an entirely-null
     // reading carries no information and would just be noise.
-    return [soil.air_temp_c, soil.air_humidity_pct, soil.soil_temp_c, soil.soil_moisture_pct, soil.soil_ec_ms_cm, soil.soil_ph].some(
+    const hasMeasurement = [soil.air_temp_c, soil.air_humidity_pct, soil.soil_temp_c, soil.soil_moisture_pct, soil.soil_ec_ms_cm, soil.soil_ph].some(
       (v) => typeof v === "number" && Number.isFinite(v),
     );
+    const hasHealth = typeof payload.battery_voltage === "number" || typeof payload.battery_percent === "number" || typeof payload.signal_strength_dbm === "number";
+    return hasMeasurement || hasHealth;
   }
 
   return Boolean(
     payload.sensor_status?.ec_probe &&
       payload.sensor_status?.ultrasonic &&
-      Number.isFinite(payload.salinity) &&
-      Number.isFinite(payload.water_level),
+      (
+        Number.isFinite(payload.salinity) ||
+        Number.isFinite(payload.water_level) ||
+        Number.isFinite(payload.distance_cm) ||
+        typeof payload.battery_voltage === "number" ||
+        typeof payload.battery_percent === "number" ||
+        typeof payload.signal_strength_dbm === "number"
+      ),
   );
 }
 
-function isFaulty(payload: TelemetryPayloadV1): boolean {
+function hasWaterSensorFault(payload: TelemetryPayloadV1): boolean {
   // Soil readings don't use the whole-row ec_probe/ultrasonic fault model —
   // each of the six soil sensors independently reports null instead of a
   // value when it faults (see SoilMeasurements), rather than rejecting an
@@ -63,11 +71,7 @@ function isFaulty(payload: TelemetryPayloadV1): boolean {
     return false;
   }
 
-  if (payload.fault_flags > 0) {
-    return true;
-  }
-
-  return payload.sensor_status?.ec_probe === "fault" || payload.sensor_status?.ultrasonic === "fault";
+  return payload.fault_flags > 0;
 }
 
 function soilValuesInRange(payload: TelemetryPayloadV1): boolean {
@@ -115,6 +119,17 @@ async function emitAlertEvents(db: DbPort, payload: TelemetryPayloadV1, config: 
   // the registry. It is therefore persisted as a measurement, but never
   // promoted to HIGH_SALINITY from a hard-coded value here. The registry is
   // the only authority that may activate an environmental interpretation.
+
+  if (hasWaterSensorFault(payload)) {
+    events.push({
+      station_id: payload.device_id,
+      event_type: "SENSOR_FAULT",
+      severity: "critical",
+      message_id: payload.message_id,
+      details: { fault_flags: payload.fault_flags, sensor_status: payload.sensor_status },
+      timestamp: nowEpochSeconds,
+    });
+  }
 
   // Battery/signal are optional (see TelemetryPayloadV1) — only alert on
   // thresholds the device actually reported.
@@ -201,23 +216,6 @@ export async function ingestTelemetry(
       };
     }
 
-    // A station that explicitly reports a water-sensor fault is a valid
-    // contract message even when its affected measurement is null. Reject it
-    // as a terminal SENSOR_FAULT rather than mislabelling it MISSING_FIELD.
-    // We still never manufacture a number or store a partial water row.
-    if (isFaulty(payload)) {
-      await db.insertAuditLog(auditRow(payload, "sensor_fault", "sensor fault reported by node", nowEpochSeconds));
-      await db.insertEvent({
-        station_id: payload.device_id,
-        event_type: "SENSOR_FAULT",
-        severity: "critical",
-        message_id: payload.message_id,
-        details: { fault_flags: payload.fault_flags, sensor_status: payload.sensor_status },
-        timestamp: nowEpochSeconds,
-      });
-      return { ok: false, error_code: "SENSOR_FAULT", message: "sensor fault reported by node", retryable: false };
-    }
-
     if (!hasRequiredReadingFields(payload)) {
       await db.insertAuditLog(auditRow(payload, "missing_field", "required reading field missing", nowEpochSeconds));
       return { ok: false, error_code: "MISSING_FIELD", message: "required reading field missing", retryable: false };
@@ -226,8 +224,8 @@ export async function ingestTelemetry(
     const valuesInRange =
       kind === "soil"
         ? soilValuesInRange(payload)
-        : inRange(payload.salinity as number, 0, 50) &&
-          inRange(payload.water_level as number, -100, 1000) &&
+        : optionalInRange(payload.salinity, 0, 50) &&
+          optionalInRange(payload.water_level, -100, 1000) &&
           optionalInRange(payload.salinity_ppm, 0, 100000) &&
           optionalInRange(payload.sensor_height_cm, 0, 10000) &&
           optionalInRange(payload.distance_cm, -100, 10000) &&
@@ -268,9 +266,9 @@ export async function ingestTelemetry(
         : await db.insertEnvironmental({
             message_id: payload.message_id,
             station_id: payload.device_id,
-            salinity: payload.salinity as number,
+            salinity: payload.salinity ?? null,
             salinity_ppm: payload.salinity_ppm ?? null,
-            water_level: payload.water_level as number,
+            water_level: payload.water_level ?? null,
             sensor_height_cm: payload.sensor_height_cm ?? null,
             distance_cm: payload.distance_cm ?? null,
             ec_ms_cm: payload.ec_ms_cm ?? null,

@@ -39,22 +39,21 @@ function hasRequiredReadingFields(payload) {
     if (!soil) {
       return false;
     }
-    return [soil.air_temp_c, soil.air_humidity_pct, soil.soil_temp_c, soil.soil_moisture_pct, soil.soil_ec_ms_cm, soil.soil_ph].some(
+    const hasMeasurement = [soil.air_temp_c, soil.air_humidity_pct, soil.soil_temp_c, soil.soil_moisture_pct, soil.soil_ec_ms_cm, soil.soil_ph].some(
       (v) => typeof v === "number" && Number.isFinite(v)
     );
+    const hasHealth = typeof payload.battery_voltage === "number" || typeof payload.battery_percent === "number" || typeof payload.signal_strength_dbm === "number";
+    return hasMeasurement || hasHealth;
   }
   return Boolean(
-    payload.sensor_status?.ec_probe && payload.sensor_status?.ultrasonic && Number.isFinite(payload.salinity) && Number.isFinite(payload.water_level)
+    payload.sensor_status?.ec_probe && payload.sensor_status?.ultrasonic && (Number.isFinite(payload.salinity) || Number.isFinite(payload.water_level) || Number.isFinite(payload.distance_cm) || typeof payload.battery_voltage === "number" || typeof payload.battery_percent === "number" || typeof payload.signal_strength_dbm === "number")
   );
 }
-function isFaulty(payload) {
+function hasWaterSensorFault(payload) {
   if (readingKind(payload) === "soil") {
     return false;
   }
-  if (payload.fault_flags > 0) {
-    return true;
-  }
-  return payload.sensor_status?.ec_probe === "fault" || payload.sensor_status?.ultrasonic === "fault";
+  return payload.fault_flags > 0;
 }
 function soilValuesInRange(payload) {
   const soil = payload.soil;
@@ -90,6 +89,16 @@ async function emitAlertEvents(db, payload, config, nowEpochSeconds) {
   const lowBatteryVoltage = config.lowBatteryVoltage ?? 3.6;
   const lowSignalStrengthDbm = config.lowSignalStrengthDbm ?? -95;
   const events = [];
+  if (hasWaterSensorFault(payload)) {
+    events.push({
+      station_id: payload.device_id,
+      event_type: "SENSOR_FAULT",
+      severity: "critical",
+      message_id: payload.message_id,
+      details: { fault_flags: payload.fault_flags, sensor_status: payload.sensor_status },
+      timestamp: nowEpochSeconds
+    });
+  }
   if (typeof payload.battery_voltage === "number" && payload.battery_voltage < lowBatteryVoltage) {
     events.push({
       station_id: payload.device_id,
@@ -151,23 +160,11 @@ async function ingestTelemetry(request, db, config, nowEpochSeconds = Math.floor
         retryable: false
       };
     }
-    if (isFaulty(payload)) {
-      await db.insertAuditLog(auditRow(payload, "sensor_fault", "sensor fault reported by node", nowEpochSeconds));
-      await db.insertEvent({
-        station_id: payload.device_id,
-        event_type: "SENSOR_FAULT",
-        severity: "critical",
-        message_id: payload.message_id,
-        details: { fault_flags: payload.fault_flags, sensor_status: payload.sensor_status },
-        timestamp: nowEpochSeconds
-      });
-      return { ok: false, error_code: "SENSOR_FAULT", message: "sensor fault reported by node", retryable: false };
-    }
     if (!hasRequiredReadingFields(payload)) {
       await db.insertAuditLog(auditRow(payload, "missing_field", "required reading field missing", nowEpochSeconds));
       return { ok: false, error_code: "MISSING_FIELD", message: "required reading field missing", retryable: false };
     }
-    const valuesInRange = kind === "soil" ? soilValuesInRange(payload) : inRange(payload.salinity, 0, 50) && inRange(payload.water_level, -100, 1e3) && optionalInRange(payload.salinity_ppm, 0, 1e5) && optionalInRange(payload.sensor_height_cm, 0, 1e4) && optionalInRange(payload.distance_cm, -100, 1e4) && optionalInRange(payload.ec_ms_cm, 0, 20) && optionalInRange(payload.ec_us_cm, 0, 2e4) && optionalInRange(payload.temperature_c, -10, 80) && optionalInRange(payload.tds_ppm, 0, 1e5) && (typeof payload.battery_voltage !== "number" || inRange(payload.battery_voltage, 2.5, 18)) && optionalInRange(payload.battery_percent, 0, 100) && (typeof payload.signal_strength_dbm !== "number" || inRange(payload.signal_strength_dbm, -130, -30));
+    const valuesInRange = kind === "soil" ? soilValuesInRange(payload) : optionalInRange(payload.salinity, 0, 50) && optionalInRange(payload.water_level, -100, 1e3) && optionalInRange(payload.salinity_ppm, 0, 1e5) && optionalInRange(payload.sensor_height_cm, 0, 1e4) && optionalInRange(payload.distance_cm, -100, 1e4) && optionalInRange(payload.ec_ms_cm, 0, 20) && optionalInRange(payload.ec_us_cm, 0, 2e4) && optionalInRange(payload.temperature_c, -10, 80) && optionalInRange(payload.tds_ppm, 0, 1e5) && (typeof payload.battery_voltage !== "number" || inRange(payload.battery_voltage, 2.5, 18)) && optionalInRange(payload.battery_percent, 0, 100) && (typeof payload.signal_strength_dbm !== "number" || inRange(payload.signal_strength_dbm, -130, -30));
     if (!valuesInRange) {
       await db.insertAuditLog(auditRow(payload, "value_out_of_range", "value out of accepted range", nowEpochSeconds));
       return { ok: false, error_code: "VALUE_OUT_OF_RANGE", message: "value out of accepted range", retryable: false };
@@ -193,9 +190,9 @@ async function ingestTelemetry(request, db, config, nowEpochSeconds = Math.floor
     }) : await db.insertEnvironmental({
       message_id: payload.message_id,
       station_id: payload.device_id,
-      salinity: payload.salinity,
+      salinity: payload.salinity ?? null,
       salinity_ppm: payload.salinity_ppm ?? null,
-      water_level: payload.water_level,
+      water_level: payload.water_level ?? null,
       sensor_height_cm: payload.sensor_height_cm ?? null,
       distance_cm: payload.distance_cm ?? null,
       ec_ms_cm: payload.ec_ms_cm ?? null,

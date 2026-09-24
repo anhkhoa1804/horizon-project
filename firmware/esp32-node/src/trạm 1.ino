@@ -26,7 +26,7 @@
       + 8 EC samples
       + filtered average
 
-  - Every 5 minutes:
+  - Every ~1 minute:
       + build aggregate
       + send through LoRa
       + wait for ACK
@@ -83,7 +83,7 @@ static const bool LORA_TEST_FAST_SEND = false;
 static const uint8_t RAW_SAMPLES_PER_MINUTE = LORA_TEST_FAST_SEND ? 1 : 8;
 static const uint8_t MIN_VALID_RAW_SAMPLES = LORA_TEST_FAST_SEND ? 1 : 3;
 
-static const uint8_t MINUTE_RECORDS_PER_PACKET = LORA_TEST_FAST_SEND ? 1 : 5;
+static const uint8_t MINUTE_RECORDS_PER_PACKET = 1;
 
 static const bool DEBUG_RAW_SENSOR_SAMPLES = false;
 static const bool DEBUG_SKIP_ULTRASONIC = false;
@@ -2853,10 +2853,10 @@ void sendAggregateIfReadySimple() {
     sequenceNumber += 1;
     pendingSequence = sequenceNumber;
     simpleTxAttempts = 0;
-    // Station 1 starts before Station 2, but not immediately after a sensor
-    // cycle. The short guard gives the LoRa module and gateway parser room to
-    // settle before the first frame.
-    simpleNextTxMs = millis() + 500 + (esp_random() % 900);
+    // Station 1 uses the early slot; Station 2 uses a later slot.
+    // Keeping the first attempts apart matters more now that both stations
+    // report every minute.
+    simpleNextTxMs = millis() + 350 + (esp_random() % 500);
     return;
   }
 
@@ -2883,9 +2883,8 @@ void sendAggregateIfReadySimple() {
     return;
   }
 
-  // Never give up. Use a wider random window than the first send to avoid
-  // repeating the same collision pattern with Station 2.
-  simpleNextTxMs = millis() + 1800 + (esp_random() % 3600);
+  // Never give up. Keep Station 1 retries in the earlier retry slot.
+  simpleNextTxMs = millis() + 1000 + (esp_random() % 900);
 }
 
 // ============================================================
@@ -3174,7 +3173,7 @@ void loop() {
   // If a poll just arrived and an aggregate is ready, transmit immediately.
   sendAggregateIfReadySimple();
 
-  // When a five-minute packet is waiting for ACK, keep the station in a short
+  // When a packet is waiting for ACK, keep the station in a short
   // LoRa retry loop. Starting another sensor cycle here can block long enough
   // to miss ACK/retry windows and can also overwrite the aggregate buffer.
   if (pendingSequence != 0) {
@@ -3240,7 +3239,7 @@ void loop() {
 
 
   // ----------------------------------------------------------
-  // Add to 5-minute aggregate
+  // Add to aggregate
   // ----------------------------------------------------------
 
   pushAggregateMinute(
@@ -3260,7 +3259,7 @@ void loop() {
 
 
   // ----------------------------------------------------------
-  // Send every 5 minutes
+  // Send every 1 minute
   // ----------------------------------------------------------
 
   sendAggregateIfReadySimple();

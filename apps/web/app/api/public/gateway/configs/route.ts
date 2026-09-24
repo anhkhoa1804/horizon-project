@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 
 const defaultConfigs = [
-  { station_id: "STATION_01", sample_interval_seconds: 300, sleep_interval_seconds: 300, mode: "normal" },
-  { station_id: "STATION_02", sample_interval_seconds: 300, sleep_interval_seconds: 300, mode: "normal" },
+  { station_id: "STATION_01", sample_interval_seconds: 60, sleep_interval_seconds: 60, mode: "normal" },
+  { station_id: "STATION_02", sample_interval_seconds: 60, sleep_interval_seconds: 60, mode: "normal" },
   { station_id: "STATION_03", sample_interval_seconds: 300, sleep_interval_seconds: 300, mode: "normal" },
 ];
 

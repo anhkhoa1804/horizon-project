@@ -91,10 +91,12 @@ function stationStatusLabel(status: string): string {
 }
 
 function defaultConfig(stationId: string): RuntimeConfig {
+  const intervalSeconds = stationId === "STATION_01" || stationId === "STATION_02" ? 60 : 300;
+
   return {
     station_id: stationId,
-    sample_interval_seconds: 300,
-    sleep_interval_seconds: 300,
+    sample_interval_seconds: intervalSeconds,
+    sleep_interval_seconds: intervalSeconds,
     mode: "normal",
   };
 }

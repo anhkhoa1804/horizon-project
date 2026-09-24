@@ -121,9 +121,9 @@ export type IngestResponse = IngestSuccess | IngestFailure;
 export interface EnvironmentalReadingRow {
   message_id: string;
   station_id: string;
-  salinity: number;
+  salinity: number | null;
   salinity_ppm?: number | null;
-  water_level: number;
+  water_level: number | null;
   sensor_height_cm?: number | null;
   distance_cm?: number | null;
   ec_ms_cm?: number | null;
