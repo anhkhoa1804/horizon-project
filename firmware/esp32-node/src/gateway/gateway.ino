@@ -3,8 +3,10 @@
 #include <esp_sleep.h>
 #include <esp_system.h>
 #include <esp_task_wdt.h>
+#include <mbedtls/sha256.h>
 #include <WiFi.h>
 #include <WebServer.h>
+#include "gateway_types.h"
 #include "gateway_secrets.h"
 /*
   HORIZON - Gateway node
@@ -134,6 +136,29 @@ static const bool DEBUG_LORA_RAW_UART = false;
 static const uint32_t BATCH_UPLOAD_RETRY_MS = 60000;
 static const uint32_t BATCH_LORA_SETTLE_MS = 700;
 static const uint32_t MODEM_POWER_OFF_SETTLE_MS = 300;
+// A registered LTE bearer does not guarantee that the carrier has delivered
+// NITZ, so make the modem obtain UTC explicitly before accepting its RTC.
+static const uint32_t NETWORK_REGISTRATION_TIMEOUT_MS = 60000;
+static const uint32_t NETWORK_REGISTRATION_RETRY_MS = 2000;
+static const uint8_t CLOCK_NTP_MAX_ATTEMPTS = 3;
+static const uint32_t CLOCK_NTP_TIMEOUT_MS = 65000;
+static const uint32_t CLOCK_NTP_RETRY_DELAY_MS = 5000;
+// First use a global anycast service. The numeric second attempt reaches the
+// same service without requiring a DNS lookup, so a field log can distinguish
+// a DNS problem from a UDP/123 path problem. The third attempt retains the
+// pool as an independent service fallback.
+static const char *CLOCK_NTP_SERVERS[] = {
+  "time.cloudflare.com",
+  "162.159.200.1",
+  "pool.ntp.org",
+};
+static const size_t CLOCK_NTP_SERVER_COUNT = sizeof(CLOCK_NTP_SERVERS) / sizeof(CLOCK_NTP_SERVERS[0]);
+// A cellular module can return an unset/default RTC that is syntactically
+// valid (the observed example was 2070-01-01). Anchor trust to the image's
+// build date instead of accepting any year through 2100. The five-year forward
+// window does not expire immediately, while a future rebuild naturally moves it.
+static const uint32_t CLOCK_PAST_BUILD_SKEW_SECONDS = 366UL * 24UL * 60UL * 60UL;
+static const uint32_t CLOCK_FUTURE_BUILD_SKEW_SECONDS = 5UL * 366UL * 24UL * 60UL * 60UL;
 // Do not hold one station's fresh packet indefinitely while waiting for the
 // other station. Independent deep-sleep phases can be offset after boot or a
 // missed ACK, so upload the available station after this window.
@@ -247,6 +272,11 @@ static bool pairedBatchTriggered = false;
 static bool batchStation1Uploaded = false;
 static bool batchStation2Uploaded = false;
 static bool modemHttpBusy = false;
+// A rejected transport header is a firmware/modem configuration fault, not a
+// transient delivery failure. Keep the staged reading, but do not POST the
+// exact same malformed request every retry interval. A reboot with corrected
+// firmware/configuration clears this guard and starts a fresh modem session.
+static bool gatewayHeaderSerializationBlocked = false;
 static uint32_t lastBatchUploadAttemptMs = 0;
 static uint32_t lastSimpleLoRaActivityMs = 0;
 static uint32_t completedBatchCount = 0;
@@ -621,12 +651,27 @@ void printHttpActionDiagnostic(const String &response, uint8_t method, uint32_t 
 }
 
 void printSafeHttpResponse(const String &response) {
-  String compact = response;
+  const int jsonStart = response.indexOf('{');
+  const int jsonEnd = response.lastIndexOf('}');
+  if (jsonStart < 0 || jsonEnd < jsonStart) {
+    Serial.println("[HTTP BODY] unavailable/non-JSON response");
+    return;
+  }
+
+  // HTTPREAD includes AT echoes and modem markers around the body. Emit only
+  // the Edge JSON object, never the surrounding modem traffic or headers.
+  String compact = response.substring(jsonStart, jsonEnd + 1);
   if (strlen(GATEWAY_INGEST_TOKEN) > 0) compact.replace(GATEWAY_INGEST_TOKEN, "[redacted]");
   compact.replace("\r", " ");
   compact.replace("\n", " ");
   compact.trim();
-  if (compact.length() > 240) compact = compact.substring(0, 240) + "...";
+  // Guarded Edge diagnostics contain only fixed-schema metadata, never a raw
+  // payload or credential. Keep the full result visible for the physical
+  // modem investigation; ordinary server responses remain short.
+  const bool guardedDiagnostic = compact.indexOf("\"auth_diagnostic\"") >= 0 ||
+                                 compact.indexOf("\"base_field_diagnostic\"") >= 0;
+  const size_t maxLogLength = guardedDiagnostic ? 1024 : 240;
+  if (compact.length() > maxLogLength) compact = compact.substring(0, maxLogLength) + "...";
   Serial.printf("[HTTP BODY] %s\n", compact.length() ? compact.c_str() : "(empty)");
 }
 
@@ -667,19 +712,63 @@ String modemReadUntil(uint32_t timeoutMs) {
   return response;
 }
 
+// Some SIMCom commands acknowledge immediately and then report their actual
+// result asynchronously. Do not mistake that initial OK for a completed NTP
+// synchronization; wait for the command's URC instead.
+String modemReadUntilMarker(const char *marker, uint32_t timeoutMs) {
+  String response;
+  response.reserve(512);
+  const uint32_t startedAt = millis();
+  uint32_t dropped = 0;
+
+  while (millis() - startedAt < timeoutMs) {
+    serviceWatchdog();
+    readSimpleLoRaUart();
+    while (modemSerial.available() > 0) {
+      const uint8_t b = static_cast<uint8_t>(modemSerial.read());
+      if (b == '\r' || b == '\n' || b == '\t' || (b >= 0x20 && b <= 0x7E)) {
+        if (response.length() < 4096) response += static_cast<char>(b);
+      } else {
+        dropped += 1;
+      }
+    }
+
+    if (response.indexOf(marker) >= 0 || response.indexOf("\r\nERROR\r\n") >= 0 ||
+        response.indexOf("+CME ERROR") >= 0) {
+      break;
+    }
+    watchdogDelay(10);
+  }
+
+  modemBinaryDropped += dropped;
+  return response;
+}
+
+String sendAtCapture(const String &command, uint32_t timeoutMs) {
+  if (activeModemBaud == 0) return "";
+  clearModemRx(30);
+  modemSerial.print(command);
+  modemSerial.print("\r\n");
+  return modemReadUntil(timeoutMs);
+}
+
 bool sendAt(const String &command, const char *expected = "OK", uint32_t timeoutMs = MODEM_TIMEOUT_MS) {
   if (activeModemBaud == 0) return false;
+  String safeCommand = command;
+  if (strlen(GATEWAY_INGEST_TOKEN) > 0) safeCommand.replace(GATEWAY_INGEST_TOKEN, "[redacted]");
   if (MODEM_VERBOSE_AT) {
     Serial.print("[MODEM] ");
-    Serial.println(command);
+    Serial.println(safeCommand);
   }
   clearModemRx(30);
   modemSerial.print(command);
   modemSerial.print("\r\n");
 const String response = modemReadUntil(timeoutMs);
   const bool ok = response.indexOf(expected) >= 0;
+  String safeResponse = response;
+  if (strlen(GATEWAY_INGEST_TOKEN) > 0) safeResponse.replace(GATEWAY_INGEST_TOKEN, "[redacted]");
   if (MODEM_VERBOSE_AT) {
-    if (response.length() > 0) Serial.println(response);
+    if (safeResponse.length() > 0) Serial.println(safeResponse);
     else Serial.println("[MODEM] (khong co phan hoi text)");
   } else if (!ok) {
     const bool optionalFailure =
@@ -688,12 +777,12 @@ const String response = modemReadUntil(timeoutMs);
       command.startsWith("AT+HTTPPARA=\"REDIR\"") ||
       command == "AT+NETOPEN";
     if (optionalFailure) return ok;
-    String compact = response;
+    String compact = safeResponse;
     compact.replace("\r", " ");
     compact.replace("\n", " ");
     compact.trim();
     if (compact.length() > 180) compact = compact.substring(0, 180) + "...";
-    Serial.printf("[MODEM FAIL] %s -> %s\n", command.c_str(), compact.length() ? compact.c_str() : "no-response");
+    Serial.printf("[MODEM FAIL] %s -> %s\n", safeCommand.c_str(), compact.length() ? compact.c_str() : "no-response");
   }
   return ok;
 }
@@ -718,11 +807,86 @@ bool sendAtDiagnostic(const String &command, const char *label, uint32_t timeout
   return ok;
 }
 
+int registrationStatusFrom(const String &response, const char *prefix) {
+  const int marker = response.indexOf(prefix);
+  if (marker < 0) return -1;
+  const int valueStart = marker + strlen(prefix);
+  int lineEnd = response.indexOf('\r', valueStart);
+  if (lineEnd < 0) lineEnd = response.indexOf('\n', valueStart);
+  if (lineEnd < 0) lineEnd = response.length();
+  String values = response.substring(valueStart, lineEnd);
+  values.trim();
+
+  // A read response is either <stat> or <n>,<stat>[,...].
+  const int comma = values.indexOf(',');
+  if (comma >= 0) values = values.substring(comma + 1);
+  values.trim();
+  return values.toInt();
+}
+
+bool isRegisteredNetworkStatus(int status) {
+  return status == 1 || status == 5;  // home or roaming registration
+}
+
+bool waitForNetworkRegistration() {
+  const uint32_t startedAt = millis();
+  uint8_t attempt = 0;
+
+  while (millis() - startedAt < NETWORK_REGISTRATION_TIMEOUT_MS) {
+    attempt += 1;
+    const int cereg = registrationStatusFrom(sendAtCapture("AT+CEREG?", 4000), "+CEREG:");
+    const int cgreg = registrationStatusFrom(sendAtCapture("AT+CGREG?", 4000), "+CGREG:");
+    const int creg = registrationStatusFrom(sendAtCapture("AT+CREG?", 4000), "+CREG:");
+    const bool registered = isRegisteredNetworkStatus(cereg) ||
+                            isRegisteredNetworkStatus(cgreg) ||
+                            isRegisteredNetworkStatus(creg);
+
+    Serial.printf("[NET] registration attempt=%u CEREG=%d CGREG=%d CREG=%d registered=%s\n",
+                  attempt, cereg, cgreg, creg, registered ? "yes" : "no");
+    if (registered) return true;
+
+    if (millis() - startedAt + NETWORK_REGISTRATION_RETRY_MS >= NETWORK_REGISTRATION_TIMEOUT_MS) {
+      break;
+    }
+    watchdogDelay(NETWORK_REGISTRATION_RETRY_MS);
+  }
+
+  Serial.println("[NET] registration timeout; khong attach du lieu khi chua dang ky mang");
+  return false;
+}
+
 void diagnoseSupabaseDns() {
   String dnsCommand = "AT+CDNSGIP=\"";
   dnsCommand += WEB_SERVER_HOST;
   dnsCommand += "\"";
   sendAtDiagnostic(dnsCommand, "DNS Supabase", 10000);
+}
+
+bool isIpv4Literal(const char *host) {
+  if (host == nullptr || *host == '\0') return false;
+  bool hasDot = false;
+  for (const char *p = host; *p != '\0'; ++p) {
+    if (*p == '.') {
+      hasDot = true;
+    } else if (*p < '0' || *p > '9') {
+      return false;
+    }
+  }
+  return hasDot;
+}
+
+bool diagnoseNtpDns(const char *host) {
+  if (isIpv4Literal(host)) {
+    Serial.printf("[CLOCK] NTP endpoint=%s dns=SKIPPED (IPv4 literal)\n", host);
+    return true;
+  }
+
+  String dnsCommand = "AT+CDNSGIP=\"";
+  dnsCommand += host;
+  dnsCommand += "\"";
+  const bool resolved = sendAtDiagnostic(dnsCommand, "DNS NTP", 10000);
+  Serial.printf("[CLOCK] NTP endpoint=%s dns=%s\n", host, resolved ? "OK" : "FAIL");
+  return resolved;
 }
 
 void configureHttpsForHttpStack() {
@@ -816,15 +980,31 @@ bool initModem() {
     Serial.println("[MODEM FAIL] SIM chua READY / PIN / SIM khong nhan");
     return false;
   }
+
+  // CTZU asks the modem to consume NITZ whenever the network supplies it.
+  // It is nonvolatile on the documented SIM7600/A76xx command family, but it
+  // is deliberately set each session so a prior configuration cannot leave it
+  // disabled. NITZ is opportunistic, not the proof of a valid clock below.
+  if (!sendAt("AT+CTZU=1", "OK", 3000)) {
+    Serial.println("[CLOCK] CTZU/NITZ enable unsupported or failed; se dung NTP ro rang");
+  } else {
+    Serial.println("[CLOCK] CTZU/NITZ auto-update enabled");
+  }
+  if (!sendAt("AT+CTZR=1", "OK", 3000)) {
+    Serial.println("[CLOCK] CTZR/NITZ report unsupported; CCLK van phai qua validation");
+  } else {
+    Serial.println("[CLOCK] CTZR/NITZ reporting enabled");
+  }
+
   sendAt("AT+COPS?", "OK", 5000);
   sendAt("AT+CPSI?", "OK", 5000);
   if (!sendAt("AT+CSQ", "OK", 3000)) {
-Serial.println("[MODEM FAIL] Khong doc duoc CSQ");
+ Serial.println("[MODEM FAIL] Khong doc duoc CSQ");
     return false;
   }
-  sendAt("AT+CREG?", "OK", 3000);
-  sendAt("AT+CGREG?", "OK", 3000);
-  sendAt("AT+CEREG?", "OK", 3000);
+  if (!waitForNetworkRegistration()) {
+    return false;
+  }
 
   String apnCommand = "AT+CGDCONT=1,\"IP\",\"";
   apnCommand += SIM_APN;
@@ -874,7 +1054,7 @@ bool isLeapYear(int year) {
 }
 
 uint32_t unixSecondsUtc(int year, int month, int day, int hour, int minute, int second) {
-  static const uint8_t daysBeforeMonth[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+  static const uint16_t daysBeforeMonth[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
   uint32_t days = 0;
   for (int y = 1970; y < year; ++y) days += isLeapYear(y) ? 366 : 365;
   days += daysBeforeMonth[month - 1] + day - 1;
@@ -882,25 +1062,151 @@ uint32_t unixSecondsUtc(int year, int month, int day, int hour, int minute, int 
   return days * 86400UL + hour * 3600UL + minute * 60UL + second;
 }
 
-bool syncGatewayClock() {
+uint8_t daysInMonth(int year, int month) {
+  static const uint8_t days[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  if (month == 2 && isLeapYear(year)) return 29;
+  return days[month - 1];
+}
+
+int buildMonth(const char *date) {
+  if (strncmp(date, "Jan", 3) == 0) return 1;
+  if (strncmp(date, "Feb", 3) == 0) return 2;
+  if (strncmp(date, "Mar", 3) == 0) return 3;
+  if (strncmp(date, "Apr", 3) == 0) return 4;
+  if (strncmp(date, "May", 3) == 0) return 5;
+  if (strncmp(date, "Jun", 3) == 0) return 6;
+  if (strncmp(date, "Jul", 3) == 0) return 7;
+  if (strncmp(date, "Aug", 3) == 0) return 8;
+  if (strncmp(date, "Sep", 3) == 0) return 9;
+  if (strncmp(date, "Oct", 3) == 0) return 10;
+  if (strncmp(date, "Nov", 3) == 0) return 11;
+  if (strncmp(date, "Dec", 3) == 0) return 12;
+  return 0;
+}
+
+uint32_t firmwareBuildEpochUtc() {
+  const char *date = __DATE__;  // "Mmm dd yyyy"
+  const char *time = __TIME__;  // "hh:mm:ss"
+  const int month = buildMonth(date);
+  const int day = atoi(date + 4);
+  const int year = atoi(date + 7);
+  const int hour = atoi(time);
+  const int minute = atoi(time + 3);
+  const int second = atoi(time + 6);
+  if (month == 0 || year < 2024 || day < 1 || day > daysInMonth(year, month) || hour > 23 || minute > 59 || second > 59) return 0;
+  return unixSecondsUtc(year, month, day, hour, minute, second);
+}
+
+String sanitizedClockValue(const String &value) {
+  String sanitized;
+  sanitized.reserve(min(static_cast<unsigned int>(value.length()), 32U));
+  for (size_t i = 0; i < value.length() && sanitized.length() < 32; ++i) {
+    const char c = value[i];
+    if ((c >= '0' && c <= '9') || c == '/' || c == ',' || c == ':' || c == '+' || c == '-') sanitized += c;
+    else sanitized += '?';
+  }
+  return sanitized;
+}
+
+bool isPlausibleNetworkUtc(int64_t utc) {
+  const uint32_t buildEpoch = firmwareBuildEpochUtc();
+  if (buildEpoch == 0) return false;
+  const int64_t earliest = static_cast<int64_t>(buildEpoch) - CLOCK_PAST_BUILD_SKEW_SECONDS;
+  const int64_t latest = static_cast<int64_t>(buildEpoch) + CLOCK_FUTURE_BUILD_SKEW_SECONDS;
+  return utc >= earliest && utc <= latest;
+}
+
+bool readValidatedGatewayClock() {
   clearModemRx(30);
   modemSerial.print("AT+CCLK?\r\n");
   const String response = modemReadUntil(5000);
   const int start = response.indexOf('\"');
   const int end = start >= 0 ? response.indexOf('\"', start + 1) : -1;
-  if (start < 0 || end < 0) return false;
+  if (start < 0 || end < 0) {
+    Serial.println("[CLOCK] raw=unavailable parsed_utc=unavailable clock_valid=no");
+    return false;
+  }
   const String value = response.substring(start + 1, end);
+  Serial.printf("[CLOCK] raw=%s\n", sanitizedClockValue(value).c_str());
   int yy, month, day, hour, minute, second, zoneQuarterHours;
   char sign;
-  if (sscanf(value.c_str(), "%d/%d/%d,%d:%d:%d%c%d", &yy, &month, &day, &hour, &minute, &second, &sign, &zoneQuarterHours) != 8 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+  if (sscanf(value.c_str(), "%d/%d/%d,%d:%d:%d%c%d", &yy, &month, &day, &hour, &minute, &second, &sign, &zoneQuarterHours) != 8 ||
+      yy < 0 || yy > 99 || month < 1 || month > 12 || day < 1 || day > daysInMonth(2000 + yy, month) ||
+      hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59 ||
+      (sign != '+' && sign != '-') || zoneQuarterHours < 0 || zoneQuarterHours > 56) {
+    Serial.println("[CLOCK] parsed_utc=unavailable clock_valid=no");
+    return false;
+  }
   const uint32_t localEpoch = unixSecondsUtc(2000 + yy, month, day, hour, minute, second);
   const int32_t offsetSeconds = zoneQuarterHours * 15L * 60L;
   const int64_t utc = sign == '+' ? static_cast<int64_t>(localEpoch) - offsetSeconds : static_cast<int64_t>(localEpoch) + offsetSeconds;
-  if (utc < 1704067200LL || utc > 4102444800LL) return false;
+  Serial.printf("[CLOCK] parsed_utc=%lld\n", static_cast<long long>(utc));
+  if (!isPlausibleNetworkUtc(utc)) {
+    Serial.println("[CLOCK] clock_valid=no");
+    return false;
+  }
   networkEpochAtSync = static_cast<uint32_t>(utc);
   networkClockSyncedAtMs = millis();
-  Serial.printf("[CLOCK] network UTC=%lu\n", static_cast<unsigned long>(networkEpochAtSync));
+  Serial.printf("[CLOCK] network UTC=%lu clock_valid=yes\n", static_cast<unsigned long>(networkEpochAtSync));
   return true;
+}
+
+int modemResultCode(const String &response, const char *marker) {
+  const int start = response.indexOf(marker);
+  if (start < 0) return -1;
+  const int valueStart = start + strlen(marker);
+  return response.substring(valueStart).toInt();
+}
+
+bool syncClockFromNtp(const char *server) {
+  if (!diagnoseNtpDns(server)) {
+    return false;
+  }
+
+  String configure = "AT+CNTP=\"";
+  configure += server;
+  configure += "\",0";  // request UTC, then CCLK's +00 converts directly to UTC.
+  const String setupResponse = sendAtCapture(configure, 5000);
+  if (setupResponse.indexOf("OK") < 0) {
+    Serial.println("[CLOCK] NTP configure=FAIL");
+    return false;
+  }
+
+  clearModemRx(30);
+  modemSerial.print("AT+CNTP\r\n");
+  const String response = modemReadUntilMarker("+CNTP:", CLOCK_NTP_TIMEOUT_MS);
+  const int result = modemResultCode(response, "+CNTP:");
+  Serial.printf("[CLOCK] NTP result=%d\n", result);
+  return result == 0;
+}
+
+bool syncGatewayClock() {
+  networkEpochAtSync = 0;
+  networkClockSyncedAtMs = 0;
+
+  // A carrier may have supplied NITZ after CTZU=1, so accept it only after
+  // parsing and plausibility validation. Otherwise use the modem's documented
+  // CNTP command to update its RTC from NTP; no timestamp is manufactured.
+  if (readValidatedGatewayClock()) return true;
+
+  for (uint8_t attempt = 1; attempt <= CLOCK_NTP_MAX_ATTEMPTS; ++attempt) {
+    const char *server = CLOCK_NTP_SERVERS[(attempt - 1) % CLOCK_NTP_SERVER_COUNT];
+    Serial.printf("[CLOCK] NTP sync attempt=%u/%u server=%s\n",
+                  attempt, CLOCK_NTP_MAX_ATTEMPTS, server);
+    const bool ntpUpdated = syncClockFromNtp(server);
+    if (ntpUpdated && readValidatedGatewayClock()) return true;
+
+    if (attempt < CLOCK_NTP_MAX_ATTEMPTS) {
+      Serial.printf("[CLOCK] NTP retry in %lus\n",
+                    static_cast<unsigned long>(CLOCK_NTP_RETRY_DELAY_MS / 1000UL));
+      watchdogDelay(CLOCK_NTP_RETRY_DELAY_MS);
+    }
+  }
+
+  networkEpochAtSync = 0;
+  networkClockSyncedAtMs = 0;
+  Serial.println("[CLOCK] NTP exhausted; clock_valid=no");
+  return false;
 }
 
 uint32_t gatewayReceiptTimestamp() {
@@ -911,6 +1217,160 @@ String attachGatewayReceiptTimestamp(String payload) {
   const String timestamp = String(gatewayReceiptTimestamp());
   payload.replace("\"timestamp\":0", "\"timestamp\":" + timestamp);
   return payload;
+}
+
+bool isSafeAtQuotedHeaderValue(const char *value) {
+  if (value == nullptr || *value == '\0') return false;
+  for (const char *p = value; *p != '\0'; ++p) {
+    // A quote, backslash, or line break could terminate/change the AT string.
+    if (*p == '\"' || *p == '\\' || *p == '\r' || *p == '\n') return false;
+  }
+  return true;
+}
+
+// A SHA-256 fingerprint distinguishes a stale provisioned firmware image from
+// a modem transport problem without disclosing the bearer token in Serial.
+// It is intentionally over the exact UTF-8 bytes passed to USERDATA: no trim,
+// normalization, or delimiter is added before hashing.
+String gatewayTokenFingerprint(const char *token) {
+  if (token == nullptr || *token == '\0') return "";
+
+  uint8_t digest[32];
+  mbedtls_sha256_context context;
+  mbedtls_sha256_init(&context);
+  mbedtls_sha256_starts(&context, 0);  // 0 = SHA-256, not SHA-224.
+  mbedtls_sha256_update(&context, reinterpret_cast<const unsigned char *>(token), strlen(token));
+  mbedtls_sha256_finish(&context, digest);
+  mbedtls_sha256_free(&context);
+
+  static const char hex[] = "0123456789abcdef";
+  char encoded[65];
+  for (size_t i = 0; i < sizeof(digest); ++i) {
+    encoded[i * 2] = hex[digest[i] >> 4];
+    encoded[i * 2 + 1] = hex[digest[i] & 0x0F];
+  }
+  encoded[64] = '\0';
+  return String(encoded);
+}
+
+String buildGatewayTokenHeader(const char *token) {
+  String header;
+  header.reserve(24 + strlen(token));
+  header += "x-gateway-token: ";
+  header += token;
+  return header;
+}
+
+void printSafeGatewayHeaderDiagnostic() {
+  Serial.println("[AUTH] ua_parameter=skipped");
+  Serial.println("[AUTH] userdata_mode=single-token-header");
+  Serial.println("[AUTH] userdata_header_count=1");
+  Serial.println("[AUTH] userdata_embedded_crlf=no");
+}
+
+bool setGatewayHttpHeaders() {
+  const size_t tokenLength = strlen(GATEWAY_INGEST_TOKEN);
+  Serial.printf("[AUTH] token_present=%s token_length=%u\n",
+                tokenLength > 0 ? "yes" : "no",
+                static_cast<unsigned int>(tokenLength));
+  const String tokenFingerprint = gatewayTokenFingerprint(GATEWAY_INGEST_TOKEN);
+  Serial.printf("[AUTH] token_fingerprint=%s\n",
+                tokenFingerprint.length() ? tokenFingerprint.c_str() : "unavailable");
+  printSafeGatewayHeaderDiagnostic();
+  if (!isSafeAtQuotedHeaderValue(GATEWAY_INGEST_TOKEN)) {
+    Serial.println("[AUTH] userdata_set=FAIL (missing or AT-unsafe token)");
+    return false;
+  }
+
+  const String headerBlock = buildGatewayTokenHeader(GATEWAY_INGEST_TOKEN);
+  String headerCommand = "AT+HTTPPARA=\"USERDATA\",\"";
+  headerCommand += headerBlock;
+  headerCommand += "\"";
+  const bool headerAccepted = sendAt(headerCommand, "OK", 3000);
+  Serial.printf("[AUTH] userdata_set=%s\n", headerAccepted ? "OK" : "FAIL");
+  return headerAccepted;
+}
+
+String payloadDiagnosticField(const String &payload, const char *field) {
+  String key = "\"";
+  key += field;
+  key += "\":";
+  const int keyStart = payload.indexOf(key);
+  if (keyStart < 0) return "missing";
+  const int valueStart = keyStart + key.length();
+  const bool quoted = valueStart < payload.length() && payload[valueStart] == '\"';
+  const int start = quoted ? valueStart + 1 : valueStart;
+  const int end = quoted ? payload.indexOf('\"', start) : payload.indexOf(',', start);
+  const int boundedEnd = end >= 0 ? end : payload.indexOf('}', start);
+  if (boundedEnd < start) return "invalid";
+
+  String value = payload.substring(start, boundedEnd);
+  if (value.length() > 80) value = value.substring(0, 80) + "...";
+  for (size_t i = 0; i < value.length(); ++i) {
+    const char c = value[i];
+    if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_' || c == '-' || c == '.')) value.setCharAt(i, '?');
+  }
+  return value;
+}
+
+void printSafePayloadDiagnostic(const String &payload) {
+  Serial.println("[PAYLOAD]");
+  Serial.printf("contract=%s\n", payloadDiagnosticField(payload, "contract_version").c_str());
+  Serial.printf("reading_kind=%s\n", payloadDiagnosticField(payload, "reading_kind").c_str());
+  Serial.printf("device=%s\n", payloadDiagnosticField(payload, "device_id").c_str());
+  Serial.printf("message_id=%s\n", payloadDiagnosticField(payload, "message_id").c_str());
+  Serial.printf("timestamp=%s\n", payloadDiagnosticField(payload, "timestamp").c_str());
+  Serial.printf("fault_flags=%s\n", payloadDiagnosticField(payload, "fault_flags").c_str());
+  Serial.printf("sequence=%s summary_minutes=%s\n",
+                payloadDiagnosticField(payload, "sequence").c_str(),
+                payloadDiagnosticField(payload, "summary_minutes").c_str());
+  Serial.printf("water distance_cm=%s water_level=%s ec_ms_cm=%s salinity=%s temp_c=%s tds_ppm=%s\n",
+                payloadDiagnosticField(payload, "distance_cm").c_str(),
+                payloadDiagnosticField(payload, "water_level").c_str(),
+                payloadDiagnosticField(payload, "ec_ms_cm").c_str(),
+                payloadDiagnosticField(payload, "salinity").c_str(),
+                payloadDiagnosticField(payload, "temperature_c").c_str(),
+                payloadDiagnosticField(payload, "tds_ppm").c_str());
+  Serial.printf("soil air_temp_c=%s air_humidity_pct=%s soil_temp_c=%s soil_moisture_pct=%s soil_ec_ms_cm=%s soil_salinity=%s soil_tds=%s soil_ph=%s\n",
+                payloadDiagnosticField(payload, "air_temp_c").c_str(),
+                payloadDiagnosticField(payload, "air_humidity_pct").c_str(),
+                payloadDiagnosticField(payload, "soil_temp_c").c_str(),
+                payloadDiagnosticField(payload, "soil_moisture_pct").c_str(),
+                payloadDiagnosticField(payload, "soil_ec_ms_cm").c_str(),
+                payloadDiagnosticField(payload, "soil_salinity").c_str(),
+                payloadDiagnosticField(payload, "soil_tds").c_str(),
+                payloadDiagnosticField(payload, "soil_ph").c_str());
+  Serial.printf("firmware=%s\n", payloadDiagnosticField(payload, "firmware_version").c_str());
+  Serial.printf("length=%u\n", static_cast<unsigned int>(payload.length()));
+}
+
+String readHttpResponseBody(int responseLength) {
+  // A guarded base-field diagnostic is larger than a normal Edge error but
+  // contains only booleans/types. Read it in full (bounded) so Serial can
+  // identify the malformed field without exposing request data.
+  const int readLength = responseLength > 0 ? min(responseLength, 1024) : 1024;
+  const String commands[] = {
+    String("AT+HTTPREAD=0,") + String(readLength),
+    String("AT+HTTPREAD=") + String(readLength),
+    String("AT+HTTPREAD"),
+  };
+
+  for (const String &command : commands) {
+    clearModemRx(20);
+    modemSerial.print(command);
+    modemSerial.print("\r\n");
+
+    // A76xx can return an immediate OK before +HTTPREAD. Wait for the data
+    // marker instead of treating that acknowledgement as the response body.
+    String response = modemReadUntilMarker("+HTTPREAD:", 5000);
+    if (response.indexOf("+HTTPREAD:") >= 0) {
+      // Drain the body and its final OK when they arrive just after the URC.
+      response += modemReadUntil(1000);
+      return response;
+    }
+  }
+
+  return "";
 }
 
 String httpGet(const char *url) {
@@ -934,15 +1394,10 @@ String httpGet(const char *url) {
   // so do not send that unsupported command.
   (void)url;
 
-  String headerCommand = "AT+HTTPPARA=\"USERDATA\",\"User-Agent: HORIZON-Gateway/1.0\\r\\n";
-  headerCommand += "x-contract-version: v1\\r\\n";
-  if (strlen(GATEWAY_INGEST_TOKEN) > 0) {
-    headerCommand += "x-gateway-token: ";
-    headerCommand += GATEWAY_INGEST_TOKEN;
-    headerCommand += "\\r\\n";
+  if (!setGatewayHttpHeaders()) {
+    sendAt("AT+HTTPTERM", "OK", 3000);
+    return "";
   }
-  headerCommand += "\"";
-  sendAt(headerCommand, "OK", 3000);
 
   clearModemRx(30);
   modemSerial.print("AT+HTTPACTION=0\r\n");
@@ -1135,12 +1590,6 @@ void maybeEnterGatewaySleep() {
   esp_deep_sleep_start();
 }
 
-enum HttpPostOutcome : uint8_t {
-  HTTP_POST_DELIVERED,
-  HTTP_POST_TERMINAL_REJECTION,
-  HTTP_POST_RETRY,
-};
-
 HttpPostOutcome httpPostJson(const String &payload) {
   if (!MODEM_ENABLED) {
     Serial.println("[HTTP] Bo POST: MODEM_ENABLED=false");
@@ -1154,6 +1603,7 @@ HttpPostOutcome httpPostJson(const String &payload) {
 
   Serial.printf("[HTTP] POST %u byte -> %s\n",
                 static_cast<unsigned int>(payload.length()), WEB_SERVER_URL);
+  printSafePayloadDiagnostic(payload);
 
   // Clean previous session. ERROR here is harmless if no session exists.
   sendAt("AT+HTTPTERM", "OK", 2500);
@@ -1182,15 +1632,11 @@ HttpPostOutcome httpPostJson(const String &payload) {
   // This modem firmware accepts https:// URLs directly. AT+HTTPSSL=1 is unsupported
   // on the tested firmware and only creates log noise, so it is intentionally skipped.
 
-  String headerCommand = "AT+HTTPPARA=\"USERDATA\",\"User-Agent: HORIZON-Gateway/1.0\\r\\n";
-  headerCommand += "x-contract-version: v1\\r\\n";
-  if (strlen(GATEWAY_INGEST_TOKEN) > 0) {
-    headerCommand += "x-gateway-token: ";
-    headerCommand += GATEWAY_INGEST_TOKEN;
-    headerCommand += "\\r\\n";
+  if (!setGatewayHttpHeaders()) {
+    Serial.println("[HTTP FAIL] Khong the dat HTTP headers for transport probe; giu goi de thu lai");
+    sendAt("AT+HTTPTERM", "OK", 2500);
+    return HTTP_POST_RETRY;
   }
-  headerCommand += "\"";
-  sendAt(headerCommand, "OK", 3000);
 
   if (!sendAt("AT+HTTPPARA=\"CONTENT\",\"application/json\"", "OK", 5000)) {
     Serial.println("[HTTP FAIL] CONTENT application/json");
@@ -1251,28 +1697,25 @@ sendAt("AT+HTTPTERM", "OK", 2500);
   // intentionally not retried forever: it did not create a DB row, and the
   // serial log names it as a rejected payload rather than an upload success.
   bool terminalRejection = false;
+  bool retryableHeaderSerializationFailure = false;
   if (httpStatus > 0) {
-    clearModemRx(20);
-    if (responseLength > 0) {
-      const int readLength = min(responseLength, 512);
-      modemSerial.printf("AT+HTTPREAD=0,%d\r\n", readLength);
-    } else {
-      modemSerial.print("AT+HTTPREAD\r\n");
-    }
-    String readResponse = modemReadUntil(5000);
-    if (responseLength > 0 && readResponse.indexOf("+HTTPREAD") < 0) {
-      clearModemRx(20);
-      modemSerial.print("AT+HTTPREAD\r\n");
-      readResponse = modemReadUntil(5000);
-    }
+    String readResponse = readHttpResponseBody(responseLength);
     if (readResponse.length() > 0) {
       printSafeHttpResponse(readResponse);
       terminalRejection = readResponse.indexOf("\"retryable\":false") >= 0;
+      retryableHeaderSerializationFailure = readResponse.indexOf("x-contract-version header does not match payload.contract_version") >= 0;
+    } else if (responseLength > 0) {
+      Serial.println("[HTTP BODY] unavailable (HTTPREAD returned no data)");
     }
   }
 
   sendAt("AT+HTTPTERM", "OK", 3000);
   if (success) return HTTP_POST_DELIVERED;
+  if (retryableHeaderSerializationFailure) {
+    gatewayHeaderSerializationBlocked = true;
+    Serial.println("[HTTP BLOCKED] Contract header serialization mismatch; giu goi, dung auto-retry den khi reboot/flash firmware da sua");
+    return HTTP_POST_RETRY;
+  }
   if (terminalRejection) {
     Serial.println("[HTTP REJECTED] Payload khong retryable; khong co DB reading duoc tao");
     return HTTP_POST_TERMINAL_REJECTION;
@@ -2100,6 +2543,10 @@ void servicePairedBatchUpload() {
   }
 
   if (!pairedBatchTriggered) return;
+  if (gatewayHeaderSerializationBlocked) {
+    Serial.println("[BATCH] USERDATA header da bi Edge tu choi; giu goi, khong POST lai den khi reboot/flash firmware da sua");
+    return;
+  }
   if (loraSerial.available() > 0) return;
   if (lastSimpleLoRaActivityMs != 0 && millis() - lastSimpleLoRaActivityMs < BATCH_LORA_SETTLE_MS) return;
   if (lastBatchUploadAttemptMs != 0 && millis() - lastBatchUploadAttemptMs < BATCH_UPLOAD_RETRY_MS) return;
@@ -2136,7 +2583,7 @@ void servicePairedBatchUpload() {
   // Give LoRa parser a chance between the two HTTP transactions.
   readSimpleLoRaUart();
 
-  if (!batchStation2Uploaded) {
+  if (!batchStation2Uploaded && !gatewayHeaderSerializationBlocked) {
     Serial.println("[BATCH] Upload STATION_02...");
     const HttpPostOutcome outcome = httpPostJson(attachGatewayReceiptTimestamp(pendingUploadStation2));
     batchStation2Uploaded = outcome != HTTP_POST_RETRY;
@@ -2151,6 +2598,12 @@ void servicePairedBatchUpload() {
     finishPairedBatchIfDone();
     lastBatchUploadAttemptMs = 0;
   } else {
+    if (gatewayHeaderSerializationBlocked) {
+      Serial.printf("[BATCH] Giu S1=%s S2=%s; auto-retry bi khoa do USERDATA contract mismatch\n",
+                    batchStation1Uploaded ? "OK" : "PENDING",
+                    batchStation2Uploaded ? "OK" : "PENDING");
+      return;
+    }
     Serial.printf("[BATCH] Con loi S1=%s S2=%s -> giu du lieu, thu lai sau %lus\n",
                   batchStation1Uploaded ? "OK" : "PENDING",
                   batchStation2Uploaded ? "OK" : "PENDING",

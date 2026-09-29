@@ -19,7 +19,7 @@ serve(async (req: Request) => {
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Headers":
-          "authorization, x-client-info, apikey, content-type, x-contract-version, x-gateway-token",
+          "authorization, x-client-info, apikey, content-type, x-device-id, x-timestamp, x-signature, x-contract-version, x-gateway-token",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
       },
     });
@@ -34,11 +34,11 @@ serve(async (req: Request) => {
     SUPABASE_SERVICE_ROLE_KEY: readEnv("SUPABASE_SERVICE_ROLE_KEY"),
     MAX_TIMESTAMP_DRIFT_SECONDS: readEnv("MAX_TIMESTAMP_DRIFT_SECONDS"),
     DEFAULT_CONTRACT_VERSION: readEnv("DEFAULT_CONTRACT_VERSION"),
+    SALINITY_WARNING_LEVEL: readEnv("SALINITY_WARNING_LEVEL"),
+    SALINITY_CRITICAL_LEVEL: readEnv("SALINITY_CRITICAL_LEVEL"),
     LOW_BATTERY_VOLTAGE: readEnv("LOW_BATTERY_VOLTAGE"),
     LOW_SIGNAL_STRENGTH_DBM: readEnv("LOW_SIGNAL_STRENGTH_DBM"),
     GATEWAY_INGEST_TOKEN: readEnv("GATEWAY_INGEST_TOKEN"),
-    GATEWAY_INGEST_DIAGNOSTICS: readEnv("GATEWAY_INGEST_DIAGNOSTICS"),
-    GATEWAY_AUTH_DIAGNOSTICS: readEnv("GATEWAY_AUTH_DIAGNOSTICS"),
   };
 
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -56,6 +56,9 @@ serve(async (req: Request) => {
   }
 
   const headers: Record<string, string> = {
+    "x-device-id": req.headers.get("x-device-id") ?? "",
+    "x-timestamp": req.headers.get("x-timestamp") ?? "",
+    "x-signature": req.headers.get("x-signature") ?? "",
     "x-contract-version": req.headers.get("x-contract-version") ?? "",
     "x-gateway-token": req.headers.get("x-gateway-token") ?? "",
   };

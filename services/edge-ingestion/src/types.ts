@@ -43,7 +43,12 @@ export interface TelemetryPayloadV1 {
   device_id: string;
   message_id: string;
   timestamp: number;
-  /** Required when reading_kind is "water" (the default); absent when "soil". */
+  /**
+   * Water sensor branches are independently optional: null/omitted means the
+   * corresponding sensor did not provide a valid reading, never numeric zero.
+   * Edge validation still requires at least one valid water measurement or
+   * health field for a water payload.
+   */
   salinity?: number;
   salinity_ppm?: number;
   water_level?: number;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { handleIngestRequest } from "../src/httpHandler.js";
+import { handleIngestFromEnv, handleIngestRequest } from "../src/httpHandler.js";
 import { ingestTelemetry } from "../src/ingest.js";
 import { MockDb } from "../src/mockDb.js";
 import type { IngestConfig } from "../src/ingest.js";
@@ -172,6 +172,199 @@ describe("ingest contract", () => {
 
     assert.equal(db.getSnapshot().environmentalReadings.length, 0);
     assert.equal(db.getSnapshot().auditLogs.at(-1)?.status, "invalid_signature");
+  });
+
+  it("emits only a received-token fingerprint when the guarded auth diagnostic is enabled", async () => {
+    const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
+    const payload = basePayload({ message_id: "contract-test-auth-diagnostic-001" });
+    const response = await handleIngestFromEnv(
+      payload,
+      { "x-gateway-token": "wrong-token", "x-contract-version": payload.contract_version },
+      db,
+      {
+        DEFAULT_CONTRACT_VERSION: "v1",
+        MAX_TIMESTAMP_DRIFT_SECONDS: "300",
+        GATEWAY_INGEST_TOKEN: "gateway-token-01",
+        GATEWAY_AUTH_DIAGNOSTICS: "1",
+      },
+      NOW,
+    );
+
+    assert.equal(response.status, 401);
+    assert.deepEqual(response.body.auth_diagnostic, {
+      received_contract_version: "v1",
+      received_token_present: true,
+      received_token_length: 11,
+      received_token_fingerprint: "5645a758e6a8f12b6a2715cc22565a9f68d1ed73d98d33a1c5adf99277cd0b73",
+    });
+    assert.equal(JSON.stringify(response.body).includes("gateway-token-01"), false);
+  });
+
+  it("does not emit authentication diagnostics while the feature flag is disabled", async () => {
+    const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
+    const payload = basePayload({ message_id: "contract-test-auth-diagnostic-off-001" });
+    const response = await handleIngestFromEnv(
+      payload,
+      { "x-gateway-token": "wrong-token", "x-contract-version": payload.contract_version },
+      db,
+      {
+        DEFAULT_CONTRACT_VERSION: "v1",
+        MAX_TIMESTAMP_DRIFT_SECONDS: "300",
+        GATEWAY_INGEST_TOKEN: "gateway-token-01",
+      },
+      NOW,
+    );
+
+    assert.equal(response.status, 401);
+    assert.equal("auth_diagnostic" in response.body, false);
+  });
+
+  it("identifies a missing base firmware_version only when guarded ingest diagnostics are enabled", async () => {
+    const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
+    const payload = basePayload({ message_id: "contract-test-base-diagnostic-firmware-001" });
+    delete (payload as Partial<TelemetryPayloadV1>).firmware_version;
+    const response = await handleIngestFromEnv(
+      payload,
+      { "x-gateway-token": "gateway-token-01", "x-contract-version": "v1" },
+      db,
+      {
+        DEFAULT_CONTRACT_VERSION: "v1",
+        MAX_TIMESTAMP_DRIFT_SECONDS: "300",
+        GATEWAY_INGEST_TOKEN: "gateway-token-01",
+        GATEWAY_INGEST_DIAGNOSTICS: "1",
+        GATEWAY_AUTH_DIAGNOSTICS: "1",
+      },
+      NOW,
+    );
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(response.body.base_field_diagnostic, {
+      payload_is_object: true,
+      contract_version_present: true, contract_version_type: "string", contract_version_nonempty: true,
+      device_id_present: true, device_id_type: "string", device_id_nonempty: true,
+      message_id_present: true, message_id_type: "string", message_id_nonempty: true,
+      timestamp_present: true, timestamp_type: "number", timestamp_finite: true,
+      firmware_version_present: false, firmware_version_type: "undefined", firmware_version_nonempty: false,
+      fault_flags_present: true, fault_flags_type: "number", fault_flags_finite: true,
+    });
+    assert.equal("auth_diagnostic" in response.body, false, "base failures must not disclose auth diagnostics");
+  });
+
+  it("reports a string timestamp as non-finite without returning its value", async () => {
+    const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
+    const payload = basePayload({ message_id: "contract-test-base-diagnostic-timestamp-001" }) as unknown as Record<string, unknown>;
+    payload.timestamp = "1700000000";
+    const response = await handleIngestFromEnv(
+      payload as unknown as TelemetryPayloadV1,
+      { "x-gateway-token": "gateway-token-01", "x-contract-version": "v1" },
+      db,
+      {
+        DEFAULT_CONTRACT_VERSION: "v1",
+        MAX_TIMESTAMP_DRIFT_SECONDS: "300",
+        GATEWAY_INGEST_TOKEN: "gateway-token-01",
+        GATEWAY_INGEST_DIAGNOSTICS: "1",
+      },
+      NOW,
+    );
+
+    assert.equal(response.status, 400);
+    const diagnostic = response.body.base_field_diagnostic as Record<string, unknown>;
+    assert.equal(diagnostic.timestamp_present, true);
+    assert.equal(diagnostic.timestamp_type, "string");
+    assert.equal(diagnostic.timestamp_finite, false);
+    assert.equal(JSON.stringify(response.body).includes("1700000000"), false);
+  });
+
+  it("identifies a missing base fault_flags field", async () => {
+    const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
+    const payload = basePayload({ message_id: "contract-test-base-diagnostic-fault-flags-001" });
+    delete (payload as Partial<TelemetryPayloadV1>).fault_flags;
+    const response = await handleIngestFromEnv(
+      payload,
+      { "x-gateway-token": "gateway-token-01", "x-contract-version": "v1" },
+      db,
+      {
+        DEFAULT_CONTRACT_VERSION: "v1",
+        MAX_TIMESTAMP_DRIFT_SECONDS: "300",
+        GATEWAY_INGEST_TOKEN: "gateway-token-01",
+        GATEWAY_INGEST_DIAGNOSTICS: "1",
+      },
+      NOW,
+    );
+
+    assert.equal(response.status, 400);
+    const diagnostic = response.body.base_field_diagnostic as Record<string, unknown>;
+    assert.equal(diagnostic.fault_flags_present, false);
+    assert.equal(diagnostic.fault_flags_type, "undefined");
+    assert.equal(diagnostic.fault_flags_finite, false);
+  });
+
+  it("keeps the legacy base-field response when ingest diagnostics are disabled", async () => {
+    const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
+    const payload = basePayload({ message_id: "contract-test-base-diagnostic-off-001" });
+    delete (payload as Partial<TelemetryPayloadV1>).firmware_version;
+    const response = await handleIngestFromEnv(
+      payload,
+      { "x-gateway-token": "gateway-token-01", "x-contract-version": "v1" },
+      db,
+      {
+        DEFAULT_CONTRACT_VERSION: "v1",
+        MAX_TIMESTAMP_DRIFT_SECONDS: "300",
+        GATEWAY_INGEST_TOKEN: "gateway-token-01",
+      },
+      NOW,
+    );
+
+    assert.deepEqual(response.body, {
+      ok: false,
+      error_code: "MISSING_FIELD",
+      message: "required field missing",
+      retryable: false,
+    });
+  });
+
+  it("never exposes a gateway header or token in a base-field diagnostic", async () => {
+    const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
+    const payload = basePayload({ message_id: "contract-test-base-diagnostic-secret-001" });
+    delete (payload as Partial<TelemetryPayloadV1>).firmware_version;
+    const response = await handleIngestFromEnv(
+      payload,
+      { "x-gateway-token": "test-token-must-not-appear", "x-contract-version": "v1" },
+      db,
+      {
+        DEFAULT_CONTRACT_VERSION: "v1",
+        MAX_TIMESTAMP_DRIFT_SECONDS: "300",
+        GATEWAY_INGEST_TOKEN: "gateway-token-01",
+        GATEWAY_INGEST_DIAGNOSTICS: "1",
+      },
+      NOW,
+    );
+
+    const serialized = JSON.stringify(response.body);
+    assert.equal(response.status, 400);
+    assert.equal(serialized.includes("test-token-must-not-appear"), false);
+    assert.equal(serialized.includes("x-gateway-token"), false);
+    assert.equal(serialized.includes("auth_diagnostic"), false);
+  });
+
+  it("does not decorate a valid request when guarded ingest diagnostics are enabled", async () => {
+    const db = new MockDb({ STATION_01: DEVICE_SECRET }, otaCatalog);
+    const payload = basePayload({ message_id: "contract-test-base-diagnostic-valid-001" });
+    const response = await handleIngestFromEnv(
+      payload,
+      { "x-gateway-token": "gateway-token-01", "x-contract-version": "v1" },
+      db,
+      {
+        DEFAULT_CONTRACT_VERSION: "v1",
+        MAX_TIMESTAMP_DRIFT_SECONDS: "300",
+        GATEWAY_INGEST_TOKEN: "gateway-token-01",
+        GATEWAY_INGEST_DIAGNOSTICS: "1",
+      },
+      NOW,
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal("base_field_diagnostic" in response.body, false);
   });
 
   it("stores sensor fault payloads and records a fault event", async () => {

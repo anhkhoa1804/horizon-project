@@ -203,9 +203,15 @@ waiting.
   `environmental_readings` until the sensor works — this is correct, not a
   bug: a "fault" reading with an invented numeric value would be exactly
   the fabrication Phase A eliminated everywhere else.
-- **Partial sensor readings:** `battery_voltage` / `signal_strength_dbm`
+- **Partial sensor readings:** water sensor branches fail independently.
+  `salinity` and `water_level` may be `NULL` when their respective
+  EC/salinity or ultrasonic sensor did not provide a valid value; `NULL` is
+  never substituted with zero. Edge still requires at least one valid water
+  measurement or health field before it writes a partial row.
+<!-- Superseded by migration 031:
   are optional (section 1); `salinity` / `water_level` are not — a reading
   without a real water-level or salinity number isn't a reading.
+-->
 - **Offline gateway buffering:** `gateway.ino` now queues failed relay
   attempts to `/gateway_pending.jsonl` on SD, storing the station's *raw*
   fields rather than a pre-signed payload — because a signature more than
@@ -221,7 +227,7 @@ waiting.
 
 ## 5. Database model
 
-No table was restructured. Two targeted changes, both in migration 018:
+No table was restructured. Targeted changes are:
 
 - **`devices.kind`** (`'station' | 'gateway'`, default `'station'`) — makes
   the auth-model distinction from section 1 representable in the schema
@@ -229,7 +235,11 @@ No table was restructured. Two targeted changes, both in migration 018:
 - **`station_health_logs.battery_voltage` / `.signal_strength_dbm`** — now
   nullable, matching the contract change in section 1.
 
-Not changed, and why: `environmental_readings` / `environmental_events` /
+- **`environmental_readings.salinity` / `.water_level`** — nullable in
+  migration 031 so independently unavailable EC/salinity or ultrasonic
+  measurements persist as `NULL`, never as fabricated zeroes.
+
+Other than that limited partial-reading contract, `environmental_events` /
 `devices` / `station_assignments` / `users` are correctly modeled already —
 the problem was always *access* (service-role bypassing RLS), never
 *shape*. `gateway_observations` is deprecated (comment only, not dropped —

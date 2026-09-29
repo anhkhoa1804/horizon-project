@@ -72,6 +72,8 @@ static const uint32_t PH_BAUD_CANDIDATES[] = {2400, 4800, 9600};
 
 static const uint8_t INA226_REG_CONFIG = 0x00;
 static const uint8_t INA226_REG_BUS_VOLTAGE = 0x02;
+static const float BATTERY_VALID_MIN_VOLTAGE_V = 2.5f;
+static const float BATTERY_VALID_MAX_VOLTAGE_V = 18.0f;
 
 static const bool LORA_TEST_FAST_SEND = false;
 static const bool LORA_TEST_SHORT_PACKET = false;
@@ -818,6 +820,12 @@ float estimateLifePo4Percent(float packVoltage) {
   return NAN;
 }
 
+bool isValidBatteryVoltage(float voltageV) {
+  return isfinite(voltageV) &&
+         voltageV >= BATTERY_VALID_MIN_VOLTAGE_V &&
+         voltageV <= BATTERY_VALID_MAX_VOLTAGE_V;
+}
+
 BatteryReading readBattery() {
   if (!ina226Ready) {
     return {false, NAN, NAN, "ina226_not_ready"};
@@ -829,6 +837,10 @@ BatteryReading readBattery() {
   }
 
   const float voltageV = rawBus * 0.00125f;
+  if (!isValidBatteryVoltage(voltageV)) {
+    return {false, NAN, NAN, "voltage_out_of_range"};
+  }
+
   const float percent = estimateLifePo4Percent(voltageV);
   return {true, voltageV, percent, "ok"};
 }

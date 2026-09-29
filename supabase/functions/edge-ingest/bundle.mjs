@@ -3,6 +3,8 @@ function resolveIngestConfig(env = process.env) {
   return {
     allowedContractVersion: env.DEFAULT_CONTRACT_VERSION ?? "v1",
     maxTimestampDriftSeconds: Number(env.MAX_TIMESTAMP_DRIFT_SECONDS ?? "300"),
+    salinityWarningLevel: Number(env.SALINITY_WARNING_LEVEL ?? "1.2"),
+    salinityCriticalLevel: Number(env.SALINITY_CRITICAL_LEVEL ?? "1.8"),
     lowBatteryVoltage: Number(env.LOW_BATTERY_VOLTAGE ?? "3.6"),
     lowSignalStrengthDbm: Number(env.LOW_SIGNAL_STRENGTH_DBM ?? "-95"),
     gatewayIngestToken: env.GATEWAY_INGEST_TOKEN
@@ -10,6 +12,63 @@ function resolveIngestConfig(env = process.env) {
 }
 
 // src/canonical.ts
+function fmtNumber(value) {
+  return Number.isInteger(value) ? value.toString() : value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+}
+function buildCanonicalString(payload) {
+  const str = (v) => v !== void 0 && v !== null ? String(v) : "";
+  const num = (v) => typeof v === "number" ? fmtNumber(v) : "";
+  return [
+    str(payload.device_id),
+    str(payload.message_id),
+    str(payload.timestamp),
+    num(payload.salinity),
+    num(payload.water_level),
+    str(payload.fault_flags),
+    str(payload.sensor_status?.ec_probe),
+    str(payload.sensor_status?.ultrasonic),
+    num(payload.battery_voltage),
+    str(payload.signal_strength_dbm),
+    str(payload.firmware_version),
+    str(payload.contract_version)
+  ].join("|");
+}
+function buildSoilCanonicalString(payload) {
+  const str = (v) => v !== void 0 && v !== null ? String(v) : "";
+  const num = (v) => typeof v === "number" ? fmtNumber(v) : "";
+  const soil = payload.soil;
+  return [
+    str(payload.device_id),
+    str(payload.message_id),
+    str(payload.timestamp),
+    "soil",
+    num(soil?.air_temp_c),
+    num(soil?.air_humidity_pct),
+    num(soil?.soil_temp_c),
+    num(soil?.soil_moisture_pct),
+    num(soil?.soil_ec_ms_cm),
+    num(soil?.soil_ph),
+    str(payload.fault_flags),
+    str(payload.firmware_version),
+    str(payload.contract_version)
+  ].join("|");
+}
+function selectCanonicalString(payload) {
+  return payload.reading_kind === "soil" ? buildSoilCanonicalString(payload) : buildCanonicalString(payload);
+}
+async function signPayload(payload, deviceSecret) {
+  const canonical = selectCanonicalString(payload);
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(deviceSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(canonical));
+  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 function timingSafeEqualHex(a, b) {
   if (a.length !== b.length) {
     return false;
@@ -28,12 +87,13 @@ function inRange(value, min, max) {
 function readingKind(payload) {
   return payload.reading_kind === "soil" ? "soil" : "water";
 }
-function hasBaseRequiredFields(payload) {
-  return Boolean(
+function hasRequiredFields(payload) {
+  const baseFieldsOk = Boolean(
     payload.contract_version && payload.device_id && payload.message_id && Number.isFinite(payload.timestamp) && payload.firmware_version && Number.isFinite(payload.fault_flags)
   );
-}
-function hasRequiredReadingFields(payload) {
+  if (!baseFieldsOk) {
+    return false;
+  }
   if (readingKind(payload) === "soil") {
     const soil = payload.soil;
     if (!soil) {
@@ -46,14 +106,17 @@ function hasRequiredReadingFields(payload) {
     return hasMeasurement || hasHealth;
   }
   return Boolean(
-    payload.sensor_status?.ec_probe && payload.sensor_status?.ultrasonic && (Number.isFinite(payload.salinity) || Number.isFinite(payload.water_level) || Number.isFinite(payload.distance_cm) || typeof payload.battery_voltage === "number" || typeof payload.battery_percent === "number" || typeof payload.signal_strength_dbm === "number")
+    payload.sensor_status?.ec_probe && payload.sensor_status?.ultrasonic && Number.isFinite(payload.salinity) && Number.isFinite(payload.water_level)
   );
 }
-function hasWaterSensorFault(payload) {
+function isFaulty(payload) {
   if (readingKind(payload) === "soil") {
     return false;
   }
-  return payload.fault_flags > 0;
+  if (payload.fault_flags > 0) {
+    return true;
+  }
+  return payload.sensor_status?.ec_probe === "fault" || payload.sensor_status?.ultrasonic === "fault";
 }
 function soilValuesInRange(payload) {
   const soil = payload.soil;
@@ -86,18 +149,31 @@ function auditRow(payload, status, reason, timestamp) {
   };
 }
 async function emitAlertEvents(db, payload, config, nowEpochSeconds) {
+  const salinityWarningLevel = config.salinityWarningLevel ?? 1.2;
+  const salinityCriticalLevel = config.salinityCriticalLevel ?? 1.8;
   const lowBatteryVoltage = config.lowBatteryVoltage ?? 3.6;
   const lowSignalStrengthDbm = config.lowSignalStrengthDbm ?? -95;
   const events = [];
-  if (hasWaterSensorFault(payload)) {
-    events.push({
-      station_id: payload.device_id,
-      event_type: "SENSOR_FAULT",
-      severity: "critical",
-      message_id: payload.message_id,
-      details: { fault_flags: payload.fault_flags, sensor_status: payload.sensor_status },
-      timestamp: nowEpochSeconds
-    });
+  if (readingKind(payload) === "water" && typeof payload.salinity === "number") {
+    if (payload.salinity >= salinityCriticalLevel) {
+      events.push({
+        station_id: payload.device_id,
+        event_type: "HIGH_SALINITY",
+        severity: "critical",
+        message_id: payload.message_id,
+        details: { salinity: payload.salinity, threshold: salinityCriticalLevel },
+        timestamp: nowEpochSeconds
+      });
+    } else if (payload.salinity >= salinityWarningLevel) {
+      events.push({
+        station_id: payload.device_id,
+        event_type: "HIGH_SALINITY",
+        severity: "warning",
+        message_id: payload.message_id,
+        details: { salinity: payload.salinity, threshold: salinityWarningLevel },
+        timestamp: nowEpochSeconds
+      });
+    }
   }
   if (typeof payload.battery_voltage === "number" && payload.battery_voltage < lowBatteryVoltage) {
     events.push({
@@ -127,7 +203,7 @@ async function ingestTelemetry(request, db, config, nowEpochSeconds = Math.floor
   try {
     const payload = request.payload;
     const kind = readingKind(payload);
-    if (!hasBaseRequiredFields(payload)) {
+    if (!hasRequiredFields(payload)) {
       await db.insertAuditLog(auditRow(payload, "missing_field", "required field missing", nowEpochSeconds));
       return { ok: false, error_code: "MISSING_FIELD", message: "required field missing", retryable: false };
     }
@@ -142,32 +218,61 @@ async function ingestTelemetry(request, db, config, nowEpochSeconds = Math.floor
     }
     const gatewayToken = request.headers["x-gateway-token"] ?? "";
     const isGatewayTokenAuthorized = Boolean(config.gatewayIngestToken) && timingSafeEqualHex(gatewayToken, config.gatewayIngestToken ?? "");
-    if (!isGatewayTokenAuthorized) {
-      await db.insertAuditLog(auditRow(payload, "invalid_signature", "gateway token is missing or invalid", nowEpochSeconds));
-      return { ok: false, error_code: "INVALID_SIGNATURE", message: "gateway token is missing or invalid", retryable: false };
+    const authenticatingDeviceId = request.headers["x-device-id"];
+    if (!isGatewayTokenAuthorized && !authenticatingDeviceId) {
+      await db.insertAuditLog(auditRow(payload, "missing_field", "missing x-device-id header", nowEpochSeconds));
+      return { ok: false, error_code: "MISSING_FIELD", message: "missing x-device-id header", retryable: false };
     }
-    if (!await db.isDeviceRegistered(payload.device_id)) {
+    if (isGatewayTokenAuthorized) {
+      if (!await db.isDeviceRegistered(payload.device_id)) {
+        await db.insertAuditLog(auditRow(payload, "device_not_registered", "attributed station is not a known, active device", nowEpochSeconds));
+        return { ok: false, error_code: "DEVICE_NOT_REGISTERED", message: "attributed station is not a known, active device", retryable: false };
+      }
+    } else {
+      const knownSecret = await db.getDeviceSecret(authenticatingDeviceId);
+      if (!knownSecret) {
+        await db.insertAuditLog(auditRow(payload, "device_not_registered", "unknown or inactive authenticating device", nowEpochSeconds));
+        return { ok: false, error_code: "DEVICE_NOT_REGISTERED", message: "unknown or inactive authenticating device", retryable: false };
+      }
+      const expectedSig = await signPayload(payload, knownSecret);
+      if (!timingSafeEqualHex(expectedSig, request.headers["x-signature"] ?? "")) {
+        await db.insertAuditLog(auditRow(payload, "invalid_signature", "signature verification failed", nowEpochSeconds));
+        return { ok: false, error_code: "INVALID_SIGNATURE", message: "signature verification failed", retryable: false };
+      }
+    }
+    if (!isGatewayTokenAuthorized && authenticatingDeviceId !== payload.device_id && !await db.isDeviceRegistered(payload.device_id)) {
       await db.insertAuditLog(auditRow(payload, "device_not_registered", "attributed station is not a known, active device", nowEpochSeconds));
       return { ok: false, error_code: "DEVICE_NOT_REGISTERED", message: "attributed station is not a known, active device", retryable: false };
     }
+    const headerTimestamp = Number.parseInt(request.headers["x-timestamp"], 10);
+    const isHeaderValid = isGatewayTokenAuthorized && !request.headers["x-timestamp"] || !Number.isNaN(headerTimestamp) && Math.abs(nowEpochSeconds - headerTimestamp) <= config.maxTimestampDriftSeconds;
     const isPayloadValid = Math.abs(nowEpochSeconds - payload.timestamp) <= config.maxTimestampDriftSeconds;
-    if (!isPayloadValid) {
-      await db.insertAuditLog(auditRow(payload, "expired_timestamp", "payload timestamp is outside allowed drift window", nowEpochSeconds));
+    if (!isHeaderValid || !isPayloadValid) {
+      const reason = !isHeaderValid ? "header timestamp is outside allowed drift window" : "payload timestamp is outside allowed drift window";
+      await db.insertAuditLog(auditRow(payload, "expired_timestamp", reason, nowEpochSeconds));
       return {
         ok: false,
         error_code: "TIMESTAMP_OUT_OF_WINDOW",
-        message: "payload timestamp is outside allowed drift window",
+        message: reason,
         retryable: false
       };
     }
-    if (!hasRequiredReadingFields(payload)) {
-      await db.insertAuditLog(auditRow(payload, "missing_field", "required reading field missing", nowEpochSeconds));
-      return { ok: false, error_code: "MISSING_FIELD", message: "required reading field missing", retryable: false };
-    }
-    const valuesInRange = kind === "soil" ? soilValuesInRange(payload) : optionalInRange(payload.salinity, 0, 50) && optionalInRange(payload.water_level, -100, 1e3) && optionalInRange(payload.salinity_ppm, 0, 1e5) && optionalInRange(payload.sensor_height_cm, 0, 1e4) && optionalInRange(payload.distance_cm, -100, 1e4) && optionalInRange(payload.ec_ms_cm, 0, 20) && optionalInRange(payload.ec_us_cm, 0, 2e4) && optionalInRange(payload.temperature_c, -10, 80) && optionalInRange(payload.tds_ppm, 0, 1e5) && (typeof payload.battery_voltage !== "number" || inRange(payload.battery_voltage, 2.5, 18)) && optionalInRange(payload.battery_percent, 0, 100) && (typeof payload.signal_strength_dbm !== "number" || inRange(payload.signal_strength_dbm, -130, -30));
+    const valuesInRange = kind === "soil" ? soilValuesInRange(payload) : inRange(payload.salinity, 0, 50) && inRange(payload.water_level, -100, 1e3) && optionalInRange(payload.salinity_ppm, 0, 1e5) && optionalInRange(payload.sensor_height_cm, 0, 1e4) && optionalInRange(payload.distance_cm, -100, 1e4) && optionalInRange(payload.ec_ms_cm, 0, 20) && optionalInRange(payload.ec_us_cm, 0, 2e4) && optionalInRange(payload.temperature_c, -10, 80) && optionalInRange(payload.tds_ppm, 0, 1e5) && (typeof payload.battery_voltage !== "number" || inRange(payload.battery_voltage, 2.5, 18)) && optionalInRange(payload.battery_percent, 0, 100) && (typeof payload.signal_strength_dbm !== "number" || inRange(payload.signal_strength_dbm, -130, -30));
     if (!valuesInRange) {
       await db.insertAuditLog(auditRow(payload, "value_out_of_range", "value out of accepted range", nowEpochSeconds));
       return { ok: false, error_code: "VALUE_OUT_OF_RANGE", message: "value out of accepted range", retryable: false };
+    }
+    if (isFaulty(payload)) {
+      await db.insertAuditLog(auditRow(payload, "sensor_fault", "sensor fault reported by node", nowEpochSeconds));
+      await db.insertEvent({
+        station_id: payload.device_id,
+        event_type: "SENSOR_FAULT",
+        severity: "critical",
+        message_id: payload.message_id,
+        details: { fault_flags: payload.fault_flags, sensor_status: payload.sensor_status },
+        timestamp: nowEpochSeconds
+      });
+      return { ok: false, error_code: "SENSOR_FAULT", message: "sensor fault reported by node", retryable: false };
     }
     const status = kind === "soil" ? await db.insertSoilReading({
       message_id: payload.message_id,
@@ -190,9 +295,9 @@ async function ingestTelemetry(request, db, config, nowEpochSeconds = Math.floor
     }) : await db.insertEnvironmental({
       message_id: payload.message_id,
       station_id: payload.device_id,
-      salinity: payload.salinity ?? null,
+      salinity: payload.salinity,
       salinity_ppm: payload.salinity_ppm ?? null,
-      water_level: payload.water_level ?? null,
+      water_level: payload.water_level,
       sensor_height_cm: payload.sensor_height_cm ?? null,
       distance_cm: payload.distance_cm ?? null,
       ec_ms_cm: payload.ec_ms_cm ?? null,
@@ -252,57 +357,91 @@ async function ingestTelemetry(request, db, config, nowEpochSeconds = Math.floor
 }
 
 // src/httpHandler.ts
-function valueType(value) {
-  return value === null ? "null" : typeof value;
+function finiteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : void 0;
 }
-function hasOwnField(payload, field) {
-  return Object.prototype.hasOwnProperty.call(payload, field);
+function nullableNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
-function baseFieldDiagnostic(payload) {
-  const payloadIsObject = payload !== null && typeof payload === "object" && !Array.isArray(payload);
-  const fields = payloadIsObject ? payload : {};
-  const contractVersion = fields.contract_version;
-  const deviceId = fields.device_id;
-  const messageId = fields.message_id;
-  const timestamp = fields.timestamp;
-  const firmwareVersion = fields.firmware_version;
-  const faultFlags = fields.fault_flags;
-  return {
-    payload_is_object: payloadIsObject,
-    contract_version_present: hasOwnField(fields, "contract_version"),
-    contract_version_type: valueType(contractVersion),
-    contract_version_nonempty: Boolean(contractVersion),
-    device_id_present: hasOwnField(fields, "device_id"),
-    device_id_type: valueType(deviceId),
-    device_id_nonempty: Boolean(deviceId),
-    message_id_present: hasOwnField(fields, "message_id"),
-    message_id_type: valueType(messageId),
-    message_id_nonempty: Boolean(messageId),
-    timestamp_present: hasOwnField(fields, "timestamp"),
-    timestamp_type: valueType(timestamp),
-    timestamp_finite: typeof timestamp === "number" && Number.isFinite(timestamp),
-    firmware_version_present: hasOwnField(fields, "firmware_version"),
-    firmware_version_type: valueType(firmwareVersion),
-    firmware_version_nonempty: Boolean(firmwareVersion),
-    fault_flags_present: hasOwnField(fields, "fault_flags"),
-    fault_flags_type: valueType(faultFlags),
-    fault_flags_finite: typeof faultFlags === "number" && Number.isFinite(faultFlags)
+function positiveNumber(value) {
+  const numberValue = finiteNumber(value);
+  return numberValue !== void 0 && numberValue > 0 ? numberValue : void 0;
+}
+function stringValue(value) {
+  return typeof value === "string" && value.length > 0 ? value : void 0;
+}
+function normalizeStationSummaryPayload(raw, nowEpochSeconds) {
+  if (raw.type !== "station_summary") {
+    return null;
+  }
+  const stationId = stringValue(raw.station_id);
+  const messageId = stringValue(raw.message_id);
+  const firmwareVersion = stringValue(raw.firmware_version);
+  if (!stationId || !messageId || !firmwareVersion) {
+    return null;
+  }
+  const timestamp = finiteNumber(raw.timestamp) ?? nowEpochSeconds;
+  const base = {
+    contract_version: "v1",
+    device_id: stationId,
+    message_id: messageId,
+    timestamp,
+    sequence: finiteNumber(raw.sequence),
+    summary_minutes: finiteNumber(raw.summary_minutes),
+    firmware_version: firmwareVersion,
+    fault_flags: 0,
+    battery_voltage: positiveNumber(raw.battery_voltage_v),
+    battery_percent: finiteNumber(raw.battery_percent),
+    raw_station_payload: raw
   };
+  if (stationId === "STATION_02") {
+    return {
+      ...base,
+      reading_kind: "soil",
+      crop: stringValue(raw.crop),
+      soil: {
+        air_temp_c: nullableNumber(raw.air_temp_c),
+        air_humidity_pct: nullableNumber(raw.air_humidity_pct),
+        soil_temp_c: nullableNumber(raw.soil_temp_c),
+        soil_moisture_pct: nullableNumber(raw.soil_moisture_pct),
+        soil_ec_ms_cm: nullableNumber(raw.soil_ec_ms_cm),
+        soil_ec_us_cm: nullableNumber(raw.soil_ec_us_cm),
+        soil_salinity: nullableNumber(raw.soil_salinity),
+        soil_tds: nullableNumber(raw.soil_tds),
+        soil_ph: nullableNumber(raw.soil_ph)
+      }
+    };
+  }
+  if (stationId === "STATION_01") {
+    const ecMsCm = finiteNumber(raw.ec_ms_cm);
+    const ecUsCm = finiteNumber(raw.ec_us_cm);
+    const waterLevel = finiteNumber(raw.water_level_cm);
+    const distance = finiteNumber(raw.distance_cm);
+    return {
+      ...base,
+      reading_kind: "water",
+      salinity: finiteNumber(raw.salinity_ppt),
+      salinity_ppm: finiteNumber(raw.salinity_ppm),
+      water_level: waterLevel,
+      sensor_height_cm: finiteNumber(raw.sensor_height_cm),
+      distance_cm: distance,
+      ec_ms_cm: ecMsCm,
+      ec_us_cm: ecUsCm,
+      temperature_c: finiteNumber(raw.temperature_c),
+      tds_ppm: finiteNumber(raw.tds_ppm),
+      sensor_status: {
+        ec_probe: ecMsCm !== void 0 || ecUsCm !== void 0 ? "ok" : "fault",
+        ultrasonic: waterLevel !== void 0 || distance !== void 0 ? "ok" : "fault"
+      }
+    };
+  }
+  return null;
 }
-function isBaseFieldFailure(response) {
-  return response.status === 400 && response.body.error_code === "MISSING_FIELD" && response.body.message === "required field missing";
-}
-async function sha256Hex(value) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-async function gatewayAuthDiagnostic(receivedContractVersion, receivedToken) {
-  return {
-    received_contract_version: receivedContractVersion,
-    received_token_present: receivedToken.length > 0,
-    received_token_length: receivedToken.length,
-    received_token_fingerprint: receivedToken.length > 0 ? await sha256Hex(receivedToken) : null
-  };
+function normalizePayload(payload, nowEpochSeconds) {
+  const rawPayload = payload;
+  const stationPayload = rawPayload.raw_station_payload && typeof rawPayload.raw_station_payload === "object" && !Array.isArray(rawPayload.raw_station_payload) ? rawPayload.raw_station_payload : rawPayload;
+  const stationSummary = normalizeStationSummaryPayload(stationPayload, nowEpochSeconds);
+  return stationSummary ?? payload;
 }
 function ingestResponseToHttp(result) {
   if (!result.ok) {
@@ -320,40 +459,22 @@ function ingestResponseToHttp(result) {
   return { status: 200, body: { ...result } };
 }
 async function handleIngestRequest(payload, headers, db, config, nowEpochSeconds = Math.floor(Date.now() / 1e3)) {
+  const normalizedPayload = normalizePayload(payload, nowEpochSeconds);
   const request = {
     headers: {
+      "x-device-id": headers["x-device-id"] ?? "",
+      "x-timestamp": headers["x-timestamp"] ?? "",
+      "x-signature": headers["x-signature"] ?? "",
       "x-contract-version": headers["x-contract-version"] ?? "",
       "x-gateway-token": headers["x-gateway-token"] ?? ""
     },
-    payload
+    payload: normalizedPayload
   };
   const result = await ingestTelemetry(request, db, config, nowEpochSeconds);
   return ingestResponseToHttp(result);
 }
 async function handleIngestFromEnv(payload, headers, db, env, nowEpochSeconds = Math.floor(Date.now() / 1e3)) {
-  const response = await handleIngestRequest(payload, headers, db, resolveIngestConfig(env), nowEpochSeconds);
-  if (env.GATEWAY_INGEST_DIAGNOSTICS === "1" && isBaseFieldFailure(response)) {
-    return {
-      ...response,
-      body: {
-        ...response.body,
-        base_field_diagnostic: baseFieldDiagnostic(payload)
-      }
-    };
-  }
-  if (env.GATEWAY_AUTH_DIAGNOSTICS === "1" && response.status === 401 && response.body.error_code === "INVALID_SIGNATURE") {
-    return {
-      ...response,
-      body: {
-        ...response.body,
-        auth_diagnostic: await gatewayAuthDiagnostic(
-          headers["x-contract-version"] ?? "",
-          headers["x-gateway-token"] ?? ""
-        )
-      }
-    };
-  }
-  return response;
+  return handleIngestRequest(payload, headers, db, resolveIngestConfig(env), nowEpochSeconds);
 }
 
 // src/supabaseDb.ts
@@ -385,6 +506,25 @@ var SupabaseDb = class _SupabaseDb {
       body: body === void 0 ? void 0 : JSON.stringify(body)
     });
     return { ok: response.ok, status: response.status, text: await response.text() };
+  }
+  async getDeviceSecret(deviceId) {
+    const result = await this.request(
+      "devices",
+      "GET",
+      void 0,
+      `?device_id=eq.${encodeURIComponent(deviceId)}&select=device_secret,status&limit=1`
+    );
+    if (!result.ok) {
+      return null;
+    }
+    const rows = JSON.parse(result.text);
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return null;
+    }
+    if (rows[0].status && rows[0].status !== "active") {
+      return null;
+    }
+    return rows[0].device_secret ?? null;
   }
   async isDeviceRegistered(deviceId) {
     const result = await this.request(
