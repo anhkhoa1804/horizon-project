@@ -6,6 +6,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { useDict } from "@/lib/i18n/client";
 import { fmt } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { LiveSignalIndicator } from "./live-signal-indicator";
 import type { ObservationSeries, TrendMetric, TrendRange } from "@/lib/monitoring/types";
 
 const RANGES = [
@@ -36,33 +37,22 @@ const METRICS: Record<TrendMetric, { unit: string; color: string; decimals: numb
   weatherPrecipitation: { unit: "mm", color: "var(--color-watch)", decimals: 1 },
 };
 
-/**
- * A data-aware y-domain. A salinity series clustered between 1.01 and 1.08
- * rendered on a 0-based axis is a flat line that hides every real movement,
- * so the axis is fitted to the data with headroom instead.
- *
- * The headroom is 18%, not the 12% it started at, and the extra 6 points are
- * bought for the composition rather than the statistics: at 12% the fitted
- * domain put the topmost and bottommost y ticks hard against the plot's own
- * edges, so the first tick label sat on the rounded corner and the last one
- * on the x-axis line. Widening the domain moves the extreme ticks inward and
- * gives the plot the vertical inset the rest of the Bento has.
- *
- * The tradeoff of fitting at all is that small absolute changes look larger,
- * which the axis labels disclose by printing the real values. A flat series
- * (max === min) still gets a small symmetric band so it renders as a level
- * line rather than collapsing to zero height.
- */
-function computeDomain(values: number[]): [number, number] | undefined {
+/** Fit readable ticks to each quantity's physical range, rather than letting
+ * automatic headroom imply negative rain or percentages above 100. */
+function computeDomain(values: number[], metric: TrendMetric): [number, number] | undefined {
   if (values.length === 0) return undefined;
+  if (["soilMoisture", "airHumidity", "weatherHumidity"].includes(metric)) return [0, 100];
+  if (metric === "soilPh") return [0, 14];
+  const nonnegative = ["waterEc", "soilEc", "salinity", "weatherWind", "weatherPrecipitation"].includes(metric);
   const min = Math.min(...values);
   const max = Math.max(...values);
-  if (min === max) {
-    const pad = Math.abs(min) * 0.05 || 0.5;
-    return [min - pad, max + pad];
-  }
-  const pad = (max - min) * 0.18;
-  return [min - pad, max + pad];
+  const pad = min === max ? (Math.abs(min) * 0.05 || 0.5) : (max - min) * 0.18;
+  const lower = nonnegative ? Math.max(0, min - pad) : min - pad;
+  const upper = Math.max(max + pad, lower + pad);
+  const rawStep = (upper - lower) / 4;
+  const power = 10 ** Math.floor(Math.log10(rawStep));
+  const step = ([1, 2, 2.5, 5, 10].find((n) => n * power >= rawStep) ?? 10) * power;
+  return [Math.floor(lower / step) * step, Math.ceil(upper / step) * step];
 }
 
 /**
@@ -103,7 +93,7 @@ function ControlSelect<T extends string>({
         aria-label={ariaLabel}
         value={value}
         onChange={(event) => onChange(event.target.value as T)}
-        className="w-full appearance-none truncate rounded-md border border-border bg-card/70 py-1 pl-2 pr-6 text-[11px] font-medium text-foreground outline-none transition-colors duration-[var(--motion-base)] hover:border-foreground-subtle focus-visible:ring-2 focus-visible:ring-accent md:text-xs"
+        className="min-h-11 w-full appearance-none truncate rounded-md border border-border bg-card/70 py-1 pl-2 pr-6 text-[11px] font-medium text-foreground outline-none transition-colors duration-[var(--motion-base)] hover:border-foreground-subtle focus-visible:ring-2 focus-visible:ring-accent md:text-xs"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -136,17 +126,17 @@ function EmptyRange({ range }: { range: TrendRange }) {
   );
 }
 
-export function ObservationLog({ series }: { series: Record<TrendRange, ObservationSeries> }) {
+export function ObservationLog({ series, preferredMetric = "salinity" }: { series: Record<TrendRange, ObservationSeries>; preferredMetric?: TrendMetric }) {
   const dict = useDict();
   const [range, setRange] = useState<TrendRange>("24h");
   const active = series[range];
 
   // Default to whichever metric this range actually has; never leave a
   // control showing a metric with no data behind it.
-  const [metric, setMetric] = useState<TrendMetric>("salinity");
+  const [metric, setMetric] = useState<TrendMetric>(preferredMetric);
   const shown: TrendMetric = active.availableMetrics.includes(metric)
     ? metric
-    : (active.availableMetrics[0] ?? "salinity");
+    : (active.availableMetrics[0] ?? preferredMetric);
 
   const meta = METRICS[shown];
 
@@ -167,11 +157,13 @@ export function ObservationLog({ series }: { series: Record<TrendRange, Observat
   const { data, domain } = useMemo(() => {
     const rows = active.points
       .map((p) => ({ label: p.label, value: p[shown] }))
-      .filter((r): r is { label: string; value: number } => r.value !== null);
-    return { data: rows, domain: computeDomain(rows.map((r) => r.value)) };
+      .filter((r): r is { label: string; value: number } => r.value !== null && Number.isFinite(r.value));
+    return { data: rows, domain: computeDomain(rows.map((r) => r.value), shown) };
   }, [active, shown]);
 
   const hasData = data.length > 0;
+  const ticks = domain ? Array.from({ length: 5 }, (_, i) =>
+    Number((domain[0] + (domain[1] - domain[0]) * i / 4).toPrecision(12))) : undefined;
 
   return (
     // `min-h-0` lets this column actually shrink inside the Bento cell.
@@ -198,6 +190,7 @@ export function ObservationLog({ series }: { series: Record<TrendRange, Observat
           <span className="truncate text-[11px] font-semibold uppercase tracking-[0.12em]">
             {dict.chart.boxLabel}
           </span>
+          <LiveSignalIndicator historical />
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
@@ -234,17 +227,15 @@ export function ObservationLog({ series }: { series: Record<TrendRange, Observat
               plot instead of hanging over its corners. */}
           <div className="min-h-[110px] w-full flex-1">
             <ResponsiveContainer width="100%" height="100%">
-              {/* `top: 18` is measured, not chosen: at 10 the highest y tick
-                  label sat 2px below the SVG's top edge, which inside a
-                  rounded box reads as the number touching the border. */}
-              <AreaChart data={data} margin={{ top: 18, right: 12, left: 0, bottom: 4 }}>
+              {/* The unit sits above the scale, with a clear gap to the highest tick. */}
+              <AreaChart data={data} margin={{ top: 44, right: 12, left: 4, bottom: 4 }}>
                 <defs>
                   <linearGradient id="obsFill" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={meta.color} stopOpacity={0.28} />
                     <stop offset="100%" stopColor={meta.color} stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
+                <CartesianGrid stroke="var(--color-border)" strokeOpacity={0.45} strokeDasharray="2 5" vertical={false} />
                 <XAxis
                   dataKey="label"
                   stroke="var(--color-muted)"
@@ -261,9 +252,12 @@ export function ObservationLog({ series }: { series: Record<TrendRange, Observat
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
-                  width={46}
+                  width={52}
                   tickMargin={6}
                   domain={domain ?? ["auto", "auto"]}
+                  ticks={ticks}
+                  allowDataOverflow
+                  label={{ value: meta.unit || "pH", position: "top", offset: 20, fill: "var(--color-muted)", fontSize: 11 }}
                   tickFormatter={(v) => Number(v).toFixed(meta.decimals)}
                 />
                 <Tooltip
@@ -285,7 +279,7 @@ export function ObservationLog({ series }: { series: Record<TrendRange, Observat
                   strokeWidth={2}
                   fill="url(#obsFill)"
                   dot={false}
-                  animationDuration={420}
+                  isAnimationActive={false}
                 />
               </AreaChart>
             </ResponsiveContainer>

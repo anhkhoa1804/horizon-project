@@ -1,43 +1,25 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { PageHero } from "@/components/layout/page-hero";
 import { getI18n } from "@/lib/i18n/server";
 
-/**
- * Quiet, atmospheric opening. Deliberately carries no telemetry, no station
- * cards, no map — the network state has its own chapter below, and putting it
- * here was what made an earlier homepage read as a dashboard landing page
- * rather than an introduction to a place.
- *
- * Structure comes from the shared `PageHero`, so this page and the other
- * three public routes share one hero grammar. Home takes the `display` tier:
- * it is the only route allowed to be cinematic.
- *
- * One action takes the reader directly to the monitoring network. The story
- * itself continues in the page flow, so the opening does not need a second
- * navigation choice.
- *
- * A Server Component, so both language versions are resolved before anything
- * reaches the browser — the hero never flashes the wrong language.
- */
+/** The cover opens on the place and names the real shape of the network. */
 export async function Hero() {
   const { dict } = await getI18n();
 
   return (
-    <PageHero
-      scale="display"
-      eyebrow={dict.home.eyebrow}
-      title={dict.home.title}
-      subtitle={dict.home.subtitle}
-      actions={
-        <Button asChild size="lg" className="gap-2">
-          <Link href="/dashboard">
-            {dict.home.ctaPrimary}
-            <ArrowRight className="h-4 w-4" aria-hidden />
-          </Link>
-        </Button>
-      }
-    />
+    <section className="horizon-cover" aria-labelledby="home-title">
+      <div className="h-wide horizon-cover__inner">
+        <div className="horizon-cover__body">
+          <div className="max-w-5xl">
+            <p className="horizon-cover__coordinates">{dict.home.placeLabel}</p>
+            <h1 id="home-title" className="horizon-cover__title">{dict.home.title.split("\n").map((line) => <span key={line}>{line}</span>)}</h1>
+            <p className="horizon-cover__subtitle">{dict.home.subtitle}</p>
+            <Link href="/dashboard" className="horizon-cover__link">
+              {dict.home.ctaPrimary}<ArrowRight className="h-4 w-4" aria-hidden />
+            </Link>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }

@@ -4,7 +4,7 @@
  * Exactly one of these is mounted, in the root layout, and it owns every
  * whole-page background layer HORIZON has:
  *
- *   · the survey grid        (::before — 64px minor / 256px major graticule)
+ *   · the survey grid        (::before — a fine, low-contrast survey graticule)
  *   · the atmospheric pools  (::after  — cool / warm / green / centre lift)
  *   · the vignette           (::after  — edge falloff, closes the composition)
  *

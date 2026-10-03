@@ -42,7 +42,7 @@ export function PublicShell({
           same left/right edge the header and footer use, so nothing drifts
           between chrome and content. Sections that need to break out do so
           explicitly with .full-bleed or .h-spatial. */}
-      <main className="h-wide relative pb-8 pt-4 md:pt-8">{children}</main>
+      <main className={`public-main ${activePath === "/" ? "public-main--home" : activePath === "/report" ? "h-text" : "h-media"} relative pb-8 pt-4 md:pt-8`}>{children}</main>
 
       <Footer />
 

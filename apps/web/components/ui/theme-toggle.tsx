@@ -35,7 +35,7 @@ export function ThemeToggle({ className }: { className?: string }) {
   }, []);
 
   if (theme === null) {
-    return <div className={cn("h-9 w-9", className)} aria-hidden />;
+    return <div className={cn("h-11 w-11", className)} aria-hidden />;
   }
 
   const next: ResolvedTheme = theme === "dark" ? "light" : "dark";
@@ -52,7 +52,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       aria-label={label}
       title={label}
       className={cn(
-        "inline-flex h-9 w-9 items-center justify-center rounded-sm text-muted",
+        "inline-flex h-11 w-11 items-center justify-center rounded-sm text-muted",
         "transition-colors duration-[var(--motion-base)] hover:bg-muted/15 hover:text-foreground",
         className,
       )}

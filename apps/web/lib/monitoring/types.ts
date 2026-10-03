@@ -144,6 +144,8 @@ export type TrendMetric =
   | "weatherPrecipitation";
 
 export interface ObservationPoint {
+  timestamp?: string;
+  stationId?: string;
   /** Pre-formatted x-axis label — hour for 24h, date for 7d/30d. */
   label: string;
   salinity: number | null;
@@ -235,7 +237,7 @@ export interface ObservatoryViewModel {
   network: ObservatoryNetworkState;
   stations: ObservatoryStation[];
   /** Precomputed for every range so switching is instant and refetch-free. */
-  series: Record<TrendRange, ObservationSeries>;
+  series: Record<TrendRange, ObservationSeries> & { year?: ObservationSeries };
   alerts: ObservatoryAlert[];
   reference: ObservatoryReferenceItem[];
 }

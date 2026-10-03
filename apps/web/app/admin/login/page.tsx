@@ -1,3 +1,7 @@
+import Image from "next/image";
+import { ArrowUpRight } from "lucide-react";
+import Link from "next/link";
+import { ToolPageHeading } from "@/components/layout/tool-page-heading";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { LoginForm } from "@/components/auth/login-form";
 import { SiteHeader } from "@/components/layout/site-header";
@@ -37,17 +41,22 @@ export default async function AdminLoginPage({
           breakpoints and shrinks further once scrolled), so a fixed "88px"
           left over from the pre-rebrand header under- or over-shot the real
           offset depending on viewport. */}
-      <main className="flex min-h-[calc(100dvh-var(--header-h))] flex-col items-center justify-center px-4 py-10">
-        <div className="w-full max-w-md space-y-4">
+      <main className="h-text admin-login-page">
+        <ToolPageHeading title={dict.admin.title} description={dict.admin.description} />
+        <div className="admin-login-composition">
+          <div className="admin-login-place"><Image src="/assets/hero/hero.png" alt="" fill sizes="(max-width: 767px) 100vw, 550px" className="object-cover" /><div><span>Cồn Hô</span><strong>HORIZON</strong><Link href="/dashboard">{dict.monitoring.title}<ArrowUpRight aria-hidden /></Link></div></div>
+          <div className="admin-login-entry space-y-4">
+          <LoginForm redirectTo={redirectTo} />
           {message ? (
-            <div className="flex flex-col items-center gap-3 text-center">
+            <div className="login-submission-status space-y-3">
               <p className="text-sm text-critical" role="alert">
                 {message}
               </p>
               {params.error === "unauthorized" ? <SignOutButton /> : null}
             </div>
           ) : null}
-          <LoginForm redirectTo={redirectTo} defaultEmail={params.email ?? ""} />
+
+        </div>
         </div>
       </main>
     </div>

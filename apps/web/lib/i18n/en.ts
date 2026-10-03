@@ -129,9 +129,15 @@ export const en: Dictionary = {
     demoBannerLink: "View real data →",
 
     networkEyebrow: "Network",
-    stationsCounted: "monitoring stations",
+    stationsCounted: "network points",
     sendingData: "reporting",
     noneSending: "no station is reporting yet",
+    streamConnected: "Connected to the telemetry stream",
+    noTelemetry: "No live telemetry",
+    noTelemetryBody: "No current measurement has been received.",
+    gateAdviceUnavailable: "No gate recommendation is configured",
+    gateAdviceBasis: "HORIZON has no validated operating rule that turns a salinity reading into a gate-open or gate-close decision. Reference values are not action thresholds for Cồn Hô.",
+    gateAdviceLink: "Review interpretation basis",
     lastObservation: "Last observation",
     neverObserved: "The system has not received any observation from the network.",
     noDataCount: "with no data",
@@ -235,10 +241,13 @@ export const en: Dictionary = {
        within a few characters of each other, so the hero does not change
        height when a reader switches. */
     title: "This is Cồn Hô.\nThis is HORIZON.",
-    subtitle:
-      "Three field points record water, soil, and the data link at Cồn Hô.",
+    subtitle: "Water, soil and data at Cồn Hô.",
     ctaPrimary: "View the monitoring network",
     pilotNote: "Field infrastructure is being completed and verified at Cồn Hô.",
+    placeLabel: "CỒN HÔ · VĨNH LONG",
+    systemLabel: "SYSTEM CONFIGURATION",
+    networkFact: "2 STATIONS · 1 GATEWAY",
+    continueLabel: "Enter the field record",
   },
 
   about: {
@@ -294,7 +303,7 @@ export const en: Dictionary = {
 
   report: {
     eyebrow: "Field record",
-    title: "Record a change on the island.",
+    title: "Field report.",
     lead: "Pick the station nearest you, describe what you saw, then send it.",
     step1: "Location",
     step2: "Observation",
@@ -350,6 +359,8 @@ export const en: Dictionary = {
       errSendFailed: "Could not send the report. Check your connection and try again.",
       errGeoUnsupported: "This device cannot report its location. The report will use the station you picked.",
       errGeoFailed: "Could not get your location. You can still send the report using the station you picked.",
+      errMediaInvalid: "Unsupported file or file exceeds the size limit.",
+      errMediaCapacity: "Up to 3 files. Remove one before adding another.",
       errAudioFailed: "Audio recording is not available on this device. You can still attach an audio file.",
 
       charsNeeded: "At least {min} characters needed — {n} so far.",
@@ -383,7 +394,7 @@ export const en: Dictionary = {
     noCoordsBody:
       "The map will show real stations once it can reach location data from the system. No placeholder position is displayed.",
     basemapOnlyLabel: "Map of Cồn Hô, Vĩnh Long — station locations not shown",
-    ariaLabel: "Map showing the location of {count} monitoring stations",
+    ariaLabel: "Map showing the location of {count} points in the monitoring network",
   },
 
   auth: {

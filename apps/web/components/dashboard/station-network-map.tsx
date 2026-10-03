@@ -3,7 +3,7 @@
 import "leaflet/dist/leaflet.css";
 import { MapPinOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useDict } from "@/lib/i18n/client";
+import { useDict, useLocale } from "@/lib/i18n/client";
 import { fmt } from "@/lib/i18n";
 import { useRouter } from "next/navigation";
 import type { FreshnessState } from "@/components/ui/status-indicator";
@@ -20,33 +20,9 @@ export interface MapStation {
   freshness: FreshnessState;
 }
 
-/**
- * Mirrors globals.css's --h-safe/--h-warning/--h-neutral (and brand-blue for
- * the selection ring) in both themes. Leaflet markers are drawn as SVG with
- * inline style attributes it sets itself, not classed elements — they cannot
- * inherit a CSS custom property the way a styled <div> does, so the two
- * values are restated here rather than left to drift as flat hex like the
- * pre-rebrand version of this file did (#1c7c42/#a86400/#5e6670 — none of
- * which match any current token in either theme).
- */
-const FRESHNESS_COLOR: Record<ResolvedTheme, Record<FreshnessState, string>> = {
-  light: {
-    live: "#197a3f",
-    recent: "#197a3f",
-    stale: "#a35f00",
-    offline: "#5b6570",
-    never_connected: "#5b6570",
-    unavailable: "#5b6570",
-  },
-  dark: {
-    live: "#4cb87a",
-    recent: "#4cb87a",
-    stale: "#d69a44",
-    offline: "#808c93",
-    never_connected: "#808c93",
-    unavailable: "#808c93",
-  },
-};
+// Geographic markers identify places; their red waves do not indicate telemetry freshness.
+const PLACE_COLOR = "#c94b44";
+const GROUP_BELOW_ZOOM = 14;
 
 const MARKER_STROKE: Record<ResolvedTheme, string> = { light: "#fffdf8", dark: "#1a2320" };
 const SELECTION_RING_COLOR: Record<ResolvedTheme, string> = { light: "#0c5f7d", dark: "#4fb0d4" };
@@ -119,8 +95,10 @@ interface StationNetworkMapProps {
   variant?: "full" | "preview" | "observatory" | "grid";
   /** Optional — when a marker's id matches, it renders with a highlight ring so the map can reflect an instrument-selector's current selection. */
   selectedStationId?: string;
+  /** When supplied, marker activation selects in-place instead of routing to the observatory. */
+  onStationSelect?: (stationId: string) => void;
   /**
-   * Render the basemap with NO markers when `stations` is empty, instead of
+   * Render the basemap with an island marker when `stations` is empty, instead of
    * the "no coordinates" placeholder.
    *
    * This exists for demo mode. Demo stations deliberately carry no
@@ -130,7 +108,7 @@ interface StationNetworkMapProps {
    * second-largest region on the canvas holding a placeholder, which said
    * less than the map does and looked like a failure rather than a choice.
    *
-   * So: real geography, no fake markers. The distinction the honesty rules
+   * So: real geography, no invented station markers. The distinction the honesty rules
    * actually protect is between measured and unmeasured, and a basemap
    * measures nothing.
    */
@@ -169,13 +147,16 @@ export function StationNetworkMap({
   stations,
   variant = "full",
   selectedStationId,
+  onStationSelect,
   basemapOnly = false,
 }: StationNetworkMapProps) {
   const dict = useDict();
+  const locale = useLocale();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const tileLayerRef = useRef<import("leaflet").TileLayer | null>(null);
   const markersRef = useRef<MarkerRecord[]>([]);
+  const islandRef = useRef<import("leaflet").CircleMarker | null>(null);
   const ringRef = useRef<import("leaflet").CircleMarker | null>(null);
   const leafletRef = useRef<typeof import("leaflet") | null>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -183,6 +164,7 @@ export function StationNetworkMap({
   const theme = useResolvedTheme();
   const interactive = variant !== "preview";
   const heightClass = HEIGHT_CLASS[variant];
+  const stationGeometry = JSON.stringify(stations.map(({ id, name, lat, lng }) => ({ id, name, lat, lng })));
 
   // Base map + tile layer + station markers.
   //
@@ -227,7 +209,6 @@ export function StationNetworkMap({
         // Theme read once, at build time — the effect below keeps this in
         // sync afterward via setUrl/setStyle, never by rebuilding.
         const initialTheme = resolveTheme();
-        const colors = FRESHNESS_COLOR[initialTheme];
 
         const tileLayer = L.tileLayer(TILE_URL[initialTheme], {
           attribution: TILE_ATTRIBUTION,
@@ -238,28 +219,13 @@ export function StationNetworkMap({
         const records: MarkerRecord[] = [];
 
         for (const station of stations) {
-          // Signal pulse — only for stations genuinely live right now, never
-          // decorative (REDESIGN_SPECIFICATION.md §24.2/§24.8). A second,
-          // non-interactive ring under the real marker; the CSS animation
-          // lives in globals.css and already respects prefers-reduced-motion.
-          const pulse =
-            station.freshness === "live"
-              ? L.circleMarker([station.lat, station.lng], {
-                  radius: 9,
-                  weight: 0,
-                  fillColor: colors.live,
-                  fillOpacity: 0.5,
-                  interactive: false,
-                  className: "horizon-marker-pulse",
-                }).addTo(map)
-              : null;
-
+          const pulse = L.circleMarker([station.lat, station.lng], {
+            radius: 8, weight: 0, fillColor: PLACE_COLOR, fillOpacity: 0.45,
+            interactive: false, className: "horizon-marker-pulse",
+          }).addTo(map);
           const marker = L.circleMarker([station.lat, station.lng], {
-            radius: 9,
-            weight: 2,
-            color: MARKER_STROKE[initialTheme],
-            fillColor: colors[station.freshness],
-            fillOpacity: 1,
+            radius: 7, weight: 2, color: MARKER_STROKE[initialTheme],
+            fillColor: PLACE_COLOR, fillOpacity: 1, className: "horizon-station-marker",
           }).addTo(map);
 
           // A PERMANENT label, not a hover tooltip.
@@ -286,7 +252,9 @@ export function StationNetworkMap({
             { direction: "bottom" as const, offset: [0, 11] as [number, number] },
           ][records.length % 3];
 
-          marker.bindTooltip(station.name, {
+          const label = document.createElement("span");
+          label.textContent = station.name;
+          marker.bindTooltip(label, {
             direction: placement.direction,
             offset: placement.offset,
             permanent: true,
@@ -297,13 +265,45 @@ export function StationNetworkMap({
             // link. The map only ever receives pilot stations (its callers
             // filter to the allowlist), so the cast is safe and keeps this
             // call site honest about what it accepts.
-            marker.on("click", () => router.push(OBSERVATORY_HREF));
+            marker.on("click", () => onStationSelect ? onStationSelect(station.id) : router.push(OBSERVATORY_HREF));
             (marker.getElement() as SVGElement | undefined)?.style.setProperty("cursor", "pointer");
           }
 
           records.push({ station, marker, pulse });
         }
         markersRef.current = records;
+        const islandPulse = L.circleMarker([CON_HO.lat, CON_HO.lng], {
+          radius: 9, weight: 0, fillColor: PLACE_COLOR, fillOpacity: 0.45,
+          interactive: false, className: "horizon-marker-pulse",
+        });
+        const island = L.circleMarker([CON_HO.lat, CON_HO.lng], {
+          radius: 8, weight: 2, color: MARKER_STROKE[initialTheme],
+          fillColor: PLACE_COLOR, fillOpacity: 1, className: "horizon-island-marker",
+        }).bindTooltip("Cồn Hô", {
+          permanent: true, direction: "top", offset: [0, -12], className: "horizon-marker-label",
+        });
+        islandRef.current = island;
+        if (interactive) island.on("click", () => map.setView(island.getLatLng(), GROUP_BELOW_ZOOM));
+        const syncGrouping = () => {
+          const grouped = stations.length === 0 || map.getZoom() < GROUP_BELOW_ZOOM;
+          for (const { marker, pulse } of records) {
+            for (const layer of [pulse, marker]) {
+              if (!layer) continue;
+              if (grouped) layer.remove();
+              else if (!map.hasLayer(layer)) layer.addTo(map);
+            }
+          }
+          for (const layer of [islandPulse, island]) {
+            if (grouped && !map.hasLayer(layer)) layer.addTo(map);
+            else if (!grouped) layer.remove();
+          }
+          const ring = ringRef.current;
+          if (ring) {
+            if (grouped) ring.remove();
+            else if (!map.hasLayer(ring)) ring.addTo(map);
+          }
+        };
+        map.on("zoomend", syncGrouping);
 
         if (stations.length === 0) {
           // Basemap-only: frame the island from the shared reference point.
@@ -323,6 +323,7 @@ export function StationNetworkMap({
           });
         }
 
+        syncGrouping();
         setMapReady(true);
       })
       .catch((err) => {
@@ -339,26 +340,120 @@ export function StationNetworkMap({
       tileLayerRef.current = null;
       markersRef.current = [];
       ringRef.current = null;
+      islandRef.current = null;
       setMapReady(false);
     };
-  }, [stations, router, interactive, basemapOnly]);
+    // Keep the reader's map position when telemetry arrives or its age changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stationGeometry, router, interactive, basemapOnly, onStationSelect]);
 
   // Theme sync — updates the existing tile layer and markers in place
   // instead of rebuilding them, so a toggle click (or the system-preference
   // listener firing right after mount) can never race the base effect above.
   useEffect(() => {
     if (!mapReady) return;
-    const colors = FRESHNESS_COLOR[theme];
 
     tileLayerRef.current?.setUrl(TILE_URL[theme]);
 
-    for (const { station, marker, pulse } of markersRef.current) {
-      marker.setStyle({ color: MARKER_STROKE[theme], fillColor: colors[station.freshness] });
-      pulse?.setStyle({ fillColor: colors.live });
+    for (const { marker } of markersRef.current) {
+      marker.setStyle({ color: MARKER_STROKE[theme] });
     }
+    islandRef.current?.setStyle({ color: MARKER_STROKE[theme] });
 
     ringRef.current?.setStyle({ color: SELECTION_RING_COLOR[theme] });
   }, [theme, mapReady]);
+
+  // Only read location after an existing grant. Permission changes are handled
+  // in place, and revocation immediately removes the local-only position.
+  useEffect(() => {
+    const map = mapRef.current;
+    const L = leafletRef.current;
+    if (!mapReady || !map || !L || !navigator.geolocation || !navigator.permissions) return;
+    let cancelled = false;
+    let permission: PermissionStatus | undefined;
+    let watch: number | undefined;
+    let marker: import("leaflet").CircleMarker | undefined;
+    let accuracy: import("leaflet").Circle | undefined;
+    let locationControl: import("leaflet").Control | undefined;
+    const fitLocations = () => {
+      if (!marker || cancelled || mapRef.current !== map) return;
+      const locations: [number, number][] = [
+        [CON_HO.lat, CON_HO.lng],
+        ...markersRef.current.map(({ station }): [number, number] => [station.lat, station.lng]),
+        [marker.getLatLng().lat, marker.getLatLng().lng],
+      ];
+      map.fitBounds(L.latLngBounds(locations), { padding: [48, 48], maxZoom: CON_HO_ZOOM, animate: false });
+    };
+    map.on("resize", fitLocations);
+    const clearLocation = () => {
+      const hadLocation = !!marker;
+      if (watch !== undefined) navigator.geolocation.clearWatch(watch);
+      watch = undefined;
+      marker?.remove();
+      accuracy?.remove();
+      locationControl?.remove();
+      locationControl = undefined;
+      marker = undefined;
+      accuracy = undefined;
+      if (hadLocation && !cancelled && mapRef.current === map) {
+        map.setView([CON_HO.lat, CON_HO.lng], CON_HO_ZOOM, { animate: false });
+      }
+    };
+    const syncPermission = () => {
+      if (cancelled) return;
+      if (permission?.state !== "granted") { clearLocation(); return; }
+      if (watch !== undefined) return;
+      watch = navigator.geolocation.watchPosition((position) => {
+        if (cancelled || mapRef.current !== map || permission?.state !== "granted") return;
+        const point: [number, number] = [position.coords.latitude, position.coords.longitude];
+        if (!marker) {
+          accuracy = L.circle(point, {
+            radius: position.coords.accuracy, color: "#277baf", weight: 1,
+            fillColor: "#277baf", fillOpacity: 0.08, interactive: false,
+          }).addTo(map);
+          marker = L.circleMarker(point, {
+            radius: 6, color: "#fffdf8", weight: 2, fillColor: "#277baf",
+            fillOpacity: 1, className: "horizon-user-marker",
+          }).addTo(map);
+          if (interactive) {
+            locationControl = new L.Control({ position: "topright" });
+            locationControl.onAdd = () => {
+              const container = L.DomUtil.create("div", "leaflet-bar");
+              const button = L.DomUtil.create("button", "horizon-locate-user", container);
+              button.type = "button";
+              button.textContent = "⌖";
+              button.title = locale === "vi" ? "Xem Cồn Hô và vị trí của bạn" : "Show Cồn Hô and your location";
+              button.setAttribute("aria-label", button.title);
+              L.DomEvent.disableClickPropagation(container);
+              L.DomEvent.disableScrollPropagation(container);
+              button.addEventListener("click", () => {
+                fitLocations();
+              });
+              return container;
+            };
+            locationControl.addTo(map);
+          }
+          fitLocations();
+        } else {
+          marker.setLatLng(point);
+          accuracy?.setLatLng(point).setRadius(position.coords.accuracy);
+          if (!map.getBounds().contains(point) || !map.getBounds().contains([CON_HO.lat, CON_HO.lng])) fitLocations();
+        }
+      }, () => clearLocation(), { enableHighAccuracy: false, maximumAge: 60000, timeout: 15000 });
+    };
+    void navigator.permissions.query({ name: "geolocation" }).then((result) => {
+      if (cancelled) return;
+      permission = result;
+      permission.addEventListener("change", syncPermission);
+      syncPermission();
+    }).catch(() => { /* Unsupported permission queries leave the island map usable. */ });
+    return () => {
+      cancelled = true;
+      permission?.removeEventListener("change", syncPermission);
+      map.off("resize", fitLocations);
+      clearLocation();
+    };
+  }, [mapReady, locale, interactive]);
 
   // Keep Leaflet's idea of its own size in step with the element's.
   //
@@ -379,7 +474,14 @@ export function StationNetworkMap({
       // Coalesce to one call per frame: invalidateSize() forces a redraw and
       // ResizeObserver can fire several times during a single reflow.
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => map.invalidateSize({ animate: false }));
+      frame = requestAnimationFrame(() => {
+        // A ResizeObserver delivery can queue a frame just as React unmounts
+        // this map. Its cleanup cancels the latest queued frame, and this
+        // identity check also closes the race where that frame has started.
+        if (mapRef.current === map && el.isConnected) {
+          map.invalidateSize({ animate: false });
+        }
+      });
     });
     observer.observe(el);
     return () => {
@@ -411,6 +513,7 @@ export function StationNetworkMap({
       className: "horizon-selection-ring",
     }).addTo(map);
     ringRef.current = ring;
+    if (map.getZoom() < GROUP_BELOW_ZOOM) ring.remove();
 
     const el = ring.getElement();
     if (el instanceof SVGElement) {

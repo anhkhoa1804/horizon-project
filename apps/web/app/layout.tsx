@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist_Mono } from "next/font/google";
+import { Be_Vietnam_Pro, Roboto_Mono, Newsreader } from "next/font/google";
 import { QueryProvider } from "@/providers/query-provider";
 import { BackgroundAtmosphere } from "@/components/layout/background-atmosphere";
 import { Analytics } from "@vercel/analytics/next";
@@ -16,9 +16,22 @@ import "./globals.css";
  * the PWA). Data readouts only — see globals.css's --text-data role.
  * Body/heading typography is untouched.
  */
-const dataMono = Geist_Mono({
-  subsets: ["latin"],
+const dataMono = Roboto_Mono({
+  subsets: ["latin", "latin-ext", "vietnamese"],
   variable: "--font-data",
+  display: "swap",
+});
+
+const interfaceSans = Be_Vietnam_Pro({
+  weight: ["400", "500", "600", "700"],
+  subsets: ["latin", "latin-ext", "vietnamese"],
+  variable: "--font-interface",
+  display: "swap",
+});
+
+const fieldEditorial = Newsreader({
+  subsets: ["latin", "latin-ext", "vietnamese"],
+  variable: "--font-editorial",
   display: "swap",
 });
 
@@ -123,7 +136,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     // suppressHydrationWarning: the boot script below mutates <html>'s
     // data-theme before React hydrates, so the client tree legitimately
     // differs from the server tree on this one attribute.
-    <html lang={HTML_LANG[locale]} className={dataMono.variable} suppressHydrationWarning>
+    <html lang={HTML_LANG[locale]} className={`${dataMono.variable} ${interfaceSans.variable} ${fieldEditorial.variable}`} suppressHydrationWarning>
       <head>
         {/* Must run before first paint — see lib/theme.ts for why this is a
             raw inline script rather than a component or effect. */}

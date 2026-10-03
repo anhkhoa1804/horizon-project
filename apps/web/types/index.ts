@@ -16,8 +16,8 @@ export interface EnvironmentalReading {
   id: string;
   message_id: string;
   station_id: string;
-  salinity: number;
-  water_level: number;
+  salinity: number | null;
+  water_level: number | null;
   /** Raw water conductivity reported by Station 01. Never inferred from salinity. */
   water_ec_ms_cm?: number | null;
   /** Water temperature reported by the EC probe. */
@@ -101,8 +101,8 @@ export interface UserProfile {
 
 export interface TrendPoint {
   timestamp: string;
-  salinity: number;
-  water_level: number;
+  salinity: number | null;
+  water_level: number | null;
   water_ec_ms_cm: number | null;
   water_temp_c: number | null;
 }

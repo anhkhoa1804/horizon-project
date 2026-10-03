@@ -1,3 +1,5 @@
+import { getPublicRealtimeConfig, getPublicLiveSnapshot } from "@/lib/monitoring/publicRealtime";
+import { applyLiveReading } from "@/lib/monitoring/liveReadings";
 import { Suspense } from "react";
 import { FlaskConical } from "lucide-react";
 import { getObservatoryViewModel } from "@/lib/monitoring/buildObservatory";
@@ -6,8 +8,8 @@ import { getI18n } from "@/lib/i18n/server";
 import { ObservatoryCanvas } from "@/components/monitoring/observatory-canvas";
 import { loadThresholdRegistry, loadSoilWaterModels } from "@/lib/monitoring/thresholds";
 import { HashScroll } from "@/components/ui/hash-scroll";
-import { PageHero } from "@/components/layout/page-hero";
 import { PublicShell } from "@/components/layout/public-shell";
+import { ToolPageHeading } from "@/components/layout/tool-page-heading";
 import DashboardLoading from "./loading";
 
 export const revalidate = 60;
@@ -32,10 +34,12 @@ async function MonitoringContent({ mode }: { mode: "real" | "demo" }) {
   // because the view model bakes station names, the gateway capability note
   // and the whole reference panel as strings. Building it language-blind is
   // what left "Trạm Nước" untranslated on the English observatory.
-  const [model, weather] = await Promise.all([
+  const [snapshot, weather, latest] = await Promise.all([
     getObservatoryViewModel(mode, dict),
     getExternalWeather(),
+    mode === "real" ? getPublicLiveSnapshot() : Promise.resolve([]),
   ]);
+  const model = latest.reduce(applyLiveReading, snapshot);
   // The registry is public: the basis for every interpretation is part of what
   // this page publishes, not operator-only configuration.
   const [thresholds, soilModels] = await Promise.all([
@@ -46,6 +50,7 @@ async function MonitoringContent({ mode }: { mode: "real" | "demo" }) {
   return (
     <ObservatoryCanvas
       model={model}
+      realtime={mode === "real" ? getPublicRealtimeConfig() : null}
       weather={weather}
       thresholds={thresholds}
       soilModels={soilModels}
@@ -88,19 +93,11 @@ export default async function DashboardPage({
           HashScroll. */}
       <HashScroll />
 
-      <PageHero
-        scale="observatory"
-        eyebrow={dict.monitoring.eyebrow}
-        title={dict.monitoring.title}
-        aside={
-          mode === "demo" ? (
-            <span className="inline-flex items-center gap-1.5 rounded-sm bg-watch-bg px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-watch">
-              <FlaskConical className="h-3 w-3" aria-hidden />
-              {dict.monitoring.demoBannerTitle}
-            </span>
-          ) : null
-        }
-      />
+      <ToolPageHeading title={dict.monitoring.title} description={dict.home.subtitle} className="h-text" aside={mode === "demo" ? (
+          <span className="inline-flex min-h-11 items-center gap-1.5 border-b-2 border-watch px-1 text-xs font-semibold text-watch">
+            <FlaskConical className="h-4 w-4" aria-hidden />{dict.monitoring.demoBannerTitle}
+          </span>
+        ) : null} />
 
       <Suspense fallback={<DashboardLoading />}>
         <MonitoringContent mode={mode} />

@@ -130,9 +130,15 @@ export const vi = {
     demoBannerLink: "Xem dữ liệu thật →",
 
     networkEyebrow: "Mạng lưới",
-    stationsCounted: "trạm quan trắc",
+    stationsCounted: "điểm trong mạng lưới quan trắc",
     sendingData: "đang gửi dữ liệu",
     noneSending: "chưa trạm nào gửi dữ liệu",
+    streamConnected: "Đã kết nối luồng quan trắc",
+    noTelemetry: "Chưa có phép đo",
+    noTelemetryBody: "Chưa nhận được phép đo hiện tại.",
+    gateAdviceUnavailable: "Chưa có khuyến nghị đóng/mở cống",
+    gateAdviceBasis: "HORIZON chưa có quy tắc vận hành đã xác nhận để chuyển số đo độ mặn thành quyết định đóng hoặc mở cống. Các mốc tham khảo không phải ngưỡng hành động tại Cồn Hô.",
+    gateAdviceLink: "Xem cơ sở diễn giải",
     lastObservation: "Quan trắc gần nhất",
     neverObserved: "Hệ thống chưa nhận được quan trắc nào từ mạng lưới.",
     noDataCount: "chưa có dữ liệu",
@@ -245,10 +251,13 @@ export const vi = {
     /* Identity statement: Cồn Hô is the first field context; HORIZON is the
        reusable platform being built from it. */
     title: "Đây là Cồn Hô.\nĐây là HORIZON.",
-    subtitle:
-      "Ba điểm đo ghi lại nước, đất và đường truyền ngay tại Cồn Hô.",
+    subtitle: "Nước, đất và dữ liệu tại Cồn Hô.",
     ctaPrimary: "Xem mạng lưới quan trắc",
     pilotNote: "Hạ tầng hiện trường đang được hoàn thiện và kiểm chứng tại Cồn Hô.",
+    placeLabel: "CỒN HÔ · VĨNH LONG",
+    systemLabel: "CẤU TRÚC HỆ THỐNG",
+    networkFact: "2 TRẠM ĐO · 1 GATEWAY",
+    continueLabel: "Đi vào hiện trường",
   },
 
   about: {
@@ -308,7 +317,7 @@ export const vi = {
 
   report: {
     eyebrow: "Ghi nhận hiện trường",
-    title: "Ghi nhận một thay đổi trên đảo.",
+    title: "Ghi nhận hiện trường.",
     lead: "Chọn trạm gần bạn nhất, mô tả điều bạn thấy, rồi gửi.",
     step1: "Địa điểm",
     step2: "Quan sát",
@@ -378,6 +387,8 @@ export const vi = {
       errSendFailed: "Không gửi được báo cáo. Vui lòng kiểm tra kết nối và thử lại.",
       errGeoUnsupported: "Thiết bị không hỗ trợ định vị. Báo cáo sẽ dùng vị trí trạm bạn chọn.",
       errGeoFailed: "Chưa lấy được vị trí. Báo cáo vẫn gửi được bằng vị trí trạm bạn chọn.",
+      errMediaInvalid: "Tệp không hợp lệ hoặc vượt giới hạn dung lượng.",
+      errMediaCapacity: "Tối đa 3 tệp. Hãy bỏ một tệp trước khi thêm.",
       errAudioFailed: "Chưa thể ghi âm trên thiết bị này. Bạn vẫn có thể đính kèm tệp âm thanh.",
 
       charsNeeded: "Cần ít nhất {min} ký tự — hiện có {n}.",
@@ -411,7 +422,7 @@ export const vi = {
     noCoordsBody:
       "Bản đồ sẽ hiện các trạm thực khi kết nối được với dữ liệu vị trí từ hệ thống. Không có vị trí giả nào được hiển thị.",
     basemapOnlyLabel: "Bản đồ Cồn Hô, Vĩnh Long — chưa hiển thị vị trí trạm",
-    ariaLabel: "Bản đồ vị trí {count} trạm quan trắc",
+    ariaLabel: "Bản đồ vị trí {count} điểm trong mạng lưới quan trắc",
   },
 
   auth: {

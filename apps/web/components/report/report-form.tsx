@@ -1,16 +1,14 @@
 "use client";
+import { KeywordTitle } from "@/components/ui/keyword-title";
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft,
-  ArrowRight,
   Camera,
   Check,
   Crosshair,
   Mic,
-  Pencil,
   Send,
   Sprout,
   Trash2,
@@ -20,6 +18,7 @@ import {
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { StationNetworkMap, type MapStation } from "@/components/dashboard/station-network-map";
 import {
   DESCRIPTION_MAX,
   DESCRIPTION_MIN,
@@ -28,7 +27,9 @@ import {
 } from "@/lib/reports/reportCategories";
 import { REPORT_MEDIA_MAX_FILES, validateReportMedia } from "@/lib/reports/media";
 import { REPORT_STATION_OPTIONS, resolveStationOption } from "@/lib/reports/reportStations";
-import { stationText } from "@/lib/stationProfile";
+import { stationDeviceCode, stationText } from "@/lib/stationProfile";
+import { STATION_COORDS } from "@/lib/geo";
+import type { PilotStationId } from "@/lib/publicStations";
 import { cn } from "@/lib/utils";
 import { useDict } from "@/lib/i18n/client";
 import { fmt } from "@/lib/i18n";
@@ -36,19 +37,6 @@ import type { Dictionary } from "@/lib/i18n/vi";
 import type { StationKind } from "@/lib/stationProfile";
 
 const KIND_ICON: Record<StationKind, typeof Waves> = { water: Waves, soil: Sprout, gateway: Send };
-
-/**
- * Evidence now belongs in the final review step because the server persists
- * each accepted attachment to private Storage alongside report_media metadata.
- */
-const STEPS = [
-  { id: 1, key: "step1" },
-  { id: 2, key: "step2" },
-  { id: 3, key: "step4" },
-] as const satisfies readonly { id: number; key: keyof Dictionary["report"] }[];
-
-type StepId = (typeof STEPS)[number]["id"];
-
 interface SubmitResult {
   id: string;
   demo: boolean;
@@ -65,75 +53,6 @@ function errorMessageFor(status: number, code: string | undefined, dict: Diction
   if (code === "description_too_long") return fmt(f.errTooLong, { max: DESCRIPTION_MAX });
   if (code === "invalid_category") return f.errInvalidKind;
   return f.errSendFailed;
-}
-
-// ---------------------------------------------------------------------------
-// Progress rail
-// ---------------------------------------------------------------------------
-
-function StepRail({
-  current,
-  furthest,
-  onJump,
-}: {
-  current: StepId;
-  furthest: StepId;
-  onJump: (step: StepId) => void;
-}) {
-  const dict = useDict();
-  return (
-    <aside className="space-y-8">
-      <ol className="flex gap-2 lg:flex-col lg:gap-0" aria-label={dict.report.progressLabel}>
-        {STEPS.map((step) => {
-          const active = step.id === current;
-          const done = step.id < furthest || (step.id < current && step.id <= furthest);
-          const reachable = step.id <= furthest;
-          return (
-            <li key={step.id} className="flex-1 lg:flex-none">
-              <button
-                type="button"
-                onClick={() => reachable && onJump(step.id)}
-                disabled={!reachable}
-                aria-current={active ? "step" : undefined}
-                className={cn(
-                  "group w-full text-left transition-colors duration-[var(--motion-base)]",
-                  "lg:flex lg:items-baseline lg:gap-3 lg:border-l-2 lg:py-2.5 lg:pl-4",
-                  active ? "lg:border-accent" : "lg:border-border/60",
-                  reachable ? "cursor-pointer" : "cursor-default",
-                )}
-              >
-                <span
-                  className={cn(
-                    "block h-0.5 w-full rounded-full transition-colors duration-[var(--motion-base)] lg:hidden",
-                    active ? "bg-accent" : done ? "bg-accent/40" : "bg-border",
-                  )}
-                  aria-hidden
-                />
-                <span
-                  className={cn(
-                    "mt-2 block text-[10px] font-medium uppercase tracking-[0.16em] lg:mt-0 lg:text-[11px]",
-                    active ? "text-accent" : reachable ? "text-muted" : "text-muted/50",
-                  )}
-                >
-                  {String(step.id).padStart(2, "0")}
-                </span>
-                <span
-                  className={cn(
-                    "hidden text-sm lg:block",
-                    active ? "font-semibold text-foreground" : reachable ? "text-muted" : "text-muted/50",
-                  )}
-                >
-                  {dict.report[step.key]}
-                </span>
-                {done ? <Check className="hidden h-3.5 w-3.5 shrink-0 text-accent lg:block" aria-hidden /> : null}
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-
-    </aside>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -204,8 +123,6 @@ export function ReportForm() {
   const searchParams = useSearchParams();
   const presetStation = resolveStationOption(searchParams.get("station"));
 
-  const [step, setStep] = useState<StepId>(presetStation ? 2 : 1);
-  const [furthest, setFurthest] = useState<StepId>(presetStation ? 2 : 1);
   const [stationId, setStationId] = useState<string | null>(presetStation?.id ?? null);
   const [locationChoice, setLocationChoice] = useState<string>(presetStation?.id ?? "");
   const [category, setCategory] = useState<string | null>(null);
@@ -218,12 +135,27 @@ export function ReportForm() {
   const [result, setResult] = useState<SubmitResult | null>(null);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [recording, setRecording] = useState(false);
+  const [audioPending, setAudioPending] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const mountedRef = useRef(true);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const locationRequestRef = useRef(0);
 
-  const headingRef = useRef<HTMLHeadingElement | null>(null);
-  const stepChangedRef = useRef(false);
 
   const station = useMemo(() => REPORT_STATION_OPTIONS.find((s) => s.id === stationId) ?? null, [stationId]);
+  const reportMapStations = useMemo<MapStation[]>(() => REPORT_STATION_OPTIONS.flatMap((option) => {
+    const point = STATION_COORDS[option.id as PilotStationId];
+    return point ? [{ id: option.id, name: stationDeviceCode(option.id), lat: point.lat, lng: point.lng, freshness: "unavailable" }] : [];
+  }), []);
+  const selectMapStation = useCallback((id: string) => {
+    if (!REPORT_STATION_OPTIONS.some((option) => option.id === id)) return;
+    locationRequestRef.current += 1;
+    setLocationChoice(id);
+    setStationId(id);
+    setGps(null);
+  }, []);
   const trimmed = description.trim();
   const attachmentUrls = useMemo(
     () => attachments.map((file) => ({ file, url: URL.createObjectURL(file) })),
@@ -232,29 +164,16 @@ export function ReportForm() {
 
   useEffect(() => () => attachmentUrls.forEach(({ url }) => URL.revokeObjectURL(url)), [attachmentUrls]);
 
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; if (recorderRef.current?.state === "recording") recorderRef.current.stop(); streamRef.current?.getTracks().forEach((track) => track.stop()); }; }, []);
+
   // Object URLs are not garbage-collected on their own — release the previous
 
-  // Move focus to the new step's heading so keyboard and screen-reader users
-  // land on the task rather than staying on the (now unmounted) Next button.
-  useEffect(() => {
-    if (!stepChangedRef.current) return;
-    stepChangedRef.current = false;
-    headingRef.current?.focus();
-  }, [step]);
-
-  const goto = useCallback((next: StepId) => {
-    stepChangedRef.current = true;
-    setStep(next);
-    setFurthest((prev) => (next > prev ? next : prev));
-  }, []);
-
-  const stepValid: Record<StepId, boolean> = {
-    1: stationId !== null || gps !== null,
-    2: category !== null && trimmed.length >= DESCRIPTION_MIN && trimmed.length <= DESCRIPTION_MAX,
-    3: true,
-  };
+  const locationValid = stationId !== null || gps !== null;
+  const observationValid = category !== null && trimmed.length >= DESCRIPTION_MIN && trimmed.length <= DESCRIPTION_MAX;
 
   async function handleLocate() {
+    const requestId = ++locationRequestRef.current;
+    setGps(null);
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setGpsState("error");
       setGpsNote(f.errGeoUnsupported);
@@ -272,23 +191,27 @@ export function ReportForm() {
           enableHighAccuracy: true,
         });
       });
+      if (!mountedRef.current || requestId !== locationRequestRef.current) return;
       setGps({ lat: position.coords.latitude, lng: position.coords.longitude });
       setGpsState("idle");
     } catch {
+      if (!mountedRef.current || requestId !== locationRequestRef.current) return;
       setGpsState("error");
       setGpsNote(f.errGeoFailed);
     }
   }
 
-  function addAttachments(next: FileList | null) {
+  function addAttachments(next: FileList | File[] | null) {
     if (!next) return;
-    setAttachments((current) => {
-      const accepted = Array.from(next).filter((file) => validateReportMedia(file));
-      return [...current, ...accepted].slice(0, REPORT_MEDIA_MAX_FILES);
-    });
+    const files = Array.from(next);
+    if (files.some((file) => !validateReportMedia(file))) { setMediaError(f.errMediaInvalid); return; }
+    if (attachments.length + files.length > REPORT_MEDIA_MAX_FILES) { setMediaError(f.errMediaCapacity); return; }
+    setMediaError(null);
+    setAttachments((current) => [...current, ...files]);
   }
 
   async function toggleAudioRecording() {
+    if (audioPending) return;
     if (recording && recorderRef.current) {
       recorderRef.current.stop();
       return;
@@ -297,17 +220,24 @@ export function ReportForm() {
       setError(f.errAudioFailed);
       return;
     }
+    if (attachments.length >= REPORT_MEDIA_MAX_FILES) { setMediaError(f.errMediaCapacity); return; }
+    setAudioPending(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      if (!mountedRef.current) { stream.getTracks().forEach((track) => track.stop()); return; }
+      streamRef.current = stream;
+      const supportedType = ["audio/webm", "audio/mp4", "audio/ogg"].find((type) => MediaRecorder.isTypeSupported(type));
+      if (!supportedType) { stream.getTracks().forEach((track) => track.stop()); setMediaError(f.errAudioFailed); return; }
+      const recorder = new MediaRecorder(stream, { mimeType: supportedType });
       const chunks: BlobPart[] = [];
       recorder.ondataavailable = (event) => event.data.size > 0 && chunks.push(event.data);
       recorder.onstop = () => {
         stream.getTracks().forEach((track) => track.stop());
-        const file = new File([new Blob(chunks, { type: recorder.mimeType || "audio/webm" })], "field-note.webm", {
-          type: recorder.mimeType || "audio/webm",
-        });
-        addAttachments({ 0: file, length: 1, item: () => file } as unknown as FileList);
+        streamRef.current = null;
+        if (!mountedRef.current) return;
+        const mime = (recorder.mimeType || "audio/webm").split(";")[0];
+        const file = new File(chunks, `field-note.${mime === "audio/mp4" ? "m4a" : mime === "audio/ogg" ? "ogg" : "webm"}`, { type: mime });
+        addAttachments([file]);
         recorderRef.current = null;
         setRecording(false);
       };
@@ -315,14 +245,19 @@ export function ReportForm() {
       recorder.start();
       setRecording(true);
     } catch {
-      setError(f.errAudioFailed);
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      setMediaError(f.errAudioFailed);
+    } finally {
+      if (mountedRef.current) setAudioPending(false);
     }
   }
 
   async function handleSubmit() {
-    if (submitting || !category || (!station && !gps)) return;
+    if (submitting || recording || audioPending || !category || !observationValid || (!station && !gps)) return;
 
     setSubmitting(true);
+    setUploadProgress(0);
     setError(null);
 
     try {
@@ -342,9 +277,15 @@ export function ReportForm() {
       if (new URLSearchParams(window.location.search).get("mode") === "demo") {
         endpoint.searchParams.set("mode", "demo");
       }
-      const res = await fetch(endpoint, {
-        method: "POST",
-        body: form,
+      const res = await new Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>((resolve, reject) => {
+        const request = new XMLHttpRequest();
+        request.open("POST", endpoint.toString());
+        request.timeout = 120000;
+        request.upload.onprogress = (event) => { if (event.lengthComputable) setUploadProgress(Math.round(event.loaded / event.total * 100)); };
+        request.onload = () => resolve({ ok: request.status >= 200 && request.status < 300, status: request.status, json: async () => JSON.parse(request.responseText) });
+        request.onerror = () => reject(new Error("upload failed"));
+        request.ontimeout = () => reject(new Error("upload timed out"));
+        request.send(form);
       });
 
       const payload = (await res.json().catch(() => ({}))) as { ok?: boolean; id?: string; demo?: boolean; error?: string; mediaFailures?: unknown };
@@ -368,6 +309,7 @@ export function ReportForm() {
       setError(f.errSendFailed);
     } finally {
       setSubmitting(false);
+      setUploadProgress(null);
     }
   }
 
@@ -382,62 +324,20 @@ export function ReportForm() {
     setGpsNote(null);
     setError(null);
     setAttachments([]);
-    stepChangedRef.current = true;
-    setStep(presetStation ? 2 : 1);
-    setFurthest(presetStation ? 2 : 1);
+    setMediaError(null);
   }
 
   if (result) {
     return <SuccessView result={result} onAnother={resetForm} />;
   }
 
-  const locationSummary = gps
-    ? `${f.gpsDevice} · ${gps.lat.toFixed(4)}, ${gps.lng.toFixed(4)}`
-    : station
-      ? f.byStation
-      : null;
-
-  const currentStep = STEPS.find((s) => s.id === step)!;
-
   return (
-    <div className="grid gap-10 lg:grid-cols-[minmax(0,0.26fr)_minmax(0,0.74fr)] lg:gap-16">
-      <StepRail current={step} furthest={furthest} onJump={goto} />
-
-      {/* Capped to a reading measure rather than filling the column: these are
-          field controls, and a 900px-wide row strands the station id far from
-          its name. The asymmetry (narrow rail + this block sitting left of
-          centre) is what uses the wide viewport deliberately — stretching the
-          inputs themselves would not. */}
-      <div className="min-w-0 max-w-3xl">
-        <div key={step} className="animate-entrance space-y-8">
-          <div className="space-y-2">
-            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-accent">
-              {String(currentStep.id).padStart(2, "0")} / {String(STEPS.length).padStart(2, "0")} ·{" "}
-              {dict.report[currentStep.key]}
-            </p>
-            {/*
-              Programmatically focused on every step change so assistive tech
-              lands on the new task instead of the unmounted Next button. The
-              visible ring is suppressed here specifically: globals.css's
-              `:focus-visible` rule would otherwise draw a box around a
-              non-interactive heading, which reads as a text input. `[&:focus]`
-              is used rather than `outline-none` because it compiles to
-              `.cls:focus` (specificity 0,2,0) and so actually beats the global
-              `:focus-visible` (0,1,0) — a plain utility ties and loses on
-              source order. Every real control (radios, textarea, file input,
-              buttons) keeps its focus ring.
-            */}
-            <h2 ref={headingRef} tabIndex={-1} className="text-h1 font-semibold tracking-tight [&:focus]:outline-none">
-              {step === 1 ? f.q1 : null}
-              {step === 2 ? f.q2 : null}
-              {/* q3 was the evidence question; step 3 is now the review. */}
-              {step === 3 ? f.q4 : null}
-            </h2>
-          </div>
-
+    <div className="report-notebook report-single">
+      <div className="min-w-0">
+        <div className="space-y-8">
           {/* 01 — Location */}
-          {step === 1 ? (
-            <div className="space-y-8">
+          {(
+            <div id="report-location" className="report-entry-section space-y-8">
               {/* THE THREE NODES, AS THREE CHOICES.
                   This was a stack of thin left-bordered rows — the visual
                   weight of a settings list, for what is the single most
@@ -447,77 +347,35 @@ export function ReportForm() {
                   not three form rows. Role name leads; the STATION_0n
                   identifier is kept but demoted to a footer, since it is what
                   the system calls the node, not what a person calls it. */}
-              <fieldset className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <h2 className="report-section-title"><span>{f.station}</span><span className="report-section-state">{locationValid ? <Check aria-hidden /> : <Crosshair aria-hidden />}</span></h2>
+              <div className="report-location-layout">
+              <div className="report-location-map">
+                <StationNetworkMap stations={reportMapStations} variant="observatory" selectedStationId={stationId ?? undefined} onStationSelect={selectMapStation} />
+                <p>{f.legendStation}</p>
+              </div>
+              <fieldset className="report-station-list">
                 <legend className="sr-only">{f.legendStation}</legend>
                 {REPORT_STATION_OPTIONS.map((option) => {
                   const Icon = KIND_ICON[option.kind];
                   const text = stationText(option.id, dict);
                   const active = locationChoice === option.id;
                   return (
-                    <label
-                      key={option.id}
-                      className={cn(
-                        "relative flex cursor-pointer flex-col gap-3 rounded-lg border bg-surface p-5 transition-all duration-[var(--motion-base)]",
-                        "focus-within:ring-2 focus-within:ring-accent",
-                        active
-                          ? "border-accent bg-[var(--h-selection-surface)] shadow-[inset_0_0_0_1px_var(--color-accent)]"
-                          : "border-border hover:border-foreground-subtle hover:bg-wash-hover",
-                      )}
-                    >
-                      <input
-                        type="radio"
-                        name="station"
-                        value={option.id}
-                        checked={active}
-                        onChange={() => { setLocationChoice(option.id); setStationId(option.id); }}
-                        className="sr-only"
-                      />
-                      <span className="flex items-center justify-between gap-2">
-                        <Icon
-                          className={cn("h-6 w-6 shrink-0", active ? "text-accent" : "text-foreground-subtle")}
-                          aria-hidden
-                        />
-                        {active ? <Check className="h-4 w-4 shrink-0 text-accent" aria-hidden /> : null}
-                      </span>
-                      <span className="min-w-0">
-                        <span
-                          className={cn(
-                            "block text-lg font-semibold tracking-tight",
-                            active ? "text-accent" : "text-foreground",
-                          )}
-                        >
-                          {text.name}
-                        </span>
-                        <span className="mt-0.5 block text-sm leading-snug text-muted">{text.location}</span>
-                      </span>
-                      <span className="mt-auto text-[10px] uppercase tracking-[0.12em] text-foreground-subtle [font-family:var(--font-data)]">
-                        {option.id}
-                      </span>
+                    <label key={option.id} className="report-station-choice">
+                      <input type="radio" name="station" value={option.id} checked={active} onChange={() => selectMapStation(option.id)} className="sr-only" />
+                      <Icon aria-hidden />
+                      <span><strong>{text.name}</strong><small>{text.location}</small><code>{stationDeviceCode(option.id)}</code></span>
+                      <span className="station-choice-check">{active ? <Check className="h-4 w-4 text-accent" aria-hidden /> : null}</span>
                     </label>
                   );
                 })}
-                <label
-                  className={cn(
-                    "relative flex cursor-pointer flex-col gap-3 rounded-lg border bg-surface p-5 transition-all duration-[var(--motion-base)]",
-                    "focus-within:ring-2 focus-within:ring-accent",
-                    locationChoice === "gps"
-                      ? "border-accent bg-[var(--h-selection-surface)] shadow-[inset_0_0_0_1px_var(--color-accent)]"
-                      : "border-border hover:border-foreground-subtle hover:bg-wash-hover",
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="station"
-                    value="gps"
-                    checked={locationChoice === "gps"}
-                    onChange={() => { setLocationChoice("gps"); setStationId(null); void handleLocate(); }}
-                    className="sr-only"
-                  />
-                  <span className="flex items-center justify-between gap-2"><Crosshair className="h-6 w-6 text-accent" aria-hidden />{gps ? <Check className="h-4 w-4 text-accent" aria-hidden /> : null}</span>
-                  <span className="min-w-0"><span className="block text-lg font-semibold tracking-tight">{f.myLocation}</span><span className="mt-0.5 block text-sm leading-snug text-muted">{gps ? f.locationReady : f.myLocationLead}</span></span>
-                  <span className="mt-auto text-[10px] uppercase tracking-[0.12em] text-foreground-subtle [font-family:var(--font-data)]">GPS</span>
+                <label className="report-station-choice">
+                  <input type="radio" name="station" value="gps" checked={locationChoice === "gps"} onChange={() => { setLocationChoice("gps"); setStationId(null); void handleLocate(); }} className="sr-only" />
+                  <Crosshair aria-hidden />
+                  <span><strong>{f.myLocation}</strong><small>{gps ? f.locationReady : f.myLocationLead}</small><code>GPS</code></span>
+                  <span className="station-choice-check">{locationChoice === "gps" ? <Check className="h-4 w-4 text-accent" aria-hidden /> : null}</span>
                 </label>
               </fieldset>
+              </div>
 
               {locationChoice === "gps" ? (
                 <p className="text-xs leading-relaxed text-foreground-subtle">
@@ -525,22 +383,20 @@ export function ReportForm() {
                 </p>
               ) : null}
             </div>
-          ) : null}
+           )}
 
           {/* 02 — Observation */}
-          {step === 2 ? (
-            <div className="space-y-8">
+          {(
+            <><section id="report-observation" className="report-entry-section space-y-8"><h2 className="report-section-title"><span><KeywordTitle text={f.conditionType} keyword={f.conditionType} /></span></h2>
               <fieldset>
-                <legend className="mb-3 text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
-                  {f.conditionType}
-                                </legend>
+                <legend className="sr-only">{f.conditionType}</legend>
                 {/* Selectable tiles, not a radio list. Same reasoning as the
                     node cards in step 1: this is a choice between six
                     concrete field conditions, and a divided list of faint
                     rows with a small ring on the right made the selected one
                     hard to see at a glance — especially outdoors, which is
                     where this form is actually filled in. */}
-                <div className="grid gap-2.5 sm:grid-cols-2">
+                <div className="report-observation-choices grid gap-2.5 sm:grid-cols-2">
                   {REPORT_CATEGORIES.map((item) => {
                     const active = category === item.value;
                     return (
@@ -579,11 +435,11 @@ export function ReportForm() {
                   })}
                 </div>
               </fieldset>
-
-              <div className="space-y-2">
+            </section>
+              <section className="report-description-section space-y-2">
                 <label
                   htmlFor="description"
-                  className="block text-[11px] font-medium uppercase tracking-[0.16em] text-muted"
+                  className="report-description-title"
                 >
                   {f.description}
                                 </label>
@@ -602,95 +458,50 @@ export function ReportForm() {
                     ? fmt(f.charsNeeded, { min: DESCRIPTION_MIN, n: trimmed.length })
                     : fmt(f.charsOf, { n: trimmed.length, max: DESCRIPTION_MAX })}
                 </p>
-              </div>
-            </div>
-          ) : null}
+              </section></>
+           )}
 
           {/* 03 — Review */}
-          {step === 3 ? (
+          {(
             <div className="space-y-8">
-              <section className="space-y-4 rounded-lg border border-border bg-surface p-5" aria-labelledby="report-evidence-title">
+              <section className="report-evidence-section report-entry-section space-y-6" aria-labelledby="report-evidence-title">
+                <h2 id="report-evidence-title" className="report-section-title"><span><KeywordTitle text={f.evidence} /></span></h2>
+                <div className="report-evidence report-evidence-panel space-y-4">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-accent">{f.evidence}</p>
-                  <h3 id="report-evidence-title" className="mt-1 text-lg font-semibold">{f.evidenceLead}</h3>
+                  
+                  <p className="text-sm">{f.evidenceLead}</p>
                   <p className="mt-1 text-xs text-muted">{f.evidenceLimit}</p>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2.5 text-sm hover:bg-wash-hover"><Camera className="h-4 w-4 text-accent" aria-hidden />{f.addPhoto}<input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,image/heic" capture="environment" onChange={(e) => addAttachments(e.target.files)} /></label>
-                  <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2.5 text-sm hover:bg-wash-hover"><Video className="h-4 w-4 text-accent" aria-hidden />{f.addVideo}<input className="sr-only" type="file" accept="video/mp4,video/webm,video/quicktime" capture="environment" onChange={(e) => addAttachments(e.target.files)} /></label>
-                  <div className="flex gap-2"><label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2.5 text-sm hover:bg-wash-hover"><Mic className="h-4 w-4 text-accent" aria-hidden />{f.addAudio}<input className="sr-only" type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/webm,audio/ogg" onChange={(e) => addAttachments(e.target.files)} /></label><Button type="button" variant="outline" size="sm" onClick={toggleAudioRecording}>{recording ? f.stopAudio : f.recordAudio}</Button></div>
+                <div className="report-evidence-actions">
+                  <div className="evidence-choice"><Camera aria-hidden /><label>{f.addPhoto}<input className="sr-only" type="file" multiple accept="image/jpeg,image/png,image/webp,image/heic" disabled={recording || audioPending || submitting} onChange={(e) => { addAttachments(e.target.files); e.target.value = ""; }} /></label></div>
+                  <div className="evidence-choice"><Video aria-hidden /><label>{f.addVideo}<input className="sr-only" type="file" accept="video/mp4,video/webm,video/quicktime" disabled={recording || audioPending || submitting} onChange={(e) => { addAttachments(e.target.files); e.target.value = ""; }} /></label></div>
+                  <div className="evidence-choice"><Mic aria-hidden /><label>{f.addAudio}<input className="sr-only" type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/webm,audio/ogg" disabled={recording || audioPending || submitting} onChange={(e) => { addAttachments(e.target.files); e.target.value = ""; }} /></label><Button type="button" variant="outline" onClick={toggleAudioRecording} disabled={submitting || audioPending} aria-pressed={recording}>{recording ? f.stopAudio : f.recordAudio}</Button></div>
                 </div>
-                {attachmentUrls.length > 0 ? <ul className="grid gap-3 sm:grid-cols-3">{attachmentUrls.map(({ file, url }, index) => <li key={`${file.name}-${index}`} className="overflow-hidden rounded-md border border-border p-2"><div className="aspect-video bg-wash-sunken">{file.type.startsWith("image/") ? <>
+                {recording ? <p role="status" className="text-sm text-critical">{f.stopAudio}</p> : null}
+                {mediaError ? <p role="alert" className="text-sm text-critical">{mediaError}</p> : null}
+                {attachmentUrls.length > 0 ? <ul className="evidence-previews">{attachmentUrls.map(({ file, url }, index) => <li key={`${file.name}-${index}`} className="overflow-hidden rounded-md border border-border p-2"><div className="aspect-video bg-wash-sunken">{file.type.startsWith("image/") ? <>
                   {/* eslint-disable-next-line @next/next/no-img-element -- local preview is a blob URL, not an optimisable remote image */}
                   <img src={url} alt={file.name} className="h-full w-full object-cover" />
-                </> : file.type.startsWith("video/") ? <video src={url} controls className="h-full w-full" /> : <audio src={url} controls className="w-full pt-6" />}</div><div className="mt-2 flex items-center justify-between gap-2"><span className="truncate text-xs">{file.name}</span><button type="button" onClick={() => setAttachments((all) => all.filter((_, itemIndex) => itemIndex !== index))} className="text-critical"><Trash2 className="h-4 w-4" aria-label={f.removeEvidence} /></button></div></li>)}</ul> : null}
+                </> : file.type.startsWith("video/") ? <video src={url} controls className="h-full w-full" /> : <audio src={url} controls className="w-full pt-6" />}</div><div className="mt-2 flex items-center justify-between gap-2"><span className="truncate text-xs">{file.name}</span><button type="button" onClick={() => setAttachments((all) => all.filter((_, itemIndex) => itemIndex !== index))} className="evidence-remove text-critical" aria-label={f.removeEvidence} disabled={recording || audioPending || submitting}><Trash2 className="h-4 w-4" aria-label={f.removeEvidence} /></button></div></li>)}</ul> : null}
+                </div>
               </section>
-              <dl className="divide-y divide-border/50 rounded-lg border border-border bg-surface px-5">
-                {[
-                  { label: f.station, value: station ? `${stationText(station.id, dict).name} · ${stationText(station.id, dict).location}` : "—", jump: 1 as StepId },
-                  { label: f.condition, value: category ? categoryLabel(category, dict) : "—", jump: 2 as StepId },
-                  { label: f.location, value: locationSummary ?? "—", jump: 1 as StepId },
-                  { label: f.description, value: trimmed || "—", jump: 2 as StepId },
-                ].map((row) => (
-                  <div key={row.label} className="flex items-start justify-between gap-4 py-4">
-                    <div className="min-w-0 space-y-1">
-                      <dt className="text-[11px] uppercase tracking-[0.14em] text-muted">{row.label}</dt>
-                      <dd className="whitespace-pre-wrap break-words text-sm leading-relaxed">{row.value}</dd>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => goto(row.jump)}
-                      className="shrink-0 text-muted"
-                    >
-                      <Pencil className="h-3.5 w-3.5" aria-hidden />
-                      <span className="sr-only">{f.edit} </span>
-                      {f.edit}
-                                        </Button>
-                  </div>
-                ))}
-              </dl>
-
               <p className="text-sm leading-relaxed text-muted">
                 {f.fieldNote}
                             </p>
 
               {error ? <Alert tone="critical">{error}</Alert> : null}
             </div>
-          ) : null}
+          )}
 
+          {submitting ? <div className="upload-status" role="status"><span>{f.sending}{uploadProgress !== null ? ` · ${uploadProgress}%` : ""}</span><progress value={uploadProgress ?? undefined} max={100} aria-label={f.sending} /></div> : null}
           {/* Navigation */}
           <div className="flex flex-wrap items-center gap-3 border-t border-border/50 pt-6">
-            {step > 1 ? (
-              <Button type="button" variant="outline" onClick={() => goto((step - 1) as StepId)}>
-                <ArrowLeft className="h-4 w-4" aria-hidden />
-                {dict.common.back}
-                            </Button>
-            ) : null}
+            <Button type="button" onClick={handleSubmit} disabled={submitting || recording || audioPending || !locationValid || !observationValid} className="min-w-[160px]">
+              {submitting ? f.sending : f.submit}
+              {submitting ? null : <Send className="h-4 w-4" aria-hidden />}
+            </Button>
+            {!locationValid || !observationValid ? <p className="text-xs text-muted">{!locationValid ? f.needStation : f.needCondition}</p> : null}
 
-            {step < 3 ? (
-              <Button
-                type="button"
-                onClick={() => goto((step + 1) as StepId)}
-                disabled={!stepValid[step]}
-                className="min-w-[140px]"
-              >
-                {dict.common.continue}
-                              <ArrowRight className="h-4 w-4" aria-hidden />
-              </Button>
-            ) : (
-              <Button type="button" onClick={handleSubmit} disabled={submitting || !stepValid[1]} className="min-w-[160px]">
-                {submitting ? f.sending : f.submit}
-                {submitting ? null : <Send className="h-4 w-4" aria-hidden />}
-              </Button>
-            )}
-
-            {step < 4 && !stepValid[step] ? (
-              <p className="text-xs text-muted">
-                {step === 1 ? f.needStation : f.needCondition}
-              </p>
-            ) : null}
           </div>
         </div>
       </div>

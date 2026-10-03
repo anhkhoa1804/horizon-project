@@ -1,0 +1,122 @@
+[
+  {
+    "width": 390,
+    "route": "/dashboard",
+    "station": "STATION_01",
+    "trendOptions": [
+      "Độ mặn"
+    ],
+    "trendHeight": 122.75
+  },
+  {
+    "width": 390,
+    "route": "/dashboard",
+    "station": "STATION_02",
+    "trendOptions": [
+      "Độ ẩm đất"
+    ],
+    "trendHeight": 122.75
+  },
+  {
+    "width": 390,
+    "route": "/dashboard",
+    "station": "GATEWAY_01",
+    "trendOptions": [],
+    "trendHeight": 0
+  },
+  {
+    "width": 390,
+    "route": "/dashboard?mode=demo",
+    "station": "STATION_01",
+    "trendOptions": [
+      "Độ mặn",
+      "Mực nước"
+    ],
+    "trendHeight": 330
+  },
+  {
+    "width": 390,
+    "route": "/dashboard?mode=demo",
+    "station": "STATION_02",
+    "trendOptions": [
+      "Độ ẩm đất",
+      "EC đất",
+      "Độ pH",
+      "Nhiệt độ đất",
+      "Nhiệt độ không khí",
+      "Độ ẩm không khí"
+    ],
+    "trendHeight": 330
+  },
+  {
+    "width": 390,
+    "route": "/dashboard?mode=demo",
+    "station": "GATEWAY_01",
+    "trendOptions": [],
+    "trendHeight": 0
+  },
+  {
+    "width": 390,
+    "loginStatusRail": "0px"
+  },
+  {
+    "width": 1280,
+    "route": "/dashboard",
+    "station": "STATION_01",
+    "trendOptions": [
+      "Độ mặn"
+    ],
+    "trendHeight": 122.75
+  },
+  {
+    "width": 1280,
+    "route": "/dashboard",
+    "station": "STATION_02",
+    "trendOptions": [
+      "Độ ẩm đất"
+    ],
+    "trendHeight": 122.75
+  },
+  {
+    "width": 1280,
+    "route": "/dashboard",
+    "station": "GATEWAY_01",
+    "trendOptions": [],
+    "trendHeight": 0
+  },
+  {
+    "width": 1280,
+    "route": "/dashboard?mode=demo",
+    "station": "STATION_01",
+    "trendOptions": [
+      "Độ mặn",
+      "Mực nước"
+    ],
+    "trendHeight": 360
+  },
+  {
+    "width": 1280,
+    "route": "/dashboard?mode=demo",
+    "station": "STATION_02",
+    "trendOptions": [
+      "Độ ẩm đất",
+      "EC đất",
+      "Độ pH",
+      "Nhiệt độ đất",
+      "Nhiệt độ không khí",
+      "Độ ẩm không khí"
+    ],
+    "trendHeight": 360
+  },
+  {
+    "width": 1280,
+    "route": "/dashboard?mode=demo",
+    "station": "GATEWAY_01",
+    "trendOptions": [],
+    "trendHeight": 0
+  },
+  {
+    "width": 1280,
+    "loginStatusRail": "0px"
+  }
+]

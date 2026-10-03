@@ -101,7 +101,7 @@ function NavLink({
         // label wraps inside the link at tablet widths, every nav item becomes
         // two lines tall, and the header grows from ~64px to ~89px — which is
         // what was visibly compressing the hero on the first screen.
-        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-sm px-2.5 py-2 font-medium lg:gap-2 lg:px-3",
+        "inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-sm px-2.5 py-2 font-medium lg:gap-2 lg:px-3",
         "text-[13px] lg:text-sm",
         "transition-colors duration-[var(--motion-base)]",
         active
@@ -121,7 +121,20 @@ export function SiteHeader({ register = "public", activePath, adminEmail, adminA
   const dict = useDict();
   const compact = useScrollCompact();
   const inAdmin = register === "admin";
-  const overHomeHero = !inAdmin && activePath === "/";
+  const [heroVisible, setHeroVisible] = useState(true);
+  const overHomeHero = !inAdmin && activePath === "/" && heroVisible;
+  useEffect(() => {
+    if (activePath !== "/" || inAdmin) return;
+    let frame = 0;
+    const read = () => {
+      const hero = document.querySelector(".horizon-cover");
+      setHeroVisible(Boolean(hero && hero.getBoundingClientRect().bottom > 88));
+    };
+    const onScroll = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(read); };
+    read();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => { window.removeEventListener("scroll", onScroll); cancelAnimationFrame(frame); };
+  }, [activePath, inAdmin]);
   const hasOperationalStrip = inAdmin && Boolean(adminEmail || adminActions);
 
   return (
@@ -129,6 +142,7 @@ export function SiteHeader({ register = "public", activePath, adminEmail, adminA
       className={cn(
         "site-header sticky top-0 z-[var(--z-sticky)]",
         compact && "is-compact",
+        overHomeHero && "site-header--cover",
         // Transparent at rest so the drafting grid runs through the header;
         // the backdrop is earned only once content is sliding underneath.
         "transition-[background-color,border-color,backdrop-filter] duration-[var(--motion-base)] ease-[var(--ease-standard)]",
@@ -137,7 +151,7 @@ export function SiteHeader({ register = "public", activePath, adminEmail, adminA
         // summary line, uppercase tracked text read straight through the nav
         // labels and looked like a collision. Still frosted, still lets the
         // page show as movement underneath; no longer readable through.
-        compact || !overHomeHero
+        !overHomeHero
           ? "border-b border-border bg-canvas/95 backdrop-blur-md supports-[backdrop-filter]:bg-canvas/88"
           : "border-b border-transparent bg-transparent",
       )}

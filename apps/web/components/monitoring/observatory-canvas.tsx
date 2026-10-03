@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useLiveObservatory } from "./use-live-observatory";
+import { LiveSignalIndicator, LiveSignalContext } from "./live-signal-indicator";
+import { DangerHeatmap } from "./danger-heatmap";
+import type { PublicRealtimeConfig } from "@/lib/monitoring/publicRealtime";
 import { CloudRain, Droplets, Send, Sprout, Thermometer, Waves, Wind } from "lucide-react";
 import { MapStation, StationNetworkMap } from "@/components/dashboard/station-network-map";
 import { ObservationLog } from "@/components/monitoring/observation-log";
@@ -170,7 +174,7 @@ function Value({
       <p className="whitespace-nowrap text-xs font-medium uppercase tracking-[0.1em] text-foreground-subtle">{label}</p>
       <p
         className={cn(
-          "mt-1 font-semibold tabular-nums leading-none tracking-tight [font-family:var(--font-data)]",
+          "mt-1 font-medium tabular-nums leading-none tracking-tight [font-family:var(--font-data)]",
           VALUE_SIZE[size],
           // Always plain foreground, never the status hue.
           //
@@ -237,7 +241,7 @@ function ContextValue({
     <div className="min-w-0">
     <p
       className={cn(
-        "font-semibold tabular-nums leading-none tracking-tight [font-family:var(--font-data)]",
+        "font-medium tabular-nums leading-none tracking-tight [font-family:var(--font-data)]",
         VALUE_SIZE.context,
         hasValue ? undefined : "text-foreground-subtle",
       )}
@@ -292,16 +296,16 @@ function RegionHeader({
   dict: Dictionary;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-1.5 text-foreground-muted">
+    <div className="region-heading flex min-w-0 items-center gap-1.5 text-foreground-muted">
       <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
-      <span className="truncate text-[11px] font-semibold uppercase tracking-[0.12em]">{title}</span>
+      <span className="region-heading-title text-[11px] font-medium uppercase tracking-[0.06em]">{title}</span><LiveSignalIndicator />
       {status ? (
         <>
           <span aria-hidden className="shrink-0 text-[11px] opacity-50">
             ·
           </span>
-          <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-foreground">
-            {dict.alerts[STATUS_LABEL[status.level]]} · {dict.monitoring.statusBasis[status.basis]}
+          <span title={`${dict.alerts[STATUS_LABEL[status.level]]} · ${dict.monitoring.statusBasis[status.basis]}`} aria-label={`${dict.alerts[STATUS_LABEL[status.level]]} · ${dict.monitoring.statusBasis[status.basis]}`} className="region-heading-status text-[10px] font-medium text-foreground">
+            {dict.alerts[STATUS_LABEL[status.level]]}
           </span>
         </>
       ) : null}
@@ -356,12 +360,8 @@ function ObservatoryBento({
 
   const salinity = water?.primary;
   const waterLevel = water?.secondary[0];
-  const waterEc = water?.secondary.find((m) => m.labelKey === "waterEc");
-  const waterTemp = water?.secondary.find((m) => m.labelKey === "waterTemp");
   const soilMoisture = soil?.primary;
-  const soilEc = soil?.secondary.find((m) => m.labelKey === "ec");
   const soilPh = soil?.secondary.find((m) => m.labelKey === "ph");
-  const soilTemp = soil?.secondary.find((m) => m.labelKey === "temperature");
   const contextMetric = (key: string) => context?.secondary.find((m) => m.labelKey === key);
   const infraMetric = (key: string) => infra?.secondary.find((m) => m.labelKey === key);
 
@@ -371,7 +371,6 @@ function ObservatoryBento({
   // One status per region — see the note above ObservatoryBento.
   const primaryStatus = worstStatus([status(salinity), status(waterLevel)]);
   const infraStatus = worstStatus([status(signal), status(battery)]);
-  const waterStatus = advisoryStatus(waterEc, "water_ec");
   const soilStatus = advisoryStatus(soilPh, "soil_ph");
 
   // Every cell, without exception: same corner, same hairline, same inset.
@@ -381,11 +380,11 @@ function ObservatoryBento({
   const padded = "flex flex-col justify-between p-[var(--bento-pad)]";
 
   return (
-    <div
+    <><div
       className={cn(
-        "grid gap-[var(--bento-gap)]",
-        "aspect-[4/21] grid-cols-4 grid-rows-[repeat(21,minmax(0,1fr))]",
-        "md:aspect-[2/5] md:grid-rows-[repeat(10,minmax(0,1fr))]",
+        "observatory-bento grid gap-[var(--bento-gap)]",
+        "aspect-[4/19] grid-cols-4 grid-rows-[repeat(19,minmax(0,1fr))]",
+        "md:aspect-[1/2] md:grid-rows-[repeat(8,minmax(0,1fr))]",
         "lg:aspect-[3/2] lg:grid-cols-6 lg:grid-rows-4",
       )}
     >
@@ -440,31 +439,6 @@ function ObservatoryBento({
         <ObservationLog series={series} />
       </div>
 
-      {/* BOX 2 — the map. It IS the region: edge to edge, no header bar, no
-          inner padding.
-
-          It previously carried a "VỊ TRÍ CÁC TRẠM" title strip above it, which
-          cost the map ~10% of its height to state something the map already
-          says — a reader looking at markers on a coastline does not need to be
-          told it is a map. Losing the strip is what lets this read as
-          geographic space rather than as a card that happens to contain a map.
-          The region is labelled for assistive tech by the map's own
-          `role="img"` + aria-label. */}
-      <div
-        className={cn(
-          cell,
-          "overflow-hidden bg-surface",
-          "col-start-1 col-end-5 row-start-7 row-end-10",
-          "md:col-start-1 md:col-end-5 md:row-start-4 md:row-end-6",
-          "lg:col-start-1 lg:col-end-3 lg:row-start-2 lg:row-end-4",
-        )}
-      >
-        {/* `basemapOnly` in demo: the island is real geography, the demo
-            stations have no coordinates, and drawing the first without the
-            second is exactly the honest combination. See the prop's own note. */}
-        <StationNetworkMap stations={mapStations} variant="grid" basemapOnly={isDemo} />
-      </div>
-
       {/* BOX 3 — infrastructure. Same region-level treatment as BOX 0: signal
           and battery share one surface and one status, at one tier down in
           the type ladder because device health is not what the page is for. */}
@@ -473,8 +447,8 @@ function ObservatoryBento({
           cell,
           padded,
           infraStatus ? regionSurface(infraStatus) : "bg-[var(--h-domain-infrastructure)]",
-          "col-start-1 col-end-5 row-start-10 row-end-12",
-          "md:col-start-1 md:col-end-5 md:row-start-6 md:row-end-7",
+          "col-start-1 col-end-5 row-start-7 row-end-9",
+          "md:col-start-1 md:col-end-5 md:row-start-4 md:row-end-5",
           "lg:col-start-5 lg:col-end-7 lg:row-start-3 lg:row-end-4",
         )}
       >
@@ -542,10 +516,10 @@ function ObservatoryBento({
           still share one baseline. */}
       {(
         [
-          { icon: Thermometer, label: dict.metricLabels.temperature, key: "temperature", cell: "col-start-1 col-end-3 row-start-12 row-end-14 md:col-start-1 md:col-end-2 md:row-start-7 md:row-end-8 lg:col-start-6 lg:col-end-7 lg:row-start-1 lg:row-end-2" },
-          { icon: Droplets, label: dict.metricLabels.humidity, key: "humidity", cell: "col-start-3 col-end-5 row-start-12 row-end-14 md:col-start-2 md:col-end-3 md:row-start-7 md:row-end-8 lg:col-start-6 lg:col-end-7 lg:row-start-2 lg:row-end-3" },
-          { icon: Wind, label: dict.metricLabels.wind, key: "wind", cell: "col-start-1 col-end-3 row-start-14 row-end-16 md:col-start-3 md:col-end-4 md:row-start-7 md:row-end-8 lg:col-start-3 lg:col-end-4 lg:row-start-3 lg:row-end-4" },
-          { icon: CloudRain, label: dict.metricLabels.precipitation, key: "precipitation", cell: "col-start-3 col-end-5 row-start-14 row-end-16 md:col-start-4 md:col-end-5 md:row-start-7 md:row-end-8 lg:col-start-4 lg:col-end-5 lg:row-start-3 lg:row-end-4" },
+          { icon: Thermometer, label: dict.metricLabels.temperature, key: "temperature", cell: "col-start-1 col-end-3 row-start-9 row-end-11 md:col-start-1 md:col-end-2 md:row-start-5 md:row-end-6 lg:col-start-6 lg:col-end-7 lg:row-start-1 lg:row-end-2" },
+          { icon: Droplets, label: dict.metricLabels.humidity, key: "humidity", cell: "col-start-3 col-end-5 row-start-9 row-end-11 md:col-start-2 md:col-end-3 md:row-start-5 md:row-end-6 lg:col-start-6 lg:col-end-7 lg:row-start-2 lg:row-end-3" },
+          { icon: Wind, label: dict.metricLabels.wind, key: "wind", cell: "col-start-1 col-end-3 row-start-11 row-end-13 md:col-start-3 md:col-end-4 md:row-start-5 md:row-end-6 lg:col-start-3 lg:col-end-4 lg:row-start-3 lg:row-end-4" },
+          { icon: CloudRain, label: dict.metricLabels.precipitation, key: "precipitation", cell: "col-start-3 col-end-5 row-start-11 row-end-13 md:col-start-4 md:col-end-5 md:row-start-5 md:row-end-6 lg:col-start-4 lg:col-end-5 lg:row-start-3 lg:row-end-4" },
         ] as const
       ).map(({ icon: Icon, label, key, cell: placement }) => (
         <div
@@ -561,7 +535,7 @@ function ObservatoryBento({
             <Icon className="h-3.5 w-3.5 shrink-0 translate-y-px" aria-hidden />
             <span className="min-w-0 text-[11px] font-semibold uppercase leading-[1.3] tracking-[0.1em]">
               {label}
-            </span>
+            </span><LiveSignalIndicator external />
           </div>
           <ContextValue
             metric={contextMetric(key)}
@@ -576,37 +550,58 @@ function ObservatoryBento({
         className={cn(
           cell,
           padded,
-          waterStatus ? regionSurface(waterStatus) : "bg-[var(--h-domain-water)]",
-          "col-start-1 col-end-5 row-start-16 row-end-18",
-          "md:col-start-1 md:col-end-5 md:row-start-8 md:row-end-9",
+          soilStatus ? regionSurface(soilStatus) : "bg-[var(--h-domain-soil)]",
+          "col-start-1 col-end-5 row-start-13 row-end-15",
+          "md:col-start-1 md:col-end-3 md:row-start-6 md:row-end-7",
           "lg:col-start-1 lg:col-end-3 lg:row-start-4 lg:row-end-5",
         )}
       >
-        <RegionHeader icon={Waves} title={dict.terms.water} status={waterStatus} dict={dict} />
+        <RegionHeader icon={Sprout} title={dict.terms.soil} status={soilStatus} dict={dict} />
         <div className="mt-auto grid grid-cols-2 gap-4 pt-2">
-          <Value label={dict.metricLabels.waterEc} metric={waterEc} dict={dict} />
-          <Value label={dict.metricLabels.waterTemp} metric={waterTemp} dict={dict} />
+          <Value label={dict.metricLabels.moisture} metric={soilMoisture} dict={dict} />
+          <Value label={dict.metricLabels.ph} metric={soilPh} dict={dict} />
         </div>
       </div>
 
       <div
         className={cn(
           cell,
-          soilStatus ? regionSurface(soilStatus) : "bg-[var(--h-domain-soil)]",
-          "col-start-1 col-end-5 row-start-18 row-end-22 flex flex-col p-[var(--bento-pad)]",
-          "md:col-start-1 md:col-end-5 md:row-start-9 md:row-end-11",
+          "bg-surface risk-calendar-box",
+          "col-start-1 col-end-5 row-start-15 row-end-17 flex flex-col p-[var(--bento-pad)]",
+          "md:col-start-3 md:col-end-5 md:row-start-6 md:row-end-7",
           "lg:col-start-3 lg:col-end-7 lg:row-start-4 lg:row-end-5",
         )}
       >
-        <RegionHeader icon={Sprout} title={dict.terms.soil} status={soilStatus} dict={dict} />
-        <div className="mt-2 grid flex-1 grid-cols-2 content-around gap-x-4 gap-y-2 lg:grid-cols-4 lg:items-end">
-          <Value label={dict.metricLabels.moisture} metric={soilMoisture} dict={dict} />
-          <Value label={dict.metricLabels.ec} metric={soilEc} dict={dict} />
-          <Value label={dict.metricLabels.ph} metric={soilPh} dict={dict} />
-          <Value label={dict.metricLabels.temperature} metric={soilTemp} dict={dict} />
-        </div>
+        <DangerHeatmap series={series.year ?? series["30d"]} thresholds={thresholds} salinityThreshold={salinityThreshold} demo={isDemo} />
       </div>
-    </div>
+
+      {/* BOX 2 — the map. It IS the region: edge to edge, no header bar, no
+          inner padding.
+
+          It previously carried a "VỊ TRÍ CÁC TRẠM" title strip above it, which
+          cost the map ~10% of its height to state something the map already
+          says — a reader looking at markers on a coastline does not need to be
+          told it is a map. Losing the strip is what lets this read as
+          geographic space rather than as a card that happens to contain a map.
+          The region is labelled for assistive tech by the map's own
+          `role="img"` + aria-label. */}
+      <div
+        className={cn(
+          cell,
+          "relative overflow-hidden bg-surface",
+          "col-start-1 col-end-5 row-start-17 row-end-20",
+          "md:col-start-1 md:col-end-5 md:row-start-7 md:row-end-9",
+          "lg:col-start-1 lg:col-end-3 lg:row-start-2 lg:row-end-4",
+        )}
+      >
+        {/* `basemapOnly` in demo: the island is real geography, the demo
+            stations have no coordinates, and drawing the first without the
+            second is exactly the honest combination. See the prop's own note. */}
+        <StationNetworkMap stations={mapStations} variant="grid" basemapOnly={isDemo} />
+      </div>
+
+
+    </div></>
   );
 }
 
@@ -615,12 +610,14 @@ function ObservatoryBento({
 // ---------------------------------------------------------------------------
 
 export function ObservatoryCanvas({
-  model,
+  model: initialModel,
+  realtime = null,
   weather: initialWeather = null,
   thresholds = [],
   soilModels = [],
 }: {
   model: ObservatoryViewModel;
+  realtime?: PublicRealtimeConfig | null;
   /** The threshold registry (migration 023), loaded on the server. */
   thresholds?: ThresholdRow[];
   soilModels?: SoilWaterModel[];
@@ -628,6 +625,7 @@ export function ObservatoryCanvas({
   weather?: ExternalWeather | null;
 }) {
   const dict = useDict();
+  const { model, connected } = useLiveObservatory(initialModel, realtime);
   const [weather, setWeather] = useState<ExternalWeather | null>(initialWeather);
   const [weatherSeries24h, setWeatherSeries24h] = useState<ObservationSeries | null>(null);
 
@@ -729,7 +727,7 @@ export function ObservatoryCanvas({
   );
 
   return (
-    <div className="space-y-10 md:space-y-14">
+    <LiveSignalContext.Provider value={{ connected, demo: model.mode === "demo" }}><div className="space-y-10 md:space-y-14">
       {/* The observatory: the Bento, and nothing above it.
           Two bands used to sit here — a demo notice explaining the `*` and
           `~` markers, and a "MẠNG LƯỚI · 2/3 ĐANG GỬI DỮ LIỆU" summary. The
@@ -743,7 +741,7 @@ export function ObservatoryCanvas({
           landing has to put the Bento under the reader's eyes, not under the
           sticky header — hence `scroll-mt`, sized against --header-h plus a
           little air rather than a guessed constant. */}
-      <section id="observatory" className="instrument-in scroll-mt-[calc(var(--header-h)+1.5rem)]">
+      <section id="observatory" className="instrument-in relative scroll-mt-[calc(var(--header-h)+1.5rem)]">
         <ObservatoryBento
           groups={signalGroups}
           dict={dict}
@@ -771,6 +769,6 @@ export function ObservatoryCanvas({
           <ThresholdTable rows={thresholds} soilModels={soilModels} />
         ) : null}
       </section>
-    </div>
+    </div></LiveSignalContext.Provider>
   );
 }

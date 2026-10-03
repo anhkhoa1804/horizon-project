@@ -1,3 +1,5 @@
+import Image from "next/image";
+import { OperationsNavigation } from "@/components/layout/operations-navigation";
 import Link from "next/link";
 import { getI18n } from "@/lib/i18n/server";
 import { revalidatePath } from "next/cache";
@@ -24,7 +26,7 @@ import {
   recordAuditEvent,
 } from "@/lib/admin/operations";
 import { redirect } from "next/navigation";
-import { Bell, ShieldCheck, Trash2, UserPlus } from "lucide-react";
+import { Bell, ShieldCheck, Trash2, UserPlus, ArrowUpRight } from "lucide-react";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import {
@@ -673,25 +675,13 @@ export default async function AdminPage({
   const isDemoMode = stationsAreDemo || metrics.demo;
   const operationalDataUnavailable = stationsUnavailable || metrics.unavailable;
 
-  const reportBell = (
-    <details className="relative">
-      <summary className="inline-flex h-11 cursor-pointer list-none items-center justify-center rounded-xl border border-border bg-background px-4 text-sm font-medium transition-colors hover:bg-muted/30">
-        <span className="relative flex items-center gap-2">
-          <Bell className="h-5 w-5" aria-hidden />
-          Báo cáo
-          {unreadReports > 0 ? (
-            <span className="absolute -right-4 -top-3 flex h-5 min-w-5 items-center justify-center rounded-full bg-critical px-1 text-xs text-white">
-              {unreadReports}
-            </span>
-          ) : null}
-        </span>
-      </summary>
-      <div className="absolute right-0 z-[var(--z-dropdown)] mt-2 w-[min(92vw,520px)] rounded-lg border border-border bg-background p-3 shadow-md">
+  const reportQueue = (
+      <div className="admin-report-queue">
         <div className="mb-3 flex items-center justify-between gap-3">
           <p className="font-semibold">Báo cáo hiện trường</p>
           <p className="text-xs text-muted">{unreadReports} chưa xem</p>
         </div>
-        <div className="max-h-[520px] overflow-y-auto pr-1">
+        <div className="space-y-3">
           {reports.length === 0 ? (
             <p className="p-4 text-sm text-muted">Chưa có báo cáo nào.</p>
           ) : (
@@ -748,14 +738,23 @@ export default async function AdminPage({
           )}
         </div>
       </div>
-    </details>
   );
+  const reportBell = <a href="#reports" className="inline-flex min-h-11 items-center gap-2 border border-border px-3 text-sm"><Bell className="h-4 w-4" aria-hidden />{dict.admin.navigation.reports}{unreadReports ? <span>{unreadReports}</span> : null}</a>;
+
+  const operationsNavigation = <OperationsNavigation label={dict.admin.title} items={[
+    { id: "network", label: dict.admin.navigation.overview }, { id: "devices", label: dict.admin.navigation.devices },
+    { id: "thresholds", label: dict.admin.navigation.thresholds }, { id: "profiles", label: dict.admin.navigation.applications },
+    { id: "calibration", label: dict.admin.navigation.calibration }, { id: "maintenance", label: dict.admin.navigation.maintenance },
+    { id: "reports", label: dict.admin.navigation.reports }, { id: "export", label: dict.admin.navigation.data },
+    { id: "audit", label: dict.admin.navigation.audit }, { id: "runtime", label: dict.admin.navigation.configuration },
+  ]} />;
 
   return (
     <AdminShell
       title={dict.admin.title}
       description={dict.admin.description}
       email={profile.email}
+      navigation={operationsNavigation}
       actions={
         <>
           {reportBell}
@@ -763,7 +762,17 @@ export default async function AdminPage({
         </>
       }
     >
-      <span id="reports" className="scroll-mt-36" aria-hidden />
+      <section className="admin-field-board" aria-label={dict.admin.navigation.overview}>
+        <div className="admin-field-place">
+          <Image src="/assets/hero/hero.png" alt="" fill sizes="(max-width: 767px) 100vw, 540px" className="object-cover" />
+          <div><span>Cồn Hô</span><h2>{dict.admin.navigation.overview}</h2><a href="#audit">{dict.admin.navigation.audit}<ArrowUpRight aria-hidden /></a></div>
+        </div>
+        <div className="admin-board-links">
+          <a href="#network"><span className="admin-keyword">{dict.admin.navigation.devices}</span><strong>{stations.length}</strong><ArrowUpRight aria-hidden /></a>
+          <a href="#reports"><span className="admin-keyword">{dict.admin.navigation.reports}</span><strong>{reports.length}</strong><ArrowUpRight aria-hidden /></a>
+          <a href="#thresholds"><span className="admin-keyword">{dict.admin.navigation.thresholds}</span><strong>{thresholds.length}</strong><ArrowUpRight aria-hidden /></a>
+        </div>
+      </section>
       {errorMessage ? <Alert tone="critical">{errorMessage}</Alert> : null}
 
       {operationalDataUnavailable ? (
@@ -780,18 +789,11 @@ export default async function AdminPage({
         </Alert>
       ) : null}
 
-      <nav aria-label="Khu vực vận hành" className="-mx-2 flex gap-1 overflow-x-auto rounded-lg border border-border bg-surface p-2 text-xs">
-        {[
-          ["network", dict.admin.navigation.overview], ["devices", dict.admin.navigation.devices], ["thresholds", dict.admin.navigation.thresholds],
-          ["profiles", dict.admin.navigation.applications], ["calibration", dict.admin.navigation.calibration], ["maintenance", dict.admin.navigation.maintenance],
-          ["reports", dict.admin.navigation.reports], ["export", dict.admin.navigation.data], ["audit", dict.admin.navigation.audit], ["runtime", dict.admin.navigation.configuration],
-        ].map(([id, label]) => <a key={id} href={`#${id}`} className="shrink-0 rounded-md px-3 py-2 hover:bg-muted/30">{label}</a>)}
-      </nav>
-
       {/* The operator's first question — is the network up, and which node is
           not? Above the settings forms, because "what is wrong right now" is
           needed before "what can I configure". */}
       <div id="network" className="scroll-mt-36"><NetworkOverview snapshots={snapshots} soilTimestamp={soilTimestamp} /></div>
+      <section id="reports" className="scroll-mt-36">{reportQueue}</section>
 
       {/* Operator workflows, all persisted by migration 022. Each panel states
           in its own lead what its rows do and do not mean — none of them

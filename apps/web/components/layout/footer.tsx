@@ -26,11 +26,11 @@ export function Footer() {
   return (
     // pb-24 clears the fixed mobile bottom nav so the footer's tail is never
     // hidden behind it — md:pb-0 because that nav is md:hidden.
-    <footer className="mt-28 pb-24 md:pb-0">
+    <footer className="site-footer mt-28 pb-24 md:pb-0">
       <div className="h-wide">
         <div className="border-t border-border/70 py-8">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between lg:gap-10">
-            <div className="flex items-center gap-4">
+          <div className="footer-row flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between lg:gap-10">
+            <div className="footer-brand flex items-center gap-4">
               <Wordmark markSize="compact" />
               <span className="h-5 w-px bg-border" aria-hidden />
               <p className="text-sm text-foreground-muted">{dict.footer.place}</p>

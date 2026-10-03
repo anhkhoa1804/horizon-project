@@ -70,6 +70,16 @@ export const stationProfiles: Record<string, StationProfile> = {
   },
 };
 
+/**
+ * User-facing hardware identity. STATION_03 is the catalog row retained by
+ * the existing station repository; the physical gateway advertises itself
+ * as GATEWAY_01. Keep storage/foreign-key IDs untouched and show the device
+ * identity only in field-facing UI.
+ */
+export function stationDeviceCode(stationId: string): string {
+  return stationId === "STATION_03" ? "GATEWAY_01" : stationId;
+}
+
 export function stationStatusLabel(status: string | undefined, dict: Dictionary): string {
   switch (status) {
     case "active":
@@ -148,8 +158,8 @@ export function chartDataFrom(profile: StationProfile, trend: TrendPoint[]): Sta
 
   return trend.map((point) => ({
     label: new Intl.DateTimeFormat("vi-VN", { hour: "2-digit", minute: "2-digit" }).format(new Date(point.timestamp)),
-    salinity: Number(point.salinity.toFixed(2)),
-    waterLevel: Number(point.water_level.toFixed(1)),
+    salinity: point.salinity === null ? undefined : Number(point.salinity.toFixed(2)),
+    waterLevel: point.water_level === null ? undefined : Number(point.water_level.toFixed(1)),
   }));
 }
 

@@ -60,8 +60,8 @@ function mapReading(row: Record<string, unknown>): EnvironmentalReading {
     id: row.id as string,
     message_id: row.message_id as string,
     station_id: row.station_id as string,
-    salinity: Number(row.salinity),
-    water_level: Number(row.water_level),
+    salinity: numberOrNull(row.salinity),
+    water_level: numberOrNull(row.water_level),
     water_ec_ms_cm: numberOrNull(row.water_ec_ms_cm),
     water_temp_c: numberOrNull(row.water_temp_c),
     fault_flags: Number(row.fault_flags),
@@ -339,15 +339,15 @@ export class ReadingRepository {
 
     return (data ?? []).map((row) => ({
       timestamp: row.timestamp as string,
-      salinity: Number(row.salinity),
-      water_level: Number(row.water_level),
+      salinity: numberOrNull(row.salinity),
+      water_level: numberOrNull(row.water_level),
       water_ec_ms_cm: numberOrNull(row.water_ec_ms_cm),
       water_temp_c: numberOrNull(row.water_temp_c),
     }));
   }
 
   async getDailyComparison(scope: RepositoryScope, days = 7): Promise<DailyComparisonPoint[]> {
-    const since = new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000).toISOString();
+    const since = `${localCalendarKey(days - 1)}T00:00:00+07:00`;
     let query = this.supabase
       .from("environmental_readings")
       .select("timestamp, station_id, salinity, water_level, water_ec_ms_cm, water_temp_c")
@@ -356,7 +356,15 @@ export class ReadingRepository {
 
     query = applyStationScope(query, scope);
 
-    const { data, error } = await query;
+    const { data: firstPage, error } = await query.range(0, 999);
+    const data = firstPage ?? [];
+    if (!error && days > 30) {
+      for (let offset = 1000; data.length === offset; offset += 1000) {
+        const page = await query.range(offset, offset + 999);
+        if (page.error) throw page.error;
+        data.push(...(page.data ?? []));
+      }
+    }
     if (isMissingTableError(error)) return this.emptyDailyComparison(days);
     if (error) throw error;
 
@@ -377,8 +385,10 @@ export class ReadingRepository {
 
       // environmental_readings only carries salinity/water_level — soil EC
       // has no real column here and must never be derived from these fields.
-      bucket.salinity.push(Number(row.salinity));
-      bucket.tideLevel.push(Number(row.water_level));
+      const salinity = numberOrNull(row.salinity);
+      const waterLevel = numberOrNull(row.water_level);
+      if (salinity !== null) bucket.salinity.push(salinity);
+      if (waterLevel !== null) bucket.tideLevel.push(waterLevel);
       const waterEc = numberOrNull(row.water_ec_ms_cm);
       const waterTemp = numberOrNull(row.water_temp_c);
       if (waterEc !== null) bucket.waterEc.push(waterEc);
@@ -434,13 +444,22 @@ export class ReadingRepository {
       return this.emptyDailySoil(days);
     }
 
-    const since = new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000).toISOString();
-    const { data, error } = await this.supabase
+    const since = `${localCalendarKey(days - 1)}T00:00:00+07:00`;
+    const query = this.supabase
       .from("soil_readings")
       .select("timestamp, air_temp_c, air_humidity_pct, soil_temp_c, soil_moisture_pct, soil_ec_ms_cm, soil_ph")
       .eq("station_id", stationId)
       .gte("timestamp", since)
       .order("timestamp", { ascending: true });
+    const { data: firstPage, error } = await query.range(0, 999);
+    const data = firstPage ?? [];
+    if (!error && days > 30) {
+      for (let offset = 1000; data.length === offset; offset += 1000) {
+        const page = await query.range(offset, offset + 999);
+        if (page.error) throw page.error;
+        data.push(...(page.data ?? []));
+      }
+    }
 
     if (isMissingTableError(error)) return this.emptyDailySoil(days);
     if (error) throw error;
@@ -529,7 +548,7 @@ export class ReadingRepository {
   /** null, not 0 — an average of zero readings is undefined, not a measured zero. */
   async getAverageSalinity(scope: RepositoryScope): Promise<number | null> {
     const readings = await this.getLatestForAllStations(scope);
-    const values = [...readings.values()].map((r) => r.salinity);
+    const values = [...readings.values()].map((r) => r.salinity).filter((value): value is number => value !== null);
     if (values.length === 0) return null;
     return values.reduce((sum, v) => sum + v, 0) / values.length;
   }

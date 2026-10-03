@@ -160,14 +160,16 @@ async function buildRealObservatory(dict: Dictionary): Promise<ObservatoryViewMo
 
     // Only STATION_01 (water) has a real per-point trend source —
     // environmental_readings never carries soil/gateway rows.
-    // getDailyComparison already accepts a day count, so 30 days is one
-    // query and the 7-day view is its tail — no second round-trip.
+    // Retain at least six months, including across New Year; charts use the final 7/30 days.
+    const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
+    const today = new Date(todayKey + "T12:00:00+07:00");
+    const yearDays = Math.max(190, Math.round((today.getTime() - new Date(`${todayKey.slice(0,4)}-01-01T12:00:00+07:00`).getTime()) / 86400000) + 1);
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const [trend24h, soil24h, daily30, dailySoil30, weather24h] = await Promise.all([
       repos.readings.getTrend24h("STATION_01", scope),
       repos.readings.getSoilTrend("STATION_02", scope, { sinceIso: since24h }),
-      repos.readings.getDailyComparison(scope, 30),
-      repos.readings.getDailySoilTrend("STATION_02", scope, 30),
+      repos.readings.getDailyComparison(scope, yearDays),
+      repos.readings.getDailySoilTrend("STATION_02", scope, yearDays),
       getExternalWeatherHistory24h(),
     ]);
 
@@ -193,7 +195,14 @@ async function buildRealObservatory(dict: Dictionary): Promise<ObservatoryViewMo
           weatherHistoryToObservationSeries(weather24h),
         ),
         "7d": seriesFromDaily(daily30.slice(-7), dailySoil30.slice(-7)),
-        "30d": seriesFromDaily(daily30, dailySoil30),
+        "30d": seriesFromDaily(daily30.slice(-30), dailySoil30.slice(-30)),
+        year: (() => {
+          const history = seriesFromDaily(daily30, dailySoil30);
+          history.points.forEach((point, index) => {
+            point.timestamp = new Date(today.getTime() - (yearDays - index - 1) * 86400000).toISOString();
+          });
+          return history;
+        })(),
       },
       alerts: alerts.map((a) => toObservatoryAlert(a, dict)),
       reference: buildReference(threshold, dict),
@@ -226,6 +235,7 @@ function emptyRealObservatory(dict: Dictionary): ObservatoryViewModel {
 function seriesFromTrend(water: TrendPoint[], soil: SoilTrendPoint[]): ObservationSeries {
   const waterPoints: ObservationPoint[] = water.map((p) => ({
     ...blankPoint(timeLabel(p.timestamp)),
+    timestamp: p.timestamp, stationId: "STATION_01",
     waterEc: p.water_ec_ms_cm,
     waterTemp: p.water_temp_c,
     salinity: Number.isFinite(p.salinity) ? p.salinity : null,
@@ -234,6 +244,7 @@ function seriesFromTrend(water: TrendPoint[], soil: SoilTrendPoint[]): Observati
 
   const soilPoints: ObservationPoint[] = soil.map((p) => ({
     ...blankPoint(timeLabel(p.timestamp)),
+    timestamp: p.timestamp, stationId: "STATION_02",
     soilMoisture: p.soil_moisture_pct,
     soilEc: p.soil_ec_ms_cm,
     soilPh: p.soil_ph,
@@ -242,7 +253,7 @@ function seriesFromTrend(water: TrendPoint[], soil: SoilTrendPoint[]): Observati
     airHumidity: p.air_humidity_pct,
   }));
 
-  const points = [...waterPoints, ...soilPoints];
+  const points = [...waterPoints, ...soilPoints].sort((a, b) => Date.parse(a.timestamp!) - Date.parse(b.timestamp!));
   return { points, availableMetrics: availableMetrics(points), provenance: TELEMETRY };
 }
 
@@ -316,7 +327,7 @@ function buildRealStation(
     return {
       ...base,
       kind: "soil",
-      quality: soilReading ? "valid" : null,
+      quality: soilReading ? (soilReading.fault_flags > 0 ? "error" : "valid") : null,
       primary: metric("Độ ẩm đất", soilReading?.soil_moisture_pct, 1, "%", provenance, "moisture"),
       environment: [
         {
@@ -412,6 +423,7 @@ function buildDemoObservatory(dict: Dictionary): ObservatoryViewModel {
     const phase = i / 4;
     return {
       ...blankPoint(dayLabel(d.date)),
+        timestamp: new Date(d.date).toISOString(),
       waterEc: null,
       waterTemp: null,
       salinity: d.salinity ?? null,
@@ -430,6 +442,7 @@ function buildDemoObservatory(dict: Dictionary): ObservatoryViewModel {
   const trendPoints: ObservationPoint[] = [
     ...DEMO_WATER_TREND.points.map((p) => ({
       ...blankPoint(timeLabel(p.timestamp)),
+    timestamp: p.timestamp,
       waterEc: null,
       waterTemp: null,
       salinity: p.salinity ?? null,
@@ -437,6 +450,7 @@ function buildDemoObservatory(dict: Dictionary): ObservatoryViewModel {
     })),
     ...DEMO_SOIL_TREND.map((p) => ({
       ...blankPoint(timeLabel(p.timestamp)),
+    timestamp: p.timestamp,
       soilMoisture: p.soilMoisturePct ?? null,
       soilEc: p.soilEcMsCm ?? null,
       soilPh: p.soilPh ?? null,
@@ -465,6 +479,7 @@ function buildDemoObservatory(dict: Dictionary): ObservatoryViewModel {
         provenance: DEMO,
       },
       "30d": { points: demoDaily, availableMetrics: availableMetrics(demoDaily), provenance: DEMO },
+      year: { points: demoDaily, availableMetrics: availableMetrics(demoDaily), provenance: DEMO },
     },
     alerts: DEMO_ALERTS.map((a) => ({
       id: a.id,

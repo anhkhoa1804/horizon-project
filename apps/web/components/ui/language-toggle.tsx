@@ -51,7 +51,7 @@ export function LanguageToggle({ className }: { className?: string }) {
       role="radiogroup"
       aria-label={dict.controls.languageLabel}
       className={cn(
-        "inline-flex h-9 items-center rounded-full border border-border bg-wash-sunken p-0.5 text-[11px] tracking-[0.08em]",
+        "inline-flex min-h-11 items-center gap-1 text-[11px] tracking-[0.08em]",
         className,
       )}
     >
@@ -69,13 +69,12 @@ export function LanguageToggle({ className }: { className?: string }) {
             onClick={() => selectLocale(locale)}
             onKeyDown={(event) => moveSelection(event, index)}
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center !rounded-full font-medium transition-colors duration-[var(--motion-base)]",
+              "inline-flex min-h-11 min-w-10 shrink-0 items-center justify-center border-b-2 px-1.5 font-medium transition-colors duration-[var(--motion-base)]",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:ring-offset-canvas",
               active
-                ? "bg-foreground text-background shadow-sm"
-                : "text-foreground-subtle hover:text-foreground",
+                ? "border-foreground text-foreground"
+                : "border-transparent text-foreground-subtle hover:text-foreground",
             )}
-            style={{ borderRadius: "9999px" }}
           >
             {LOCALE_LABEL[locale]}
           </button>

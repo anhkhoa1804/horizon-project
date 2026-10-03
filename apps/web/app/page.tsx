@@ -1,3 +1,4 @@
+import { KeywordTitle } from "@/components/ui/keyword-title";
 import Image from "next/image";
 import Link from "next/link";
 import { cache, Suspense } from "react";
@@ -21,16 +22,14 @@ import { Hero } from "@/components/home/hero";
 import { HeroBackdrop } from "@/components/home/hero-backdrop";
 import { Reveal } from "@/components/ui/reveal";
 import { PublicShell } from "@/components/layout/public-shell";
-import { TranslationNotice } from "@/components/layout/translation-notice";
 import { Skeleton } from "@/components/ui/skeleton";
-import { freshnessStatus, StatusIndicator } from "@/components/ui/status-indicator";
 import { getGalleryItems } from "@/lib/content/gallery";
 import { getRecentPosts } from "@/lib/content/posts";
 import { getI18n } from "@/lib/i18n/server";
 import type { Dictionary } from "@/lib/i18n/vi";
 import { getPublicRepositories } from "@/lib/publicRead";
 import { filterSnapshotsToPilotStations, OBSERVATORY_HREF, PILOT_STATION_IDS, type PilotStationId } from "@/lib/publicStations";
-import { stationProfiles, stationText, type StationKind } from "@/lib/stationProfile";
+import { stationDeviceCode, stationProfiles, stationText, type StationKind } from "@/lib/stationProfile";
 import type { SoilReading, StationReadingSnapshot } from "@/types";
 
 export const revalidate = 60;
@@ -102,40 +101,54 @@ const getObservatoryData = cache(async (): Promise<ObservatoryData | null> => {
   }
 });
 
-/**
- * STATION_02 has no environmental_readings row — its real timestamp lives on
- * soil_readings instead. Kind-aware so soil freshness is never silently read
- * as "unavailable" just because the water-shaped fields are empty.
- */
-function latestTimestampFor(stationId: PilotStationId, data: ObservatoryData | null): string | null {
-  if (stationProfiles[stationId].kind === "soil") {
-    return data?.soilReading?.timestamp ?? null;
-  }
-  const snapshot = data?.snapshots.find((s) => s.station.id === stationId);
-  return snapshot?.reading?.timestamp ?? snapshot?.health?.timestamp ?? null;
-}
-
 // ---------------------------------------------------------------------------
 // Shared blocks
 // ---------------------------------------------------------------------------
 
+const CHAPTER_EN: Record<string, string> = {
+  "Cồn Hô giữa dòng sông.": "An islet in the river.",
+  "Từ hiện trường.": "From the field.",
+  "Ba nút. Ba vai trò.": "Three nodes. Three roles.",
+  "Bản đồ Cồn Hô.": "Mapping Cồn Hô.",
+  "Từ vườn tới màn hình.": "From the garden to the screen.",
+  "Ngày khởi đầu.": "The first day.",
+  "Ba hướng canh tác.": "Three growing systems.",
+  "Mạng lưới hiện có.": "The current network.",
+  "Nhật ký dự án.": "Field notes.",
+  "Hình ảnh dự án.": "A field album.",
+  "Cùng đọc Cồn Hô.": "Read Cồn Hô together.",
+  "Hai trạm đo môi trường và một gateway. Mỗi nút trả lời một câu hỏi khác nhau — không phải ba trạm cảm biến.": "Two environmental stations and a gateway. Each node serves a different question.",
+  "Bảy chặng, từ đầu dò đặt tại Cồn Hô tới Observatory. Mỗi chặng giữ lại dấu vết cần thiết để đọc lại dữ liệu.": "Seven stages from the probes at Cồn Hô to the Observatory, preserving the evidence needed to read the data.",
+  "Mỗi hướng cho thấy dữ liệu đang có, và những phép đo còn thiếu trước khi có thể ra quyết định tốt hơn.": "Each direction identifies the available data and the measurements still needed for better decisions.",
+  "Hai trạm cảm biến và một gateway tạo thành lần triển khai đầu tiên. Trạng thái dưới đây đến từ dữ liệu hệ thống; nó không thay cho kiểm chứng lắp đặt hay hiệu chuẩn ngoài hiện trường.": "Two sensor stations and a gateway form the first deployment. These statuses come from system data; field installation and calibration require separate verification.",
+  "Hiệu chuẩn, nghiên cứu ngưỡng, ghi chép hiện trường và các giả định dự án đang kiểm chứng.": "Calibration, threshold research, field notes, and the assumptions being investigated.",
+  "Cù lao, dòng sông, con người và phần cứng của mạng lưới đặt trên đó.": "The islet, the river, the people, and the hardware placed among them.",
+  "Theo dõi quan trắc, gửi ghi nhận hiện trường, hoặc liên hệ với nhóm dự án.": "Follow the observations, record a field finding, or contact the project team."
+};
+
 /** Shared eyebrow+title block. Widths vary per chapter — the heading rhythm does not. */
-function ChapterHeading({
-  eyebrow,
+async function ChapterHeading({
   title,
   lead,
+  number,
   className,
 }: {
-  eyebrow: string;
   title: string;
+  number?: string;
   lead?: string;
   className?: string;
 }) {
+  const { locale } = await getI18n();
+  const heading = locale === "en" ? CHAPTER_EN[title] ?? title : title;
+  const subjects: Record<string,string> = {
+    "Cồn Hô giữa dòng sông.": "Cồn Hô", "Từ hiện trường.": "hiện trường", "Ba nút. Ba vai trò.": "Ba vai trò", "Bản đồ Cồn Hô.": "Cồn Hô", "Từ vườn tới màn hình.": "màn hình", "Ngày khởi đầu.": "khởi đầu", "Ba hướng canh tác.": "canh tác", "Mạng lưới hiện có.": "Mạng lưới", "Nhật ký dự án.": "Nhật ký", "Hình ảnh dự án.": "Hình ảnh", "Cùng đọc Cồn Hô.": "Cồn Hô",
+    "An islet in the river.": "islet", "From the field.": "field", "Three nodes. Three roles.": "Three roles", "Mapping Cồn Hô.": "Cồn Hô", "From the garden to the screen.": "screen", "The first day.": "first day", "Three growing systems.": "growing systems", "The current network.": "network", "Field notes.": "Field notes", "A field album.": "field album", "Read Cồn Hô together.": "Cồn Hô"
+  };
   return (
-    <div className={className}>
-      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-accent">{eyebrow}</p>
-      <h2 className="mt-3 text-3xl font-semibold leading-tight tracking-tight md:text-4xl">{title}</h2>
-      {lead ? <p className="mt-4 max-w-2xl text-base leading-relaxed text-muted">{lead}</p> : null}
+    <div id={number ? `chapter-${number}` : undefined} className={`chapter-heading h-text ${className ?? ""}`}>
+      {number ? <span className="chapter-number">{number}</span> : null}
+      <h2 className="chapter-heading__title max-w-4xl text-3xl font-semibold leading-[1.08] tracking-tight md:text-5xl"><KeywordTitle text={heading} keyword={subjects[heading]} /></h2>
+      {lead ? <p className="mt-4 max-w-[68ch] text-base leading-relaxed text-muted md:text-lg">{locale === "en" ? CHAPTER_EN[lead] ?? lead : lead}</p> : null}
     </div>
   );
 }
@@ -170,64 +183,42 @@ const STATION_METRICS: Record<PilotStationId, readonly string[]> = {
 };
 
 async function NetworkChapter() {
-  const data = await getObservatoryData();
-  const { dict } = await getI18n();
+  const { dict, locale } = await getI18n();
 
   return (
-    <div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-3">
-      {PILOT_STATION_IDS.map((id, index) => {
+    <ol className="atlas-status-list h-text">
+      {PILOT_STATION_IDS.map((id) => {
         const profile = stationProfiles[id];
         const text = stationText(id, dict);
         const Icon = KIND_ICON[profile.kind];
-        const timestamp = latestTimestampFor(id, data);
         return (
-          <Link
-            key={id}
-            href={OBSERVATORY_HREF}
-            className="group flex flex-col gap-6 bg-surface p-6 transition-[transform,box-shadow] duration-[var(--motion-base)] hover:-translate-y-0.5 hover:shadow-sm md:p-8"
-          >
-            <div className="flex items-start justify-between">
-              <span className="text-[11px] font-medium tracking-[0.16em] text-muted [font-family:var(--font-data)]">
-                {String(index + 1).padStart(2, "0")}
-              </span>
-              <Icon className="h-5 w-5 text-accent" aria-hidden />
-            </div>
-
-            <div className="flex-1 space-y-2">
-              <h3 className="text-xl font-semibold tracking-tight">{text.name}</h3>
-              <p className="text-sm text-muted">{text.location}</p>
-              <p className="pt-1 text-sm leading-relaxed text-muted">{text.intro}</p>
-            </div>
-
-            {STATION_METRICS[id].length > 0 ? (
-              <ul className="flex flex-wrap gap-x-2 gap-y-1">
-                {STATION_METRICS[id].map((metric) => (
-                  <li key={metric} className="border-b border-border/70 pb-0.5 text-[11px] text-foreground-subtle">
-                    {metric}
+          <li key={id} className="atlas-status-list__item">
+          <Link href={OBSERVATORY_HREF} className="atlas-status-row group">
+            <Icon className="atlas-status-icon" aria-hidden />
+            <div className="atlas-status-copy"><p className="atlas-status-id">{stationDeviceCode(id)}</p><h3>{text.name}</h3></div>
+            {true ? (
+              <ul className={`atlas-status-metrics ${id === "STATION_02" ? "atlas-status-metrics--soil" : ""}`}>
+                {(STATION_METRICS[id].length ? STATION_METRICS[id] : ["LoRa → 4G"]).map((metric) => (
+                  <li key={metric} className={id === "STATION_02" ? "network-metric-full" : undefined}>
+                    {locale === "en" ? ({ "Độ mặn": "Salinity", "Mực nước": "Water level", "Độ ẩm đất": "Soil moisture", "EC đất": "Soil EC", "Độ pH đất": "Soil pH", "Nhiệt độ đất": "Soil temperature", "Nhiệt độ không khí": "Air temperature", "Độ ẩm không khí": "Air humidity" } as Record<string,string>)[metric] ?? metric : metric}
                   </li>
                 ))}
               </ul>
             ) : null}
 
-            <div className="flex items-center justify-between border-t border-border/60 pt-4">
-              <StatusIndicator status={freshnessStatus(timestamp)} dict={dict} compact />
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-accent opacity-0 transition-opacity duration-[var(--motion-base)] group-hover:opacity-100">
-                {dict.nav.monitoring}
-                <ArrowRight className="h-3 w-3" aria-hidden />
-              </span>
-            </div>
           </Link>
+          </li>
         );
       })}
-    </div>
+    </ol>
   );
 }
 
 function NetworkFallback() {
   return (
-    <div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-3">
+    <div className="atlas-status-list">
       {[0, 1, 2].map((i) => (
-        <div key={i} className="space-y-6 bg-background p-6 md:p-8">
+        <div key={i} className="atlas-status-row bg-background p-6">
           <Skeleton className="h-4 w-8" />
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-4 w-28" />
@@ -307,22 +298,22 @@ const WORKFLOW = [
   { step: "ESP32", text: "Vi điều khiển đóng gói từng lần đo." },
   { step: "LoRa", text: "Gửi từ trạm về gateway bằng liên kết tầm xa." },
   { step: "Gateway", text: "Gom gói tin và kiểm tra đường truyền." },
-  { step: "Cellular", text: "Đưa dữ liệu rời cồn lên internet." },
+  { step: "4G", text: "Đưa dữ liệu rời cồn lên internet." },
   { step: "Supabase", text: "Lưu giá trị, thời điểm và nguồn dữ liệu." },
   { step: "Observatory", text: "Đọc chuỗi số liệu cùng ngưỡng và giới hạn." },
 ] as const;
 
 function WorkflowChapter() {
   return (
-    <ol className="grid gap-5 sm:grid-cols-2 lg:grid-cols-7" aria-label="Đường đi của dữ liệu HORIZON">
+    <ol className="atlas-data-path" aria-label="Đường đi của dữ liệu HORIZON">
       {WORKFLOW.map(({ step, text }, index) => (
-        <li key={step} className="relative min-w-0 space-y-3 lg:pr-3">
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-foreground text-[11px] font-semibold text-background [font-family:var(--font-data)]">
+        <li key={step} className="atlas-data-node">
+          <span className="atlas-data-index">
             {String(index + 1).padStart(2, "0")}
           </span>
-          <h3 className="text-base font-semibold tracking-tight">{step}</h3>
-          <p className="text-sm leading-relaxed text-muted">{text}</p>
-          {index < WORKFLOW.length - 1 ? <ArrowRight className="absolute -right-3 top-2 hidden h-4 w-4 text-accent lg:block" aria-hidden /> : null}
+          <h3>{step}</h3>
+          <p>{text}</p>
+          {index < WORKFLOW.length - 1 ? <ArrowRight className="atlas-data-arrow" aria-hidden /> : null}
         </li>
       ))}
     </ol>
@@ -337,20 +328,19 @@ const APPLICATION_PROFILES = [
 
 function ApplicationProfilesChapter() {
   return (
-    <div className="mt-10 grid gap-6 lg:grid-cols-3">
+    <div className="atlas-use-cases h-media">
       {APPLICATION_PROFILES.map((profile) => (
-        <article key={profile.index} className="overflow-hidden rounded-lg bg-surface">
-          <div className="relative aspect-[4/3]">
+        <article key={profile.index} className="atlas-use-case">
+          <div className="atlas-use-case__image">
             <Image src={profile.image} alt={profile.alt} fill sizes="(min-width:1024px) 31vw, 100vw" className="object-cover" />
           </div>
-          <div className="p-5 md:p-6">
-            <p className="text-[11px] tracking-[0.16em] text-accent [font-family:var(--font-data)]">{profile.index}</p>
-            <h3 className="mt-3 text-xl font-semibold tracking-tight">{profile.title}</h3>
-            <div className="mt-5 flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground-subtle">
+          <div className="atlas-use-case__body"><span className="chapter-number">{profile.index}</span>
+            <h3>{profile.title}</h3>
+            <div className="atlas-use-case__flow">
             {profile.flow.map((item, flowIndex) => <span key={item} className="contents"><span>{item}</span>{flowIndex < profile.flow.length - 1 ? <ArrowRight className="h-3 w-3 text-accent" aria-hidden /> : null}</span>)}
             </div>
-            <p className="mt-6 text-sm leading-relaxed text-muted"><span className="font-medium text-foreground">Hiện tại · </span>{profile.current}</p>
-            <p className="mt-3 text-sm leading-relaxed text-muted"><span className="font-medium text-foreground">Tiếp theo · </span>{profile.next}</p>
+            <p><span>Hiện tại · </span>{profile.current}</p>
+            <p><span>Tiếp theo · </span>{profile.next}</p>
           </div>
         </article>
       ))}
@@ -372,9 +362,9 @@ function FieldStoryVideo() {
   const captionId = `field-video-${FIELD_STORY_VIDEO.id}`;
 
   return (
-    <section aria-labelledby="field-videos-heading" className="mx-auto max-w-[980px]">
-      <ChapterHeading eyebrow="04 · Ghi hình tại Cồn Hô" title="Từ hiện trường." />
-      <figure className="mt-8 space-y-3">
+    <section aria-label="Từ hiện trường" className="atlas-field-story">
+      <ChapterHeading number="02" title="Từ hiện trường." />
+      <figure className="h-media mt-8 space-y-3">
         <AutoPlayVideo {...FIELD_STORY_VIDEO} captionId={captionId} />
         <figcaption id={captionId} className="text-sm text-muted">
           {FIELD_STORY_VIDEO.title}
@@ -391,16 +381,15 @@ function FieldStoryVideo() {
 export default async function HomePage() {
   const posts = getRecentPosts(5);
   const gallery = getGalleryItems();
-  const { dict } = await getI18n();
+  const { dict, locale } = await getI18n();
 
   return (
     <PublicShell activePath="/" backdrop={<HeroBackdrop />}>
       <Hero />
 
-      <div className="h-flow-large">
-        <TranslationNotice />
+      <div className="field-atlas-flow">
 
-        <div id="horizon" className="h-flow-chapter scroll-mt-28">
+        <div id="horizon" className="home-chapters scroll-mt-28">
           {/* 01 — What HORIZON is.
               The hero's old pilot caption ("Giai đoạn thí điểm · thiết bị chưa
               lắp đặt ngoài thực địa") is gone from under the title: a hero
@@ -409,8 +398,8 @@ export default async function HomePage() {
               it rather than merely disclaim it — and again on the hardware
               chapter, which is where it actually bites. */}
           <Reveal stagger as="section">
-            <div className="mx-auto max-w-3xl">
-              <ChapterHeading eyebrow="01 · Cồn Hô" title="Một cù lao giữa dòng sông." />
+            <div className="atlas-introduction">
+              <ChapterHeading number="01" title="Cồn Hô giữa dòng sông." />
               <Prose>
                 <p>Cồn Hô ở Vĩnh Long là một môi trường canh tác nhỏ, nơi nước, đất và không khí có thể đổi khác theo từng vị trí trong ngày.</p>
                 <p>Ở một cù lao, thay đổi không luôn đến cùng lúc. Nước ngoài vườn, vùng rễ và đường truyền dữ liệu có những nhịp riêng — và đó là lý do phép đo cần ở gần nơi sản xuất.</p>
@@ -420,24 +409,20 @@ export default async function HomePage() {
                 <span>Vĩnh Long</span>{ISLAND_STATS.map((stat) => <span key={stat.label}>{stat.label} {stat.value}</span>)}
               </div>
             </div>
-            <figure className="mx-auto mt-10 max-w-[980px] space-y-3">
-              <AutoPlayVideo {...PROJECT_START_VIDEO} captionId="project-start-video-caption" />
-              <figcaption id="project-start-video-caption" className="text-sm text-muted">
-                {PROJECT_START_VIDEO.title}
-              </figcaption>
-            </figure>
           </Reveal>
-          {/* 02 — Where, and why here */}
-          <Reveal stagger as="section">
-            <ChapterHeading eyebrow="02 · Ba điểm, ba vai trò" title="Ba thiết bị ở ba vị trí khác nhau." lead="Mỗi điểm trả lời một câu hỏi rõ ràng: nước đang đổi thế nào, vùng rễ đang giữ nước ra sao, và dữ liệu có đi được về hệ thống không." />
-            <div className="mt-10 grid gap-px overflow-hidden rounded-xl border border-border bg-border md:grid-cols-3">
-              {HARDWARE_GROUPS.map((group) => <article key={group.station} className="bg-surface"><div className="relative aspect-[4/3]"><Image src={group.image} alt={group.imageAlt} fill sizes="(min-width:768px) 33vw,100vw" className="object-cover" /></div><div className="p-6"><p className="text-[11px] font-semibold tracking-[.14em] text-accent">{group.station}</p><h3 className="mt-2 text-2xl font-semibold">{group.domain}</h3><p className="mt-2 text-sm text-muted">{group.station === "STATION_01" ? "Nước ngoài vườn đang thay đổi thế nào?" : group.station === "STATION_02" ? "Vùng rễ đang giữ nước và thay đổi ra sao?" : "Dữ liệu có đi được từ cồn về hệ thống không?"}</p></div></article>)}
+          <Reveal>
+            <FieldStoryVideo />
+          </Reveal>
+          <Reveal stagger as="section" id="field-system" className="atlas-system scroll-mt-28">
+            <ChapterHeading number="03" title="Ba nút. Ba vai trò." lead="Hai trạm đo môi trường và một gateway. Mỗi nút trả lời một câu hỏi khác nhau — không phải ba trạm cảm biến." />
+            <div className="atlas-node-grid h-media">
+              {HARDWARE_GROUPS.map((group, index) => <article key={group.station} className={`atlas-node atlas-node--${group.station.toLowerCase()}`}><div className="atlas-node__image"><Image src={group.image} alt={group.imageAlt} fill sizes="(min-width:900px) 40vw,100vw" className="object-cover" /></div><div className="atlas-node__text"><p><span>{String(index + 1).padStart(2, "0")}</span> {stationDeviceCode(group.station)}</p><h3>{locale === "vi" ? group.domain : group.station === "STATION_01" ? "Water" : group.station === "STATION_02" ? "Soil & air" : "Data transmission"}</h3><span>{group.station === "STATION_01" ? "Nước ngoài vườn đang thay đổi thế nào?" : group.station === "STATION_02" ? "Vùng rễ đang giữ nước và thay đổi ra sao?" : "Dữ liệu có đi được từ cồn về hệ thống không?"}</span></div></article>)}
             </div>
           </Reveal>
 
           <Reveal as="section" aria-labelledby="project-illustration-heading">
-            <div className="mx-auto max-w-3xl">
-              <ChapterHeading eyebrow="03 · Minh họa dự án" title="Ba điểm quan trắc tại Cồn Hô." />
+            <div className="atlas-introduction">
+              <ChapterHeading number="04" title="Bản đồ Cồn Hô." />
             </div>
             <div className="full-bleed mt-8">
               <div className="h-spatial">
@@ -461,7 +446,7 @@ export default async function HomePage() {
                     width={2000}
                     height={1414}
                     loading="lazy"
-                    className="w-full rounded-lg"
+                    className="w-full"
                   />
                   <figcaption className="text-sm text-muted">Minh họa dự án: ba điểm đo, không phải bản đồ vận hành. Bản đồ và trạng thái trạm nằm tại Quan trắc.</figcaption>
                 </figure>
@@ -469,28 +454,30 @@ export default async function HomePage() {
             </div>
           </Reveal>
 
-          <Reveal>
-            <FieldStoryVideo />
-          </Reveal>
-
           {/* 05 — The data path is a distinct story beat; the hardware roles
               above stay visual while this chapter explains the hand-off. */}
-          <Reveal stagger as="section">
-            <ChapterHeading
-              eyebrow="05 · Một con đường dữ liệu"
-              title="Một lần đo đi từ vườn tới màn hình như thế nào?"
-              lead="Bảy chặng, từ đầu dò đặt tại Cồn Hô tới Observatory. Mỗi chặng giữ lại dấu vết cần thiết để đọc lại dữ liệu."
-            />
-            <div className="mt-10">
-              <WorkflowChapter />
-            </div>
+          <div className="full-bleed mt-10">
+            <Reveal stagger as="section" className="atlas-data-section">
+              <ChapterHeading
+                number="05" title="Từ vườn tới màn hình."
+                lead="Bảy chặng, từ đầu dò đặt tại Cồn Hô tới Observatory. Mỗi chặng giữ lại dấu vết cần thiết để đọc lại dữ liệu."
+              />
+              <div className="mt-10 atlas-data-diagram">
+                <WorkflowChapter />
+              </div>
+            </Reveal>
+          </div>
+
+          <Reveal as="figure" className="atlas-documentary h-media">
+            <ChapterHeading number="06" title="Ngày khởi đầu." />
+            <AutoPlayVideo {...PROJECT_START_VIDEO} captionId="project-start-video-caption" />
+            <figcaption id="project-start-video-caption">{PROJECT_START_VIDEO.title}</figcaption>
           </Reveal>
 
           {/* 06 — Reusable application profiles */}
           <Reveal stagger as="section">
             <ChapterHeading
-              eyebrow="06 · Nhiều bài toán từ cùng dữ liệu"
-              title="Ba câu hỏi có thể bắt đầu từ Cồn Hô."
+              number="07" title="Ba hướng canh tác."
               lead="Mỗi hướng cho thấy dữ liệu đang có, và những phép đo còn thiếu trước khi có thể ra quyết định tốt hơn."
             />
             <ApplicationProfilesChapter />
@@ -499,8 +486,7 @@ export default async function HomePage() {
           {/* 07 — Current deployment truth */}
           <Reveal stagger as="section">
             <ChapterHeading
-              eyebrow="07 · Cồn Hô hôm nay"
-              title="Mạng lưới hiện có, cùng những giới hạn hiện có."
+              number="08" title="Mạng lưới hiện có."
               lead="Hai trạm cảm biến và một gateway tạo thành lần triển khai đầu tiên. Trạng thái dưới đây đến từ dữ liệu hệ thống; nó không thay cho kiểm chứng lắp đặt hay hiệu chuẩn ngoài hiện trường."
             />
             <div className="mt-10">
@@ -513,11 +499,10 @@ export default async function HomePage() {
           {/* 08 — Field notes and learning */}
           <Reveal stagger as="section" id="ghi-chep" className="scroll-mt-28">
             <ChapterHeading
-              eyebrow="08 · Những gì chúng tôi đang học"
-              title="Ghi chép trong quá trình xây dựng."
+              number="09" title="Nhật ký dự án."
               lead="Hiệu chuẩn, nghiên cứu ngưỡng, ghi chép hiện trường và các giả định dự án đang kiểm chứng."
             />
-            <div className="mt-10">
+            <div className="h-text mt-10">
               <FieldNotesCarousel posts={posts} />
             </div>
           </Reveal>
@@ -525,8 +510,7 @@ export default async function HomePage() {
           {/* 09 — Visual material and people */}
           <Reveal as="section">
             <ChapterHeading
-              eyebrow="09 · Hình ảnh / con người"
-              title="Hình ảnh dự án."
+              number="10" title="Hình ảnh dự án."
               lead="Cù lao, dòng sông, con người và phần cứng của mạng lưới đặt trên đó."
             />
             <div className="full-bleed mt-10">
@@ -545,9 +529,9 @@ export default async function HomePage() {
               mailto/tel/https, nothing posted through this site — since no
               server-side email provider exists to back a submission form. */}
           <Reveal stagger as="section" id="lien-he" className="scroll-mt-28">
-            <ChapterHeading eyebrow="10 · Cùng theo dõi" title="Một mạng lưới để đọc lại thay đổi ở Cồn Hô." lead="Theo dõi quan trắc, gửi ghi nhận hiện trường, hoặc liên hệ với nhóm dự án." />
-            <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-border bg-border lg:grid-cols-[0.85fr_1.15fr]">
-              <div className="flex flex-col gap-4 bg-background p-8 md:p-10">
+            <ChapterHeading number="11" title="Cùng đọc Cồn Hô." lead="Theo dõi quan trắc, gửi ghi nhận hiện trường, hoặc liên hệ với nhóm dự án." />
+            <div className="atlas-contact h-text mt-10 grid gap-10 lg:grid-cols-2">
+              <div className="flex flex-col gap-4 py-8">
                 <div className="flex items-center gap-2 text-foreground-muted">
                   <ClipboardList className="h-4 w-4 shrink-0" aria-hidden />
                   <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">
@@ -565,7 +549,7 @@ export default async function HomePage() {
                 </Link>
               </div>
 
-              <div className="space-y-5 bg-background p-8 md:p-10">
+              <div className="space-y-5 py-8">
                 <div className="flex items-center gap-2 text-foreground-muted">
                   <Mail className="h-4 w-4 shrink-0" aria-hidden />
                   <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">
@@ -573,7 +557,7 @@ export default async function HomePage() {
                   </span>
                 </div>
                 <p className="max-w-xl text-sm leading-relaxed text-muted">{dict.contact.lead}</p>
-                <ul className="grid gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-2">
+                <ul className="grid divide-y divide-border sm:grid-cols-2">
                   {CONTACT_CHANNELS.map(({ key, icon: Icon, label, href }) => (
                     <li key={key} className="bg-background">
                       <a
