@@ -1,4 +1,10 @@
 import Image from "next/image";
+import { CONFIG_STATIONS, deriveConfigState } from "@/lib/gateway/remoteProtocol";
+import { saveRemoteConfig, type SaveResult } from "@/lib/gateway/remoteConfigService";
+import { remoteConfigStore } from "@/lib/gateway/remoteConfigStore";
+import { RuntimeConfigForm } from "@/components/admin/runtime-config-form";
+import { IngestionHealthPanel } from "@/components/admin/ingestion-health-panel";
+import { loadIngestionHealth } from "@/lib/admin/ingestionHealth";
 import { OperationsNavigation } from "@/components/layout/operations-navigation";
 import Link from "next/link";
 import { getI18n } from "@/lib/i18n/server";
@@ -57,6 +63,11 @@ interface RuntimeConfig {
   sleep_interval_seconds: number;
   mode: string;
   updated_at?: string;
+  config_revision?: number;
+  delivery_state?: string;
+  applied_revision?: number;
+  last_delivery_at?: string;
+  last_failure_reason?: string;
 }
 
 interface CommunityReport {
@@ -131,15 +142,15 @@ async function loadRuntimeConfigs(): Promise<RuntimeConfig[]> {
 
   const { data, error } = await supabase
     .from("device_runtime_configs")
-    .select("station_id, sample_interval_seconds, sleep_interval_seconds, mode, updated_at")
-    .in("station_id", managedStationIds)
+    .select("station_id, sample_interval_seconds, sleep_interval_seconds, mode, updated_at, config_revision, delivery_state, applied_revision, last_delivery_at, last_failure_reason")
+    .in("station_id", CONFIG_STATIONS)
     .order("station_id");
 
   if (error) {
     return [];
   }
 
-  return managedStationIds.map(
+  return CONFIG_STATIONS.map(
     (stationId) => data?.find((row) => row.station_id === stationId) ?? defaultConfig(stationId),
   );
 }
@@ -240,41 +251,20 @@ async function loadCommunityReports(): Promise<CommunityReport[]> {
   return reports.map((report) => ({ ...report, media: mediaByReport.get(report.id) ?? [] }));
 }
 
-async function updateRuntimeConfig(formData: FormData) {
+async function updateRuntimeConfig(_previous: SaveResult | null, formData: FormData): Promise<SaveResult> {
   "use server";
-
   const { user } = await requireAdmin();
-  const stationId = String(formData.get("station_id") ?? "");
-  if (!managedStationIds.includes(stationId)) {
-    redirect("/admin?error=invalid-station");
-  }
-
-  const sampleInterval = Number(formData.get("sample_interval_seconds"));
-  const sleepInterval = Number(formData.get("sleep_interval_seconds"));
-  const mode = String(formData.get("mode") ?? "normal");
-
-  const supabase = createServiceClient();
-  if (!supabase) {
-    redirect("/admin?error=missing-supabase");
-  }
-
-  await supabase.from("device_runtime_configs").upsert({
-    station_id: stationId,
-    sample_interval_seconds: Math.max(5, Math.min(86400, Math.round(sampleInterval))),
-    sleep_interval_seconds: Math.max(0, Math.min(86400, Math.round(sleepInterval))),
-    mode: ["normal", "rain_saver", "maintenance"].includes(mode) ? mode : "normal",
-    updated_by: nullableUuid(user.id),
-  });
-
-  await recordAuditEvent({
-    actor: user.email,
-    action: "runtime.config.stored",
-    entity: "device_runtime_configs",
-    entityId: stationId,
-    metadata: { state: "stored_awaiting_device_poll", sampleInterval, sleepInterval, mode },
-  });
-
-  revalidatePath("/admin");
+  const expectedText = String(formData.get("expected_revision") ?? "");
+  const sampleText = String(formData.get("sample_interval_seconds") ?? "");
+  const sleepText = String(formData.get("sleep_interval_seconds") ?? "");
+  if (![expectedText, sampleText, sleepText].every((value) => /^(0|[1-9][0-9]*)$/.test(value))) return { kind: "validation_error", message: "Điền đầy đủ giá trị nguyên hợp lệ." };
+  const expected = Number(expectedText);
+  const result = await saveRemoteConfig(remoteConfigStore(createServiceClient()), {
+    contract_version: 1, config_revision: expected + 1, station_id: String(formData.get("station_id") ?? ""),
+    sample_interval_seconds: Number(sampleText), sleep_interval_seconds: Number(sleepText), mode: String(formData.get("mode") ?? ""),
+  }, expected, user.email ?? "admin");
+  if (result.kind === "success") revalidatePath("/admin");
+  return result;
 }
 
 async function addAdminEmail(formData: FormData) {
@@ -407,7 +397,8 @@ async function saveAlertConfig(formData: FormData) {
     updated_by: nullableUuid(user.id),
   };
 
-  await supabase.from("alert_configs").upsert(row, { onConflict: "station_id,metric" });
+  const { error } = await supabase.from("alert_configs").upsert(row, { onConflict: "station_id,metric" });
+  if (error) redirect("/admin?error=config-save-failed#thresholds");
   await recordAuditEvent({
     actor: user.email,
     action: "alert.config.saved",
@@ -618,6 +609,12 @@ function cleanReportDescription(description: string | null): string {
 
 function adminErrorMessage(error?: string): string | null {
   switch (error) {
+    case "invalid-runtime":
+      return "Chu kỳ phải là số nguyên hợp lệ; chu kỳ đo 5–86.400 giây, ngủ 0–86.400 giây.";
+    case "config-save-failed":
+      return "Không thể lưu cấu hình. Giá trị trước đó được giữ nguyên.";
+    case "config-audit-failed":
+      return "Cấu hình đã lưu nhưng nhật ký chưa ghi được. Thiết bị chưa xác nhận áp dụng.";
     case "invalid-email":
       return "Email chưa hợp lệ. Vui lòng nhập đúng địa chỉ Gmail/email.";
     case "cannot-remove-env-email":
@@ -634,7 +631,7 @@ function adminErrorMessage(error?: string): string | null {
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ error?: string }>;
+  searchParams?: Promise<{ error?: string; status?: string }>;
 }) {
   const params = searchParams ? await searchParams : {};
   const { profile, scope } = await requireAdmin();
@@ -670,6 +667,7 @@ export default async function AdminPage({
         .then((row) => row?.timestamp ?? null)
         .catch(() => null)
     : null;
+  const ingestionHealth = await loadIngestionHealth();
   const unreadReports = reports.filter((report) => !report.viewed_at).length;
   const errorMessage = adminErrorMessage(params.error);
   const isDemoMode = stationsAreDemo || metrics.demo;
@@ -774,6 +772,7 @@ export default async function AdminPage({
         </div>
       </section>
       {errorMessage ? <Alert tone="critical">{errorMessage}</Alert> : null}
+      {params.status === "config-stored" || params.status === "config-unchanged" ? <Alert tone="info">{params.status === "config-unchanged" ? "Cấu hình không đổi." : "Đã lưu cấu hình mong muốn."} Thiết bị chưa xác nhận áp dụng.</Alert> : null}
 
       {operationalDataUnavailable ? (
         <Alert tone="critical">
@@ -792,7 +791,7 @@ export default async function AdminPage({
       {/* The operator's first question — is the network up, and which node is
           not? Above the settings forms, because "what is wrong right now" is
           needed before "what can I configure". */}
-      <div id="network" className="scroll-mt-36"><NetworkOverview snapshots={snapshots} soilTimestamp={soilTimestamp} /></div>
+      <div id="network" className="scroll-mt-36"><NetworkOverview snapshots={snapshots} soilTimestamp={soilTimestamp} gatewayReceivedAt={ingestionHealth.gatewayReceivedAt} /><IngestionHealthPanel data={ingestionHealth} /></div>
       <section id="reports" className="scroll-mt-36">{reportQueue}</section>
 
       {/* Operator workflows, all persisted by migration 022. Each panel states
@@ -828,7 +827,7 @@ export default async function AdminPage({
               <p className="text-3xl font-semibold">
                 {metrics.active}/{metrics.total}
               </p>
-              <p className="text-sm text-muted">trạm đang hoạt động</p>
+              <p className="text-sm text-muted">trạm được đánh dấu hoạt động</p>
             </CardContent>
           </Card>
           <Card>
@@ -929,60 +928,24 @@ export default async function AdminPage({
           <CardHeader>
             <CardTitle>Cấu hình vận hành</CardTitle>
             <CardDescription>
-              Khi mưa kéo dài, có thể chuẩn bị thay đổi chu kỳ ngủ cho ba trạm. Lưu ở đây là{" "}
-              <strong className="font-semibold text-foreground">đã ghi vào cơ sở dữ liệu</strong>. Hiện firmware gateway
-              đang <strong className="font-semibold text-foreground">tắt thăm dò cấu hình thiết bị</strong> sau lỗi 403,
-              nên cấu hình được lưu nhưng chưa được gửi tới thiết bị. Chỉ bật đường này sau khi kiểm tra xác thực và
-              xác nhận ngoài hiện trường.
+              Cấu hình mong muốn được lưu trong cơ sở dữ liệu. Firmware hiện tắt thăm dò cấu hình thiết bị;
+              chỉ bật sau kiểm chứng ngoài hiện trường. Trạng thái theo revision và bằng chứng xác nhận, không theo việc lưu dữ liệu. GATEWAY_01 không phải đích cấu hình STATION_03.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4 lg:grid-cols-3">
+          <CardContent className="grid gap-4 lg:grid-cols-2">
+            {runtimeConfigs.length === 0 ? <p role="alert" className="text-sm text-critical lg:col-span-2">Không đọc được cấu hình vận hành. Kiểm tra kết nối và migration 034 trước khi lưu.</p> : null}
             {runtimeConfigs.map((config) => (
-              <form key={config.station_id} action={updateRuntimeConfig} className="border-t border-border/60 pt-4">
-                <input type="hidden" name="station_id" value={config.station_id} />
-                <div className="mb-4">
+              <div key={config.station_id} className="border-t border-border/60 pt-4">
+                <div className="mb-4 space-y-2">
                   <p className="font-semibold">{config.station_id}</p>
-                  <p className="mt-1 text-sm text-muted">Chế độ hiện tại: {modeLabel(config.mode)}</p>
-                  <p className="mt-1 text-xs text-muted">
-                    {config.updated_at ? `Cập nhật lần cuối: ${formatReportTime(config.updated_at)}` : "Chưa từng chỉnh cấu hình"}
-                  </p>
+                  <Tag>{deriveConfigState(config)}{config.config_revision ? ` · r${config.config_revision}` : ""}</Tag>
+                  <p className="text-sm text-muted">Chế độ mong muốn: {modeLabel(config.mode)}</p>
+                  <p className="text-xs text-muted">Revision áp dụng được trạm báo cáo: {config.applied_revision ?? "—"}. Chưa kiểm chứng phần cứng ngoài hiện trường.</p>
+                  {config.last_failure_reason ? <p className="text-xs text-critical">{config.last_failure_reason}</p> : null}
+                  <p className="text-xs text-muted">{config.updated_at ? `Cập nhật: ${formatReportTime(config.updated_at)}` : "Chưa lưu · giá trị khởi tạo gợi ý"}</p>
                 </div>
-                <div className="space-y-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor={`${config.station_id}-sample`}>Chu kỳ đo/gửi (giây)</Label>
-                    <Input
-                      id={`${config.station_id}-sample`}
-                      name="sample_interval_seconds"
-                      type="number"
-                      min={5}
-                      max={86400}
-                      defaultValue={config.sample_interval_seconds}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor={`${config.station_id}-sleep`}>Thời gian ngủ (giây)</Label>
-                    <Input
-                      id={`${config.station_id}-sleep`}
-                      name="sleep_interval_seconds"
-                      type="number"
-                      min={0}
-                      max={86400}
-                      defaultValue={config.sleep_interval_seconds}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor={`${config.station_id}-mode`}>Chế độ</Label>
-                    <Select id={`${config.station_id}-mode`} name="mode" defaultValue={config.mode}>
-                      <option value="normal">Bình thường</option>
-                      <option value="rain_saver">Tiết kiệm mùa mưa</option>
-                      <option value="maintenance">Bảo trì</option>
-                    </Select>
-                  </div>
-                  <Button type="submit" className="w-full">
-                    Lưu cấu hình
-                  </Button>
-                </div>
-              </form>
+                <RuntimeConfigForm config={config} action={updateRuntimeConfig} />
+              </div>
             ))}
           </CardContent>
         </Card>

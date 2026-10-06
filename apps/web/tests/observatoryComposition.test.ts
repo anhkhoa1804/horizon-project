@@ -91,10 +91,10 @@ describe("observatory Bento grid", () => {
     // aspect ratio at each, or the base cell stops being square and the
     // regions stop being whole multiples of it.
     assert.match(src, /grid-cols-4/, "the 4-column track for <lg is missing");
-    assert.match(src, /repeat\(21,minmax\(0,1fr\)\)/, "the 21-row track for <md is missing");
-    assert.match(src, /repeat\(10,minmax\(0,1fr\)\)/, "the 10-row track for md is missing");
-    assert.match(src, /aspect-\[4\/21\]/, "the <md container must be 4:21 to keep the base cell square");
-    assert.match(src, /md:aspect-\[2\/5\]/, "the md container must be 2:5 to keep the base cell square");
+    assert.match(src, /repeat\(19,minmax\(0,1fr\)\)/, "the 21-row track for <md is missing");
+    assert.match(src, /repeat\(8,minmax\(0,1fr\)\)/, "the 10-row track for md is missing");
+    assert.match(src, /aspect-\[4\/19\]/, "the <md container must be 4:21 to keep the base cell square");
+    assert.match(src, /md:aspect-\[1\/2\]/, "the md container must be 2:5 to keep the base cell square");
 
     // Neither earlier approach may quietly return.
     assert.ok(!/buildCanvasMetrics/.test(src), "the computed per-metric footprint system is back");
@@ -154,7 +154,7 @@ describe("observatory Bento grid", () => {
     const src = source();
     assert.match(src, /function RegionHeader/, "the region header is gone");
     const renders = (src.match(/<RegionHeader\b/g) || []).length;
-    assert.equal(renders, 4, "expected primary, infrastructure, water and soil region headers");
+    assert.equal(renders, 3, "expected primary, infrastructure, water and soil region headers");
     assert.ok(!/<RegionStatus\b/.test(src), "the separate status line is back below the values");
   });
 
@@ -250,8 +250,8 @@ describe("observatory Bento grid", () => {
 
   it("tiles all three arrangements exactly once per cell, with no gap and no overlap", () => {
     const src = source();
-    assertTiling(extractPlacements(src, ""), 4, 21, "<md (4×21)");
-    assertTiling(extractPlacements(src, "md:"), 4, 10, "md (4×10)");
+    assertTiling(extractPlacements(src, ""), 4, 19, "<md (4×19)");
+    assertTiling(extractPlacements(src, "md:"), 4, 8, "md (4×8)");
     assertTiling(extractPlacements(src, "lg:"), 6, 4, "lg (6×4)");
   });
 
@@ -263,8 +263,8 @@ describe("observatory Bento grid", () => {
     // the unit is exactly what stops a Bento reading as one grid.
     const src = source();
     for (const [label, prefix, cols, rows] of [
-      ["<md", "", 4, 21],
-      ["md", "md:", 4, 10],
+      ["<md", "", 4, 19],
+      ["md", "md:", 4, 8],
       ["lg", "lg:", 6, 4],
     ] as const) {
       for (const p of extractPlacements(src, prefix)) {
@@ -295,7 +295,7 @@ describe("observatory Bento grid", () => {
       ["md", "md:", 1],
       ["lg", "lg:", 1],
     ] as const) {
-      const context = extractPlacements(src, prefix).slice(-6, -2);
+      const context = extractPlacements(src, prefix).slice(3, 7);
       assert.equal(context.length, 4, `${label}: expected four context placements`);
       for (const p of context) {
         assert.equal(p.colEnd - p.colStart, unitSpan, `${label}: a context cell is not ${unitSpan} unit(s) wide`);
@@ -309,7 +309,7 @@ describe("observatory Bento grid", () => {
 
     // At md and above they must still be ONE row of four columns.
     for (const [label, prefix] of [["md", "md:"] , ["lg", "lg:"]] as const) {
-      const context = extractPlacements(src, prefix).slice(-6, -2);
+      const context = extractPlacements(src, prefix).slice(3, 7);
       if (label === "md") {
         assert.equal(new Set(context.map((p) => p.rowStart)).size, 1, "md: context cells must share one row");
         assert.equal(new Set(context.map((p) => p.colStart)).size, 4, "md: context cells must span four columns");
@@ -475,7 +475,7 @@ describe("observation log controls", () => {
     assert.match(src, /dict\.chart\.boxLabel/, "the chart's box header label is gone");
 
     const headerStyle = (text: string) => {
-      const m = text.match(/className="truncate (text-\[\d+px\] font-semibold uppercase tracking-\[[\d.]+em\])"/);
+      const m = text.match(/className="(?:truncate|region-heading-title) (text-\[\d+px\] font-\w+ uppercase tracking-\[[\d.]+em\])"/);
       return m?.[1] ?? null;
     };
     const chart = headerStyle(src);

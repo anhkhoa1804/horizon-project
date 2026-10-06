@@ -33,3 +33,7 @@ docs/archive/*
 !docs/archive/HORIZON_AUDIT_REPORT.md
 # Firmware per-deployment secrets (see gateway_secrets.example.h)
 firmware/**/gateway_secrets.h
+
+firmware/**/station_01_config_secrets.h
+firmware/**/station_02_config_secrets.h
+firmware/esp32-node/build_entries/generated/

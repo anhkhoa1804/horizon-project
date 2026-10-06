@@ -19,3 +19,7 @@
 */
 
 #define GATEWAY_INGEST_TOKEN_VALUE ""
+
+// Per-station configuration keys; match the station and server, >=32 characters.
+#define REMOTE_CONFIG_STATION_01_KEY_VALUE ""
+#define REMOTE_CONFIG_STATION_02_KEY_VALUE ""

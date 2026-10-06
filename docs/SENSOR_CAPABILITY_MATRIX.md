@@ -17,7 +17,7 @@ site calibration that has not been recorded.
 | Soil pH | ES-PH-SOIL-01 | `soil_readings.soil_ph` | latest, 24h/daily series, Observatory | Available |
 | Air temperature / humidity | SHT30 | `soil_readings` | latest, 24h/daily series, context | Available |
 | Battery / signal for relayed nodes | payload fields optional | nullable health log fields | honest empty state when absent | Not guaranteed by topology |
-| Device acknowledgement of runtime config | no acknowledgement channel | requested config only | Admin says stored / awaiting poll | Future |
+| Device acknowledgement of runtime config | authenticated HC1 ACK/APPLIED | separate desired/applied revision plus audit evidence | Admin displays recorded state | Software tested; hardware unverified, polling disabled |
 
 Station 01 emits TDS and salinity alongside EC. These fields remain separate
 because conductivity, mass concentration, and laboratory soil ECe have

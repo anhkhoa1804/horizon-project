@@ -47,9 +47,8 @@ cheap, low-risk fix, not a redesign.
 Thresholds (5 min / 30 min / 6 hr) match what `freshnessStatus()`
 already implements (`status-indicator.tsx`) — kept as-is; they were a
 reasonable judgment call, not something this pass found wrong. They are
-not derived from any documented sensor sampling interval (`device_
-runtime_configs.sample_interval_seconds` defaults to 300s = 5 min,
-configurable per-station) — worth noting the LIVE threshold and the
+not derived from any documented sensor sampling interval (`device_runtime_configs.sample_interval_seconds` is versioned per station;
+revision-zero firmware bootstrap is explicitly separate — see REMOTE_CONFIGURATION.md) — worth noting the LIVE threshold and the
 default sample interval happen to match, which is good, but if an
 operator sets a longer sample interval via the admin sleep-mode
 controls, a perfectly healthy station would immediately start reading

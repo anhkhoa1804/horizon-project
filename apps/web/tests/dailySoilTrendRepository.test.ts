@@ -32,6 +32,10 @@ function fakeSupabase(rows: Record<string, unknown>[] | null, error: { code: str
       calls.push({ method: "order", args: [col, opts] });
       return chain;
     },
+    range(start: number, end: number) {
+      calls.push({ method: "range", args: [start, end] });
+      return chain;
+    },
     then(resolve: (value: { data: unknown; error: unknown }) => unknown) {
       return Promise.resolve({ data: rows, error }).then(resolve);
     },

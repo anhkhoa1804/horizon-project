@@ -1,6 +1,7 @@
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 import { SiteHeader } from "@/components/layout/site-header";
+import { MobileNavigation } from "./mobile-navigation";
 import { ToolPageHeading } from "./tool-page-heading";
 
 interface AdminShellProps {
@@ -44,6 +45,7 @@ export function AdminShell({ email, actions, navigation, title, description, chi
           {children}
         </div>
       </main>
+      <MobileNavigation activePath="/admin" />
     </div>
   );
 }

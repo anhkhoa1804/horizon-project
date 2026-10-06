@@ -265,7 +265,7 @@ Apply with `npm run db:migrate`. Verify afterwards: anon reads of
 | Route | Method | Auth | Validation | Rate limit |
 |---|---|---|---|---|
 | `/api/public/reports` | POST | none (public by design) | category allowlist, 10–2000 chars, JSON guard | yes — §7 |
-| `/api/public/gateway/configs` | GET | none | returns safe defaults only when the database is reachable | none needed |
+| `/api/public/gateway/configs` | GET | x-gateway-token | actual stored versioned rows only; no defaults | migration 034 and station keys; hardware unverified |
 | `/api/health` | GET | none | n/a | none needed |
 
 Verified: `400 invalid_json`, `400 invalid_category`, `400

@@ -1,104 +1,19 @@
-# Firmware Specification (Draft)
+# Firmware specification — active QoS1 builds
 
-Eco-Sense Con Ho field node firmware for ESP32 + LTE modem.
+## Active targets
 
-## References
+STATION_01 reads water probes; STATION_02 reads soil and ambient probes. Both aggregate and transmit bounded CRC16 S1/S2 frames, retaining pending telemetry until A1/A2 packet acknowledgement. GATEWAY_01 translates these to the existing TelemetryPayloadV1 for edge-ingest via authenticated cellular HTTPS and network receipt time. Older JSON receive branches are transitional; legacy JSON configuration cannot apply settings.
 
-- Telemetry API: [`docs/API_CONTRACTS.md`](../../docs/API_CONTRACTS.md)
-- Gateway Supabase ingest: [`GATEWAY_SUPABASE_INGEST.md`](GATEWAY_SUPABASE_INGEST.md)
-- Store-and-forward queue: [`QUEUE_AND_FALLBACK.md`](QUEUE_AND_FALLBACK.md)
-- PlatformIO project: [`platformio.ini`](../platformio.ini)
+## Configuration
 
-## Hardware target
-
-| Component | Target |
-|-----------|--------|
-| MCU | ESP32 |
-| Modem | A7670C or SIM7600 (LTE Cat-1) |
-| EC probe | TBD — I2C/ADC interface |
-| Ultrasonic | Water level sensor |
-| Power | Battery + solar (TBD mAh) |
-
-## State machine
-
-```mermaid
-stateDiagram-v2
-  [*] --> DeepSleep
-  DeepSleep --> Wake: RTC timer 30min
-  Wake --> ReadSensors
-  ReadSensors --> BuildPayload
-  BuildPayload --> SignHMAC
-  SignHMAC --> DrainQueue
-  DrainQueue --> PostEdge: LTE up
-  DrainQueue --> EnqueueLocal: LTE down
-  PostEdge --> HandleOta
-  HandleOta --> DeepSleep
-  EnqueueLocal --> DeepSleep
-```
-
-## Wake cycle
-
-- Interval: **30 minutes** (configurable)
-- Sequence: power sensors → read → sign → upload queued + current sample → sleep
-- Max upload batch: **N=5** oldest queued samples per wake (see QUEUE_AND_FALLBACK.md)
-
-## LTE attach
-
-- Retry backoff: 30s, 60s, 120s (max 3 attempts per wake)
-- On persistent failure: enqueue locally, increment `queue_overflow_count` if full
-
-## Time sync
-
-- Required for HMAC replay window (±300s)
-- Source: modem NITZ or NTP after LTE attach
-- On clock unset: skip upload, retain in queue
-
-## message_id generation
-
-Recommended format: `{device_id}-{unix_seconds}-{seq}`
-
-Example: `STATION_01-1700000000-001`
-
-Must be unique per sample; reuse only when retrying the **same** unsent payload.
-
-## HMAC signing
-
-Implement per `docs/API_CONTRACTS.md`:
-
-- Canonical pipe string (12 fields)
-- HMAC-SHA256 with device secret
-- Lowercase hex output
-
-Use test vectors from contract tests before field deployment.
-
-## OTA (future phase)
-
-1. Parse `ota` object from ingest success response
-2. If `update_available`, download `binary_url`
-3. Verify SHA256 against `sha256` field
-4. Flash to OTA partition (ESP32 dual-partition layout TBD)
-5. Reboot and report new `firmware_version`
-
-No OTA ack endpoint in v1 — version reported on next telemetry.
-
-## Provisioning
-
-- `device_id` and `device_secret` injected at manufacture (NVS partition)
-- Never log secret over serial in production builds
-- Production secrets must not use pilot seed values
+See the authoritative [remote configuration v1 specification](../../../docs/REMOTE_CONFIGURATION.md) for schema, HC1 messages, modes, revision rules, native Preferences persistence, receipt queue, source-of-truth policy and hardware validation limits. Station sampling/sleep bootstrap is revision zero and must not appear as applied remote state. Configuration is handled during active UART processing and telemetry ACK waits, with a final 2500 ms listen window before sleep. The gateway configuration poll interlock remains false.
 
 ## Build
 
-```bash
-cd firmware/esp32-node
-pio run -e esp32dev
-pio run -e esp32dev-test
-```
+`pio run -d firmware/esp32-node -e station1 -e station2 -e gateway`
 
-## Open items
+Explicit build_entries select one physical target each. Platform espressif32@6.12.0, Arduino framework, esp32dev board, ArduinoJson@7.4.2. No OTA implementation or hardware validation is implied by these builds.
 
-- [ ] Pin map for EC probe, ultrasonic, modem UART
-- [ ] Modem AT command driver abstraction
-- [ ] NVS provisioning layout
-- [ ] Deep sleep power budget measurement
-- [ ] Field test plan integration
+## Provisioning and field checks
+
+Use the untracked example-based station/gateway secret headers; never commit real keys. Follow [FIELD_RELEASE_CHECKLIST.md](FIELD_RELEASE_CHECKLIST.md). Validate real sensor calibration, RF delivery, modem behavior, flash persistence, deep-sleep timing and power consumption on hardware before release.

@@ -34,7 +34,7 @@ type Level = "ok" | "warn" | "critical" | "none";
 const LEVEL_LABEL: Record<Level, string> = {
   ok: "Đang gửi dữ liệu",
   warn: "Dữ liệu chậm",
-  critical: "Mất kết nối",
+  critical: "Chưa có dữ liệu mới",
   none: "Chưa có dữ liệu",
 };
 
@@ -78,17 +78,21 @@ const SURFACE: Record<Level, string> = {
 export function NetworkOverview({
   snapshots,
   soilTimestamp,
+  gatewayReceivedAt,
 }: {
   snapshots: StationReadingSnapshot[];
   /** STATION_02 keeps its time on soil_readings, not environmental_readings. */
   soilTimestamp: string | null;
+  gatewayReceivedAt?: string | null;
 }) {
   const rows = NODES.map((node) => {
     const snapshot = snapshots.find((s) => s.station.id === node.id);
     const timestamp =
       node.id === "STATION_02"
         ? soilTimestamp
-        : (snapshot?.reading?.timestamp ?? snapshot?.health?.timestamp ?? null);
+        : node.id === "STATION_03"
+          ? gatewayReceivedAt ?? snapshot?.health?.timestamp ?? null
+          : snapshot?.reading?.timestamp ?? snapshot?.health?.timestamp ?? null;
     return { ...node, timestamp, level: levelFor(timestamp) };
   });
 
@@ -133,7 +137,7 @@ export function NetworkOverview({
                 <dd className="font-medium">{LEVEL_LABEL[level]}</dd>
               </div>
               <div className="flex items-baseline justify-between gap-3">
-                <dt className="opacity-70">Lần cuối</dt>
+                <dt className="opacity-70">{id === "STATION_03" ? "Gói chuyển tiếp" : "Lần đo cuối"}</dt>
                 <dd className="[font-family:var(--font-data)]">{relativeTime(timestamp)}</dd>
               </div>
             </dl>

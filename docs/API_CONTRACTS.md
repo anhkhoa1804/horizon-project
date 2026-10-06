@@ -66,13 +66,11 @@ is unavailable, the gateway holds the batch instead of posting a false time.
 `raw_station_payload` is audit context only and cannot substitute for required
 fields.
 
-## Runtime configuration
+## Runtime configuration v1
 
-`GET /api/public/gateway/configs` returns safe defaults only when Supabase is
-reachable and no station-specific row exists. Missing Supabase or a failed
-query returns `503 {"ok":false,"error":"configuration_unavailable"}`.
-Firmware polling remains disabled until its authenticated device path is field
-verified; storing a configuration is not evidence it reached a device.
+`GET /api/public/gateway/configs` requires x-gateway-token and returns only actual stored versioned rows plus authenticated HC1 SET frames. Empty storage returns empty arrays; missing configuration returns 503 and database failures return 500. No defaults are returned. `POST /api/public/gateway/configs/events` validates authenticated SENT/ACKNOWLEDGED/APPLIED/REJECTED evidence against recorded revision history. Both routes are private, uncached, and keep desired and station-applied revision separate.
+
+Firmware polling remains disabled until field validation. See [remote configuration contract](REMOTE_CONFIGURATION.md) for exact bounds, wire format, error codes and evidence semantics. Telemetry contract_version remains the string "v1"; remote configuration contract_version is the integer 1 and uses a separate protocol.
 
 ## Public reports
 

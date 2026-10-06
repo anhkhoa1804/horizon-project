@@ -1,4 +1,7 @@
 #include <Arduino.h>
+#include "shared/station_config_arduino.h"
+static horizon::StationRuntime remoteRuntime;
+void readLoRaCommandsSimple();
 
 #include <SPI.h>
 #include <Wire.h>
@@ -247,6 +250,8 @@ struct BatteryReading {
   const char *status;
 };
 
+
+BatteryReading readBattery();
 
 struct MinuteReading {
   bool waterOk;
@@ -1398,7 +1403,7 @@ MinuteReading collectMinuteReading() {
 
   for (
     uint8_t i = 0;
-    i < RAW_SAMPLES_PER_MINUTE;
+    i < remoteRuntime.state.rawSamples(RAW_SAMPLES_PER_MINUTE, MIN_VALID_RAW_SAMPLES);
     i++
   ) {
 
@@ -2472,21 +2477,8 @@ bool pollTargetsThisStation(const String &json) {
   return json.indexOf("\"type\":\"poll\"") >= 0 && json.indexOf(stationKey) >= 0;
 }
 
-void applyConfigCommand(const String &json) {
-  if (!configTargetsThisStation(json)) {
-    return;
-  }
-
-  const uint32_t currentSeconds = configuredSleepIntervalMs / 1000UL;
-  const uint32_t sleepSeconds = extractUintField(
-    json,
-    "sleep_interval_seconds",
-    currentSeconds
-  );
-
-  configuredSleepIntervalMs = min<uint32_t>(86400UL, sleepSeconds) * 1000UL;
-  Serial.printf("[CONFIG] ngu=%lu giay\n", configuredSleepIntervalMs / 1000UL);
-}
+// Deprecated unauthenticated JSON control is deliberately inert.
+void deprecatedApplyConfigCommand(const String &) { Serial.println("[CONFIG] Legacy JSON command rejected"); }
 
 void sendNoDataStatus() {
   if (!loraReady) {
@@ -2510,7 +2502,7 @@ void sendNoDataStatus() {
 
 void handleGatewayCommand(const String &json) {
   if (configTargetsThisStation(json)) {
-    applyConfigCommand(json);
+    deprecatedApplyConfigCommand(json);
     return;
   }
 
@@ -2607,7 +2599,7 @@ bool waitForAck(
         }
 
 
-        applyConfigCommand(line);
+        deprecatedApplyConfigCommand(line);
 
 
         line = "";
@@ -2639,6 +2631,10 @@ bool waitForAck(
 // ============================================================
 
 void maybeEnterConfiguredSleep() {
+  // Bounded post-telemetry receive window. Config ACK and APPLIED are separate frames.
+  const uint32_t configWindow = millis();
+  while (millis() - configWindow < 2500) { serviceWatchdog(); readLoRaCommandsSimple(); delay(5); }
+  configuredSleepIntervalMs = remoteRuntime.state.sleepMs(configuredSleepIntervalMs);
 
   if (
     configuredSleepIntervalMs == 0
@@ -2831,22 +2827,14 @@ String buildSimpleLoRaPacket(const AggregateReading &r, uint32_t seq) {
 }
 
 bool waitSimpleAck(uint32_t seq, uint32_t timeoutMs) {
-  String expected = "A1|" + String(seq);
-  String line;
+  const String expected = "A1|" + String(seq);
+  if (remoteRuntime.takeTelemetryAck(expected)) return true;
   const uint32_t started = millis();
-
   while (millis() - started < timeoutMs) {
     serviceWatchdog();
     while (loraSerial.available() > 0) {
-      const char c = static_cast<char>(loraSerial.read());
-      if (c == '\n') {
-        line.trim();
-        if (line == expected) return true;
-        line = "";
-      } else if (c != '\r') {
-        line += c;
-        if (line.length() > 64) line = "";
-      }
+      remoteRuntime.consume(static_cast<char>(loraSerial.read()), 1, loraSerial);
+      if (remoteRuntime.takeTelemetryAck(expected)) return true;
     }
     delay(5);
   }
@@ -2854,8 +2842,7 @@ bool waitSimpleAck(uint32_t seq, uint32_t timeoutMs) {
 }
 
 void readLoRaCommandsSimple() {
-  // ACK is consumed synchronously by waitSimpleAck().
-  // No polling/config protocol is used in this reliability test build.
+  while (loraSerial.available() > 0) remoteRuntime.consume(static_cast<char>(loraSerial.read()), 1, loraSerial);
 }
 
 void sendAggregateIfReadySimple() {
@@ -2878,7 +2865,7 @@ void sendAggregateIfReadySimple() {
   const AggregateReading aggregate = buildAggregateReading();
   const String packet = buildSimpleLoRaPacket(aggregate, pendingSequence);
 
-  while (loraSerial.available() > 0) (void)loraSerial.read();
+  readLoRaCommandsSimple();
   loraSerial.println(packet);
   loraSerial.flush();
   simpleTxAttempts += 1;
@@ -2907,6 +2894,7 @@ void sendAggregateIfReadySimple() {
 // ============================================================
 
 void setup() {
+  remoteRuntime.begin(1);
 
   // USB CDC diagnostics; ultrasonicSerial remains dedicated to UART0.
   Serial.begin(
@@ -3209,7 +3197,7 @@ void loop() {
     lastSampleMs != 0 &&
 
     now - lastSampleMs <
-    SAMPLE_INTERVAL_MS
+    remoteRuntime.state.sampleMs(SAMPLE_INTERVAL_MS)
   ) {
 
     delay(20);

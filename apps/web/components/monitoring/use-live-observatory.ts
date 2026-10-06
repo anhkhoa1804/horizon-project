@@ -34,7 +34,14 @@ export function useLiveObservatory(initial: ObservatoryViewModel, config: Public
   useEffect(() => {
     if (initial.mode !== "real") return;
     // Derive observation age locally. This never requests telemetry or refreshes a page.
-    const timer = window.setInterval(() => setModel((current) => ({ ...current, stations: current.stations.map((s) => ({ ...s, freshness: freshnessStatus(s.timestamp) })) })), 60000);
+    const timer = window.setInterval(() => setModel((current) => {
+      const stations = current.stations.map((s) => ({ ...s, freshness: freshnessStatus(s.timestamp) }));
+      return { ...current, stations, network: { ...current.network,
+        live: stations.filter((s) => ["live", "recent"].includes(s.freshness)).length,
+        offline: stations.filter((s) => ["stale", "offline"].includes(s.freshness)).length,
+        noData: stations.filter((s) => !s.timestamp).length,
+      } };
+    }), 60000);
     return () => window.clearInterval(timer);
   }, [initial.mode]);
   return { model, connected };

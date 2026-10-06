@@ -12,7 +12,7 @@ export function createServiceClient(): AppSupabase | null {
   if (!isValidHttpUrl(url) || !isLikelySupabaseServiceKey(key)) {
     console.warn(
       "[Horizon] Service-role credentials missing — reports and admin will run " +
-        "in DEMO MODE. Set SUPABASE_SERVICE_ROLE_KEY and NEXT_PUBLIC_SUPABASE_URL " +
+        "unavailable. Set SUPABASE_SERVICE_ROLE_KEY and NEXT_PUBLIC_SUPABASE_URL " +
         "(or SUPABASE_URL). Check /api/health after deploying.",
     );
 

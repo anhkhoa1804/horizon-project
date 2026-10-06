@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Be_Vietnam_Pro, Roboto_Mono, Newsreader } from "next/font/google";
 import { QueryProvider } from "@/providers/query-provider";
+import { FloatingContactLinks } from "@/components/layout/floating-contact-links";
 import { BackgroundAtmosphere } from "@/components/layout/background-atmosphere";
 import { Analytics } from "@vercel/analytics/next";
 import { isIndexable, siteUrl } from "@/lib/siteUrl";
@@ -161,7 +162,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {/* Locale is resolved once here and handed down, so no client
             component re-reads the cookie and risks a hydration mismatch. */}
         <LocaleProvider locale={locale}>
-          <QueryProvider>{children}</QueryProvider>
+          <QueryProvider>{children}<FloatingContactLinks /></QueryProvider>
         </LocaleProvider>
       </body>
     </html>

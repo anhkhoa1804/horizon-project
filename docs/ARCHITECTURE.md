@@ -41,11 +41,10 @@ verified at the firmware level, not inferred from the database:
   - Dữ liệu đất / Gateway - Gửi tin về bà con"), not a fourth firmware
   target. So "3 stations" means 3 physical devices — 2 sensor nodes + 1
   gateway — represented as 3 rows.
-- `apps/web/app/admin/page.tsx`'s `managedStationIds` (the set of stations
-  the admin runtime-config UI manages) and `apps/web/app/api/public/
-  gateway/configs/route.ts`'s `defaultConfigs` are both hardcoded to exactly
-  `STATION_01`, `STATION_02`, `STATION_03` — **this is correct and
-  intentional**, not a bug or an oversight.
+- The Admin runtime forms and gateway configuration endpoint use the canonical
+  v1 scope: `STATION_01` and `STATION_02`. There are no API default configurations;
+  missing rows stay UNSET. GATEWAY_01 is the relay identity and STATION_03 is
+  only an inventory/map location, never a runtime command target.
 
 **STATION_04 and STATION_05 are retired fixtures, not operational stations.**
 They were removed from the pilot seed, simulator and production-shaped
@@ -263,3 +262,9 @@ When adding a feature, define:
 - what audit trail is needed,
 - how it appears on mobile,
 - how performance is preserved.
+
+## Remote configuration — 6 October 2026
+
+The implemented software path now uses authenticated HC1 configuration frames, explicit monotonic revisions, atomic database intent/audit writes, persistent station application and durable gateway receipt forwarding. It is additive to the existing telemetry contract; A1/A2 telemetry ACKs never acknowledge configuration revisions. STATION_03 is an inventory location, not the physical GATEWAY_01 configuration identity. Polling remains disabled pending physical validation.
+
+See [remote configuration specification](REMOTE_CONFIGURATION.md) and [software QA results](REMOTE_CONFIGURATION_QA.md). No physical hardware success or deployed migration 034 is claimed.

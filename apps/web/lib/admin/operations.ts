@@ -108,20 +108,23 @@ export async function recordAuditEvent(event: {
   entity?: string;
   entityId?: string;
   metadata?: Record<string, unknown>;
-}): Promise<void> {
+}): Promise<boolean> {
   const supabase = createServiceClient();
-  if (!supabase) return;
+  if (!supabase) return false;
 
   try {
-    await supabase.from("audit_events").insert({
+    const { error } = await supabase.from("audit_events").insert({
       actor: event.actor,
       action: event.action,
       entity: event.entity ?? null,
       entity_id: event.entityId ?? null,
       metadata: event.metadata ? scrubMetadata(event.metadata) : null,
     });
+    if (error) console.error("[audit] Persistence failed", error.code);
+    return !error;
   } catch {
-    // Intentionally swallowed — see the note above.
+    console.error("[audit] Persistence unavailable");
+    return false;
   }
 }
 

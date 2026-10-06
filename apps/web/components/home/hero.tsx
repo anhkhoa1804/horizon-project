@@ -12,8 +12,7 @@ export async function Hero() {
         <div className="horizon-cover__body">
           <div className="max-w-5xl">
             <p className="horizon-cover__coordinates">{dict.home.placeLabel}</p>
-            <h1 id="home-title" className="horizon-cover__title">{dict.home.title.split("\n").map((line) => <span key={line}>{line}</span>)}</h1>
-            <p className="horizon-cover__subtitle">{dict.home.subtitle}</p>
+            <h1 id="home-title" className="horizon-cover__title">{dict.home.title.split("\n").map((line) => <span key={line}>{line.split(/(HORIZON)/).map((part, index) => part === "HORIZON" ? <mark key={index} className="hero-name-highlight">{part}</mark> : part)}</span>)}</h1>
             <Link href="/dashboard" className="horizon-cover__link">
               {dict.home.ctaPrimary}<ArrowRight className="h-4 w-4" aria-hidden />
             </Link>

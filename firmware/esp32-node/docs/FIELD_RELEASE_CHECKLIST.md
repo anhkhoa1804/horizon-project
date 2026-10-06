@@ -32,6 +32,15 @@ for a field result. Never place a device secret or gateway token in this log.
 
 ## Release decision
 
-Do not mark runtime configuration as applied until the device has polled and
-acknowledged it. Do not use firmware relay/buzzer constants as public
+Do not mark runtime configuration as applied until an authenticated station APPLIED frame confirms persistence and effective runtime settings. A config ACK alone is insufficient. Do not use firmware relay/buzzer constants as public
 scientific thresholds without a separate field-impact review.
+
+## Remote configuration bench validation (not completed in software QA)
+
+- Apply migration 034 and provision matching per-station HMAC keys and gateway token/URLs.
+- Keep polling disabled in general builds until a controlled bench build is authorized.
+- Capture SET, ACK and APPLIED of one revision; compare station NVS, effective intervals/mode and Admin readback.
+- Reboot, power-cycle and deep-sleep each station; verify effective settings/revision survive.
+- Drop ACK/APPLIED, duplicate commands, test stale/conflicting revision and interrupted persistence.
+- Disconnect cellular service and restart gateway; verify receipt queue survives and forwarding resumes without losing telemetry.
+- Measure radio/control timing, modem HTTPREAD framing, power budget and sensor behavior before enabling field polling.

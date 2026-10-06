@@ -39,10 +39,10 @@
    * pigment on stock, with the recessed step slightly *warmer* rather than
    * simply darker.
    */
-  --h-canvas: #f7f4ed;
+  --h-canvas: #fbfaf6;
   --h-canvas-subtle: #f0ece1;
   --h-canvas-elevated: #fbf9f4;
-  --h-surface: #fffdf8;
+  --h-surface: #ffffff;
   --h-surface-raised: #ffffff;
 
   /* ----------------------------------------------------------------- TEXT
@@ -54,7 +54,7 @@
   --h-foreground-subtle: #626e69;
 
   /* --------------------------------------------------------------- BORDER */
-  --h-border: rgba(19, 29, 27, 0.11);
+  --h-border: rgba(19, 29, 27, 0.18);
   --h-border-strong: rgba(19, 29, 27, 0.2);
   --h-border-accent: rgba(12, 95, 125, 0.42);
 
@@ -179,7 +179,7 @@
        floating on nothing. */
     --h-brand-green: #45c078;
     --h-brand-orange: #ffa62e;
-    --h-brand-blue: #4fb0d4;
+    --h-brand-blue: #76c9e5;
 
     /* Graphite, not near-black. The previous ramp bottomed out at #121817 —
        dark enough that the atmosphere gradient, the grid and the Bento's own
@@ -187,17 +187,17 @@
        lighter and a step cooler (green-black → blue-grey graphite), which
        gives the layered background somewhere to actually be visible and
        keeps the status tints readable on top of it. */
-    --h-canvas: #191d23;
-    --h-canvas-subtle: #14181d;
-    --h-canvas-elevated: #212730;
-    --h-surface: #1f242c;
-    --h-surface-raised: #272e38;
+    --h-canvas: #242e38;
+    --h-canvas-subtle: #202932;
+    --h-canvas-elevated: #303d49;
+    --h-surface: #35434f;
+    --h-surface-raised: #40505e;
 
     --h-foreground: #eef2f0;
     --h-foreground-muted: #c0cbc7;
     --h-foreground-subtle: #aab7b2;
 
-    --h-border: rgba(255, 255, 255, 0.1);
+    --h-border: rgba(255, 255, 255, 0.2);
     --h-border-strong: rgba(255, 255, 255, 0.19);
     --h-border-accent: rgba(79, 176, 212, 0.45);
 
@@ -220,16 +220,16 @@
     --h-status-normal: #087737;
     --h-status-warning: #a35a00;
     --h-status-critical: #b33438;
-    --h-status-none: #1f242c;
+    --h-status-none: var(--h-surface);
 
     --h-threshold: #e27066;
     --h-salinity: #34b7b0;
     --h-water-level: #5b8def;
     --h-grid: rgba(255, 255, 255, 0.1);
-    --h-domain-water: #1f242c;
-    --h-domain-soil: #1f242c;
-    --h-domain-weather: #1f242c;
-    --h-domain-infrastructure: #1f242c;
+    --h-domain-water: var(--h-surface);
+    --h-domain-soil: var(--h-surface);
+    --h-domain-weather: var(--h-surface);
+    --h-domain-infrastructure: var(--h-surface);
 
     --h-wash-hover: rgba(255, 255, 255, 0.045);
     --h-wash-active: rgba(79, 176, 212, 0.1);
@@ -270,20 +270,20 @@
 
   --h-brand-green: #45c078;
   --h-brand-orange: #ffa62e;
-  --h-brand-blue: #4fb0d4;
+  --h-brand-blue: #76c9e5;
 
   /* Kept in lockstep with the media-query block above — see the note there. */
-  --h-canvas: #191d23;
-  --h-canvas-subtle: #14181d;
-  --h-canvas-elevated: #212730;
-  --h-surface: #1f242c;
-  --h-surface-raised: #272e38;
+  --h-canvas: #242e38;
+  --h-canvas-subtle: #202932;
+  --h-canvas-elevated: #303d49;
+  --h-surface: #35434f;
+  --h-surface-raised: #40505e;
 
   --h-foreground: #eef2f0;
   --h-foreground-muted: #c0cbc7;
   --h-foreground-subtle: #aab7b2;
 
-  --h-border: rgba(255, 255, 255, 0.1);
+  --h-border: rgba(255, 255, 255, 0.2);
   --h-border-strong: rgba(255, 255, 255, 0.19);
   --h-border-accent: rgba(79, 176, 212, 0.45);
 
@@ -304,16 +304,16 @@
   --h-status-normal: #087737;
   --h-status-warning: #a35a00;
   --h-status-critical: #b33438;
-  --h-status-none: #1f242c;
+  --h-status-none: var(--h-surface);
 
   --h-threshold: #e27066;
   --h-salinity: #34b7b0;
   --h-water-level: #5b8def;
   --h-grid: rgba(255, 255, 255, 0.1);
-  --h-domain-water: #1f242c;
-  --h-domain-soil: #1f242c;
-  --h-domain-weather: #1f242c;
-  --h-domain-infrastructure: #1f242c;
+  --h-domain-water: var(--h-surface);
+  --h-domain-soil: var(--h-surface);
+  --h-domain-weather: var(--h-surface);
+  --h-domain-infrastructure: var(--h-surface);
 
   --h-wash-hover: rgba(255, 255, 255, 0.045);
   --h-wash-active: rgba(79, 176, 212, 0.1);
@@ -2158,3 +2158,140 @@ main {
   .atlas-status-metrics .network-metric-full { display: list-item; }
   .atlas-status-metrics li { white-space: nowrap; }
 }
+
+/* Final refinement: the supplied scenes, the existing two widths, and a quiet dock. */
+:root {
+  --h-scene-day: url('/assets/backgrounds/ae8116c5-7798-4fcc-b634-f182fe6b3859.png');
+  --h-scene-night: url('/assets/backgrounds/e3e98b52-4273-4dd6-abc3-ec48dfef9ea5.png');
+  --h-scene-image: var(--h-scene-day);
+  --h-scene-opacity: .10;
+}
+:root[data-theme="dark"] { --h-scene-image: var(--h-scene-night); --h-scene-opacity: .15; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --h-scene-image: var(--h-scene-night); --h-scene-opacity: .15; }
+}
+@media (max-width:767px) {
+  :root {
+    --h-scene-day: url('/assets/backgrounds/6193c67b-e0ba-41c9-b6c6-65377af3497b.png');
+    --h-scene-night: url('/assets/backgrounds/f5da8a9c-7d5a-4217-8f5c-f04172790e9d.png');
+  }
+}
+.horizon-atmosphere { background: var(--h-scene-image) center bottom / cover no-repeat; opacity: var(--h-scene-opacity); }
+.horizon-atmosphere::before,.horizon-atmosphere::after { display: none; }
+.hero-canvas { background: var(--h-scene-image) center bottom / cover no-repeat; }
+.hero-canvas__scrim { background: linear-gradient(90deg,rgba(10,30,31,.63),rgba(10,30,31,.12) 75%),linear-gradient(0deg,rgba(10,30,31,.23),transparent 70%); }
+.horizon-cover__title > span { white-space: nowrap; }
+.field-atlas-flow .h-media,.field-atlas-flow .h-spatial { max-width: calc(var(--width-media) + 2 * var(--gutter)); }
+.report-single { max-width: none; }
+.tool-heading-rule { display: none; }
+.mobile-dock {
+  position: fixed; z-index: var(--z-drawer);
+  bottom: calc(.75rem + env(safe-area-inset-bottom));
+  left: 50%; transform: translateX(-50%);
+  width: min(calc(100% - 2.5rem),420px);
+  border: 1px solid var(--h-border); border-radius: 999px;
+  background: color-mix(in srgb,var(--h-surface) 94%,transparent);
+  box-shadow: 0 6px 22px rgba(19,29,27,.13);
+  backdrop-filter: blur(16px);
+  padding: .3rem;
+}
+.mobile-dock ul { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .2rem; }
+.mobile-dock li { min-width: 0; }
+.mobile-dock__link { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 54px; gap: .3rem; border-radius: 999px; font-size: 10px; color: var(--h-foreground-muted); }
+.mobile-dock__link svg { width: 20px; height: 20px; }
+.mobile-dock__link--active { color: var(--h-brand-blue); background: color-mix(in srgb,var(--h-brand-blue) 9%,var(--h-surface)); }
+.observatory-source-line { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .4rem 1rem; font: .65rem/1.6 var(--font-data); color: var(--h-foreground-muted); margin-top: 1rem; }
+.box-signal--live { width: 14px; height: 14px; }
+.box-signal--live::before,.box-signal--live::after { display: none; }
+.box-signal--live > span { width: 6px; height: 6px; background: #bc352c; animation: telemetry-blink 2.4s ease-in-out infinite; }
+@keyframes telemetry-blink { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+.login-submission-status { margin-top: 1.5rem; border: 1px solid var(--h-danger); border-left-width: 3px; border-radius: 10px; background: var(--h-surface); padding: 1rem; }
+.report-single .report-station-choice:has(input:checked) { background: color-mix(in srgb,var(--h-brand-blue) 8%,var(--h-surface)); box-shadow: inset 3px 0 var(--h-brand-blue); }
+.report-single .report-station-choice > svg:last-child { justify-self: end; }
+@media (max-width:767px) {
+  .public-main, .admin-console-layout, .admin-login-page { padding-bottom: calc(6rem + env(safe-area-inset-bottom)); }
+  .chapter-heading__title { white-space: normal; text-wrap: balance; }
+  .chapter-heading { align-items: baseline; }
+  .field-atlas-flow { --chapter-space: clamp(5rem,18vw,7rem); }
+  .atlas-node-grid { gap: 2rem; }
+  .atlas-node-card h3 { margin-top: 1rem; }
+  .tool-page-heading { padding-bottom: 1.5rem; }
+  .tool-page-heading p { text-wrap: pretty; }
+  .report-field-opening { margin-bottom: 2.75rem; }
+  .report-single .report-observation-choices label { padding: .65rem; min-height: 64px; }
+  .report-single .report-station-choice { grid-template-columns: 20px minmax(0,1fr) 20px; gap: .65rem; }
+  .report-single .report-station-choice > span:nth-of-type(1) { column-gap: .4rem; }
+  .admin-console-workspace > section,.admin-console-workspace > div { min-width: 0; }
+  .admin-console-workspace .p-6 { padding: 1rem; }
+  .admin-console-workspace form .grid { gap: .75rem; }
+  .admin-console-workspace input,.admin-console-workspace select { min-width: 0; }
+  .admin-console-workspace dd { text-align: right; }
+  .report-evidence-actions { grid-template-columns: repeat(2,minmax(0,1fr)); gap: .65rem; }
+  .report-evidence-actions > :last-child { grid-column: 1/-1; }
+  .report-single .evidence-choice { padding: .75rem; }
+  .evidence-previews { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (prefers-reduced-motion:reduce) { .box-signal--live > span { animation: none; } }
+
+.ingestion-health__row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.2fr) auto; gap: .5rem 1rem; align-items: baseline; padding-block: .8rem; }
+.ingestion-health__row time { white-space: nowrap; }
+@media (max-width:767px) { .ingestion-health__row { grid-template-columns: minmax(0,1fr) auto; } .ingestion-health__row time { grid-column: 1/-1; } }
+
+.admin-console-workspace { --h-status-normal: #f6e5e1; --h-status-warning: #edc3b9; --h-status-critical: #da9588; }
+:root[data-theme="dark"] .admin-console-workspace { --h-status-normal: #352a2b; --h-status-warning: #553236; --h-status-critical: #763b40; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .admin-console-workspace { --h-status-normal: #352a2b; --h-status-warning: #553236; --h-status-critical: #763b40; } }
+.box-signal--live > span { box-shadow: none; }
+.report-station-choice:focus-within { outline: 2px solid var(--h-brand-blue); outline-offset: 3px; }
+.mobile-dock__link:focus-visible { outline: 2px solid var(--h-brand-blue); outline-offset: -2px; }
+
+.box-signal--live > span { box-shadow: none; }
+@media (max-width:767px) {
+  .runtime-settings { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .75rem; }
+  .runtime-settings > * { margin-top: 0; }
+  .runtime-settings > :nth-child(3),.runtime-settings > button { grid-column: 1/-1; }
+  .runtime-settings label { font-size: .75rem; white-space: nowrap; }
+}
+
+/* Pair every editorial highlight and field surface with its theme's ink. */
+:root { --h-highlight-surface: #cbd7bb; --h-highlight-ink: #142924; --h-field-surface: #e9efdf; --h-evidence-surface: #eef1e6; --h-field-hover: #edf0e6; }
+:root[data-theme="dark"] { --h-highlight-surface: #35574a; --h-highlight-ink: #f5f1e6; --h-field-surface: #3a5045; --h-evidence-surface: #405348; --h-field-hover: #30463b; }
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) { --h-highlight-surface: #35574a; --h-highlight-ink: #f5f1e6; --h-field-surface: #3a5045; --h-evidence-surface: #405348; --h-field-hover: #30463b; }
+}
+.editorial-keyword,.report-field-invitation mark { background: var(--h-highlight-surface); color: var(--h-highlight-ink); }
+.report-field-opening,.atlas-status-list { background: var(--h-field-surface); color: var(--h-foreground); }
+.report-single .report-evidence { background: var(--h-evidence-surface); color: var(--h-foreground); }
+.report-observation-layout { background: var(--h-field-surface); color: var(--h-foreground); }
+.report-single .report-station-choice:hover { background: var(--h-field-hover); }
+.field-place-label,.admin-login-place > div { color: #142924; }
+.hero-name-highlight { background: #cbd7bb; color: #142924; padding: 0 .1em .025em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.floating-contacts { position: fixed; z-index: var(--z-drawer); left: 1rem; top: 50%; transform: translateY(-50%); }
+.floating-contacts__links { display: flex; flex-direction: column; gap: .45rem; }
+.floating-contacts a,.floating-contacts__toggle { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--h-surface); color: var(--h-foreground); box-shadow: 0 3px 12px rgba(0,0,0,.16); transition: background 180ms,color 180ms; }
+.floating-contacts svg { width: 19px; height: 19px; }
+.floating-contacts a:hover,.floating-contacts__toggle:hover { background: var(--h-selection-surface); color: var(--h-brand-blue); }
+.floating-contacts a:focus-visible,.floating-contacts__toggle:focus-visible { outline: 2px solid var(--h-brand-blue); outline-offset: 3px; }
+.floating-contacts a { position: relative; }
+.floating-contacts a span { position: absolute; left: calc(100% + .6rem); background: var(--h-surface); color: var(--h-foreground); padding: .45rem .65rem; border-radius: 7px; font-size: .75rem; white-space: nowrap; opacity: 0; visibility: hidden; pointer-events: none; }
+.floating-contacts a:hover span,.floating-contacts a:focus-visible span { opacity: 1; visibility: visible; }
+.floating-contacts__toggle { display: none; }
+@media (max-width:1279px) {
+  .floating-contacts { left: .5rem; }
+  .floating-contacts__toggle { display: grid; }
+  .floating-contacts__links { display: none; position: absolute; left: 0; top: calc(100% + .5rem); }
+  .floating-contacts[data-open="true"] { transform: translateY(-50%); }
+  .floating-contacts[data-open="true"] .floating-contacts__links { display: flex; }
+  .floating-contacts[data-open="true"] { top: max(6rem,calc(50% - 150px)); }
+}
+@media (prefers-reduced-motion:reduce) { .floating-contacts a,.floating-contacts__toggle { transition: none; } }
+
+/* Keep fields distinct from the page without darkening their content. */
+.report-field-opening,.atlas-status-list,.report-single .report-evidence { border: 1px solid var(--h-border); }
+:root[data-theme="dark"] .observatory-bento,:root[data-theme="dark"] .admin-console-workspace { --h-status-normal: #493b40; --h-status-warning: #6b474b; --h-status-critical: #8d535a; }
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) .observatory-bento,:root:not([data-theme="light"]) .admin-console-workspace { --h-status-normal: #493b40; --h-status-warning: #6b474b; --h-status-critical: #8d535a; }
+}
+@media (max-width:767px) { .floating-contacts { display: none; } }
+
+/* Leaflet labels retain their light fill in either theme. */
+.leaflet-tooltip { color: #142924; }

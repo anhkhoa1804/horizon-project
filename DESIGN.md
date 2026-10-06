@@ -388,3 +388,13 @@ Desktop History positioning and complete color labels are unchanged.
 - Keep the user position marker without a visible location label. Preserve combined island/device framing.
 - Network rows show station identifiers, names and full capability labels. Remove location subtitles and freshness lines here. Capabilities align with the name at all widths; mobile wraps complete labels instead of shrinking or repeating grouped qualifiers.
 - Chart units return above the vertical scale with a 20px label offset and 44px top inset. Tick numbers carry no units.
+
+## Final refinement — October 2026
+
+Keep the editorial composition and original desktop bento. The major widths remain TEXT 980px and MEDIA 1160px. Mobile navigation is a shared four-destination floating dock with safe-area spacing and a quiet active state. Supplied portrait backgrounds apply below 768px; supplied landscape backgrounds apply above it, with day/night selected by theme. The hero keeps its two plain Vietnamese lines. Report remains the owner-requested continuous form, with three content areas rather than a restored wizard. Realtime uses only a subtle blinking red dot with a screen-reader label; geographic marker waves are a separate map convention. Admin status distinguishes stored intent from hardware application.
+
+## Dark surfaces and contact access
+
+Editorial highlights pair their fill and ink through theme tokens. Green report/network surfaces become deep green in dark mode; cream place labels keep explicit dark ink. The two-line hero highlights only HORIZON. Six owner-provided contact channels share one data source and appear as a floating rail on the left at wide desktop sizes, with an accessible expandable control on smaller screens.
+
+Surface refinement: dark canvas uses a lighter slate and neutral cards use a distinct raised slate. Field panels retain separate green fills and visible borders in both themes. Mobile contact controls are hidden entirely below 768px; the bottom dock and active destination use full capsule radii.

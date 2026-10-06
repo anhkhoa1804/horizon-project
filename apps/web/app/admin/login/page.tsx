@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { MobileNavigation } from "@/components/layout/mobile-navigation";
 import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { ToolPageHeading } from "@/components/layout/tool-page-heading";
@@ -34,7 +35,7 @@ export default async function AdminLoginPage({
   const message = errorMessage(params.error, dict);
 
   return (
-    <div className="min-h-dvh bg-background text-foreground">
+    <div className="min-h-dvh text-foreground">
       <SiteHeader register="admin" />
       {/* var(--header-h), not a hardcoded pixel figure: the header's resting
           height is fluid (--header-h scales 6.25rem/7rem/7.5rem across
@@ -59,6 +60,7 @@ export default async function AdminLoginPage({
         </div>
         </div>
       </main>
+      <MobileNavigation activePath="/admin" />
     </div>
   );
 }

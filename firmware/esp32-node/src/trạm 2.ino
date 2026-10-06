@@ -1,8 +1,12 @@
 #include <Arduino.h>
+#include "shared/station_config_arduino.h"
+static horizon::StationRuntime remoteRuntime;
+void readLoRaCommandsSimple();
 #include <Wire.h>
 #include <SPI.h>
 #include <esp_sleep.h>
 #include <esp_task_wdt.h>
+#include <esp_idf_version.h>
 #include <driver/gpio.h>
 #include <string.h>
 
@@ -239,11 +243,15 @@ void setRs485Transmit(bool enabled) {
 }
 
 void setupWatchdog() {
+#if ESP_IDF_VERSION_MAJOR >= 5
   esp_task_wdt_config_t wdtConfig = {};
   wdtConfig.timeout_ms = WATCHDOG_TIMEOUT_MS;
   wdtConfig.idle_core_mask = (1 << portNUM_PROCESSORS) - 1;
   wdtConfig.trigger_panic = true;
   esp_task_wdt_init(&wdtConfig);
+#else
+  esp_task_wdt_init((WATCHDOG_TIMEOUT_MS + 999) / 1000, true);
+#endif
   esp_task_wdt_add(NULL);
 }
 
@@ -298,19 +306,8 @@ bool pollTargetsThisStation(const String &json) {
   return json.indexOf("\"type\":\"poll\"") >= 0 && json.indexOf(stationKey) >= 0;
 }
 
-void applyConfigCommand(const String &json) {
-  if (!configTargetsThisStation(json)) {
-    return;
-  }
-
-  const uint32_t sleepSeconds = extractUintField(
-    json,
-    "sleep_interval_seconds",
-    configuredSleepIntervalMs / 1000UL
-  );
-  configuredSleepIntervalMs = min<uint32_t>(86400UL, sleepSeconds) * 1000UL;
-  Serial.printf("[CONFIG] ngu=%lu giay\n", configuredSleepIntervalMs / 1000UL);
-}
+// Deprecated unauthenticated JSON control is deliberately inert.
+void deprecatedApplyConfigCommand(const String &) { Serial.println("[CONFIG] Legacy JSON command rejected"); }
 
 void sendNoDataStatus() {
   String status;
@@ -330,7 +327,7 @@ void sendNoDataStatus() {
 
 void handleGatewayCommand(const String &json) {
   if (configTargetsThisStation(json)) {
-    applyConfigCommand(json);
+    deprecatedApplyConfigCommand(json);
     return;
   }
 
@@ -370,6 +367,10 @@ void readLoRaCommands() {
 }
 
 void maybeEnterConfiguredSleep() {
+  // Bounded post-telemetry receive window. Config ACK and APPLIED are separate frames.
+  const uint32_t configWindow = millis();
+  while (millis() - configWindow < 2500) { serviceWatchdog(); readLoRaCommandsSimple(); delay(5); }
+  configuredSleepIntervalMs = remoteRuntime.state.sleepMs(configuredSleepIntervalMs);
   if (configuredSleepIntervalMs == 0) {
     return;
   }
@@ -931,7 +932,7 @@ MinuteReading collectMinuteReading() {
   const char *soilStatus = "no_valid_sample";
   const char *phStatus = "no_valid_sample";
 
-  for (uint8_t i = 0; i < RAW_SAMPLES_PER_MINUTE; i += 1) {
+  for (uint8_t i = 0; i < remoteRuntime.state.rawSamples(RAW_SAMPLES_PER_MINUTE, MIN_VALID_RAW_SAMPLES); i += 1) {
     serviceWatchdog();
 
     const Sht30Reading ambient = readSht30();
@@ -1228,7 +1229,7 @@ bool waitForAck(const char *messageId, uint32_t timeoutMs) {
         if (line.indexOf("\"type\":\"ack\"") >= 0 && line.indexOf(messageId) >= 0) {
           return true;
         }
-        applyConfigCommand(line);
+        deprecatedApplyConfigCommand(line);
         line = "";
       } else if (c != '\r') {
         line += c;
@@ -1399,22 +1400,14 @@ String buildSimpleLoRaPacket(const AggregateReading &r, uint32_t seq) {
 }
 
 bool waitSimpleAck(uint32_t seq, uint32_t timeoutMs) {
-  String expected = "A2|" + String(seq);
-  String line;
+  const String expected = "A2|" + String(seq);
+  if (remoteRuntime.takeTelemetryAck(expected)) return true;
   const uint32_t started = millis();
-
   while (millis() - started < timeoutMs) {
     serviceWatchdog();
     while (loraSerial.available() > 0) {
-      const char c = static_cast<char>(loraSerial.read());
-      if (c == '\n') {
-        line.trim();
-        if (line == expected) return true;
-        line = "";
-      } else if (c != '\r') {
-        line += c;
-        if (line.length() > 64) line = "";
-      }
+      remoteRuntime.consume(static_cast<char>(loraSerial.read()), 2, loraSerial);
+      if (remoteRuntime.takeTelemetryAck(expected)) return true;
     }
     delay(5);
   }
@@ -1422,7 +1415,7 @@ bool waitSimpleAck(uint32_t seq, uint32_t timeoutMs) {
 }
 
 void readLoRaCommandsSimple() {
-  // ACK is consumed synchronously by waitSimpleAck().
+  while (loraSerial.available() > 0) remoteRuntime.consume(static_cast<char>(loraSerial.read()), 2, loraSerial);
 }
 
 void sendAggregateIfReadySimple() {
@@ -1446,7 +1439,7 @@ void sendAggregateIfReadySimple() {
   const AggregateReading aggregate = buildAggregateReading();
   const String packet = buildSimpleLoRaPacket(aggregate, pendingSequence);
 
-  while (loraSerial.available() > 0) (void)loraSerial.read();
+  readLoRaCommandsSimple();
   loraSerial.println(packet);
   loraSerial.flush();
   simpleTxAttempts += 1;
@@ -1471,6 +1464,7 @@ void sendAggregateIfReadySimple() {
 }
 
 void setup() {
+  remoteRuntime.begin(2);
   Serial.begin(DEBUG_BAUD);
   delay(300);
 
@@ -1556,7 +1550,7 @@ void loop() {
   }
 
   const uint32_t now = millis();
-  if (lastSampleMs != 0 && now - lastSampleMs < SAMPLE_INTERVAL_MS) {
+  if (lastSampleMs != 0 && now - lastSampleMs < remoteRuntime.state.sampleMs(SAMPLE_INTERVAL_MS)) {
     delay(20);
     return;
   }

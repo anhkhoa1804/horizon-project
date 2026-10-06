@@ -161,7 +161,7 @@ describe("no fabricated device acknowledgement", () => {
   it("states that database runtime settings await a disabled device-poll path", () => {
     const page = SRC("app", "admin", "page.tsx");
     assert.match(page, /tắt thăm dò cấu hình thiết bị/);
-    assert.match(page, /chưa được gửi tới thiết bị/);
+    assert.match(page, /chỉ bật sau kiểm chứng ngoài hiện trường/);
   });
 });
 

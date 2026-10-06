@@ -8,7 +8,7 @@ const scope: RepositoryScope = { userId: "public", role: "public", stationIds: [
 const partial = { id: "fixture", message_id: "fixture", station_id: "STATION_01", timestamp: new Date().toISOString(), salinity: null, water_level: 0, water_ec_ms_cm: null, water_temp_c: null, fault_flags: 1, ec_probe_status: "fault", ultrasonic_status: "ok" };
 function client(): AppSupabase {
   const result = { data: [partial], error: null };
-  const query = { select: () => query, eq: () => query, gte: () => query, order: () => query, limit: () => query, maybeSingle: async () => ({ data: partial, error: null }), then: (resolve: (value: typeof result) => unknown) => Promise.resolve(result).then(resolve) };
+  const query = { select: () => query, eq: () => query, gte: () => query, order: () => query, limit: () => query, range: () => query, maybeSingle: async () => ({ data: partial, error: null }), then: (resolve: (value: typeof result) => unknown) => Promise.resolve(result).then(resolve) };
   return { from: () => query } as unknown as AppSupabase;
 }
 test("SSR reading mapping preserves missing salinity and a genuine zero water level", async () => {

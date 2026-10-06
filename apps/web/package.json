@@ -8,7 +8,8 @@
     "start": "next start --port 4173",
     "lint": "next lint",
     "check": "tsc --noEmit && tsc --noEmit -p tsconfig.testcheck.json",
-    "test": "tsx --conditions=react-server --test tests/repositoryScope.test.ts tests/soilReadingRepository.test.ts tests/soilTrendRepository.test.ts tests/dailySoilTrendRepository.test.ts tests/stationDetailSoil.test.ts tests/reportPersistence.test.ts tests/reportMedia.test.ts tests/loginRateLimit.test.ts tests/i18n.test.ts tests/stationLinks.test.ts tests/externalWeather.test.ts tests/signalGroups.test.ts tests/noHardcodedVietnamese.test.ts tests/singleBackground.test.ts tests/metricStatus.test.ts tests/observatoryComposition.test.ts tests/sourceHygiene.test.ts tests/adminAuthConfig.test.ts tests/reportRateLimit.test.ts tests/secretBoundary.test.ts tests/safeRedirect.test.ts tests/seedSecrets.test.ts tests/supabaseEnvNames.test.ts tests/gatewayIngestAuth.test.ts tests/gatewayPromotion.test.ts tests/adminOperations.test.ts tests/thresholdRegistry.test.ts"
+    "test": "tsx --conditions=react-server --test tests/repositoryScope.test.ts tests/soilReadingRepository.test.ts tests/soilTrendRepository.test.ts tests/dailySoilTrendRepository.test.ts tests/stationDetailSoil.test.ts tests/reportPersistence.test.ts tests/reportMedia.test.ts tests/loginRateLimit.test.ts tests/i18n.test.ts tests/stationLinks.test.ts tests/externalWeather.test.ts tests/signalGroups.test.ts tests/noHardcodedVietnamese.test.ts tests/singleBackground.test.ts tests/metricStatus.test.ts tests/observatoryComposition.test.ts tests/sourceHygiene.test.ts tests/adminAuthConfig.test.ts tests/reportRateLimit.test.ts tests/secretBoundary.test.ts tests/safeRedirect.test.ts tests/seedSecrets.test.ts tests/supabaseEnvNames.test.ts tests/gatewayIngestAuth.test.ts tests/gatewayPromotion.test.ts tests/adminOperations.test.ts tests/thresholdRegistry.test.ts tests/partialWaterReadings.test.ts tests/runtimeControlAudit.test.ts tests/remoteConfiguration.test.ts",
+    "pretest": "node ../../scripts/generate-remote-config.mjs --check && node ../../scripts/build-remote-config-host.mjs"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.7",
@@ -30,6 +31,7 @@
   },
   "devDependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",
+    "@electric-sql/pglite": "^0.5.8",
     "@tailwindcss/postcss": "^4.1.8",
     "@types/leaflet": "^1.9.22",
     "@types/node": "^22.15.29",
@@ -37,6 +39,7 @@
     "@types/react-dom": "^19.1.5",
     "eslint": "^8.57.1",
     "eslint-config-next": "^15.5.19",
+    "playwright": "^1.63.0",
     "tailwindcss": "^4.1.8",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"

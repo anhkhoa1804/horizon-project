@@ -187,7 +187,7 @@ export function ObservationLog({ series, preferredMetric = "salinity" }: { serie
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex min-w-0 items-center gap-1.5 text-foreground-muted">
           <Activity className="h-3.5 w-3.5 shrink-0" aria-hidden />
-          <span className="truncate text-[11px] font-semibold uppercase tracking-[0.12em]">
+          <span className="truncate text-[11px] font-medium uppercase tracking-[0.06em]">
             {dict.chart.boxLabel}
           </span>
           <LiveSignalIndicator historical />
@@ -199,7 +199,7 @@ export function ObservationLog({ series, preferredMetric = "salinity" }: { serie
             onChange={setMetric}
             options={metricOptions}
             ariaLabel={dict.chart.metricControl}
-            className="w-[9rem] sm:w-[10rem]"
+            className="w-[11.25rem] sm:w-[12rem]"
           />
           <ControlSelect
             value={range}

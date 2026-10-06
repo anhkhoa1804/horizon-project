@@ -1,3 +1,4 @@
+import { CONTACT_CHANNELS } from "@/lib/contactChannels";
 import { KeywordTitle } from "@/components/ui/keyword-title";
 import Image from "next/image";
 import Link from "next/link";
@@ -5,12 +6,7 @@ import { cache, Suspense } from "react";
 import {
   ArrowRight,
   ClipboardList,
-  Facebook,
-  Globe,
-  Instagram,
   Mail,
-  MessageCircle,
-  Phone,
   Send,
   Sprout,
   Waves,
@@ -60,21 +56,7 @@ export const revalidate = 60;
 
 const KIND_ICON: Record<StationKind, typeof Waves> = { water: Waves, soil: Sprout, gateway: Send };
 
-/**
- * A direct contact address, once the project has one it wants published.
- *
- * Deliberately `null` rather than a plausible-looking address. A contact
- * action that silently goes nowhere is worse than none, and not printing
- * things the project cannot stand behind is the whole premise here.
- */
-const CONTACT_CHANNELS = [
-  { key: "channelEmail", icon: Mail, label: "magnusfrog.frogsleap@gmail.com", href: "mailto:magnusfrog.frogsleap@gmail.com" },
-  { key: "channelPhone", icon: Phone, label: "0867 430 045", href: "tel:+84867430045" },
-  { key: "channelZalo", icon: MessageCircle, label: "Zalo OA", href: "https://zalo.me/2851935006706412776" },
-  { key: "channelFacebook", icon: Facebook, label: "facebook.com/frogsleapvn", href: "https://www.facebook.com/frogsleapvn" },
-  { key: "channelInstagram", icon: Instagram, label: "@frogsleap_vietnam", href: "https://www.instagram.com/frogsleap_vietnam/" },
-  { key: "channelWebsite", icon: Globe, label: "frogsleap.com.vn", href: "https://frogsleap.com.vn" },
-] as const satisfies readonly { key: keyof Dictionary["contact"]; icon: typeof Mail; label: string; href: string }[];
+
 
 interface ObservatoryData {
   /** Already filtered to the curated 3-station pilot allowlist — never the raw 5-row DB response. */

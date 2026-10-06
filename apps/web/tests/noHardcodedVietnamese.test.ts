@@ -35,6 +35,14 @@ const VIETNAMESE =
 
 /** Vietnamese here is the source dictionary or documented content, by design. */
 const ALLOWED = new Map<string, string>([
+  ["app/admin/login/page.tsx", "B — project place name"],
+  ["components/admin/ingestion-health-panel.tsx", "operator-only Vietnamese console behind auth"],
+  ["components/admin/runtime-config-form.tsx", "operator-only Vietnamese console behind auth"],
+  ["lib/gateway/remoteConfigService.ts", "operator-only typed validation feedback"],
+  ["components/monitoring/field-observatory.tsx", "B — project place name"],
+  ["components/dashboard/station-network-map.tsx", "B — project place name in bilingual map controls"],
+  ["app/report/page.tsx", "D — bilingual editorial opening, locale selected explicitly"],
+  ["components/monitoring/danger-heatmap.tsx", "bilingual compact instrument labels, locale selected explicitly"],
   ["lib/i18n/vi.ts", "the Vietnamese dictionary itself"],
   ["lib/i18n/en.ts", "carries Vietnamese place names (Cồn Hô, Vĩnh Long) — category B"],
   ["lib/i18n/terminology.ts", "the VI↔EN scientific terminology contract"],
@@ -58,7 +66,7 @@ const ALLOWED = new Map<string, string>([
   ["app/api/public/reports/route.ts", "E — server-side API message, never rendered as UI"],
   ["components/ui/wordmark.tsx", "B — brand alt text"],
   ["components/ui/measurement-value.tsx", "E — JSDoc examples in prop docs"],
-  ["components/auth/login-form.tsx", "B — placeholder example values"],
+
   ["components/pwa/install-prompt.tsx", "B — platform names"],
   ["lib/i18n/config.ts", "B — the switcher shows each language in its own name (Tiếng Việt)"],
 ]);

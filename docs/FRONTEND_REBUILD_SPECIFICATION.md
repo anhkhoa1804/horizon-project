@@ -148,9 +148,9 @@ ID in two different systems for two different, both-intentional reasons:
   Gateway") is the gateway's **public map touchpoint** — so a visitor sees
   three cards/pins ("Trạm 1 – nước", "Trạm 2 – đất", "Gateway – gửi tin"),
   matching the real 3-node story, not a phantom 4th sensor.
-- In the `device_runtime_configs` system, `STATION_03` is a **configuration
-  address** — it lets the existing "per-station interval" admin UI also
-  configure the gateway itself, without separate plumbing.
+- In remote configuration v1, only `STATION_01` and `STATION_02` are
+  command targets. `STATION_03` remains an inventory/map location; the
+  physical relay identity is `GATEWAY_01`. See REMOTE_CONFIGURATION.md.
 
 Confirmed independently: `docs/ARCHITECTURE.md:26-48` already documents
 this and states it is correct/intentional — this audit reached the same

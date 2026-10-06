@@ -15,7 +15,7 @@ import { buildSignalGroups, type SignalGroup } from "@/lib/monitoring/signals";
 import { contextLine, deviceContext, type ContextMetricKey } from "@/lib/monitoring/context";
 import { mergeWeather24hSeries, weatherHistoryToObservationSeries } from "@/lib/monitoring/weatherSeries";
 import { ThresholdTable } from "@/components/monitoring/threshold-table";
-import { resolveReferenceSeverity, type ThresholdRow, type SoilWaterModel } from "@/lib/monitoring/thresholdTypes";
+import { resolveSeverity, type ThresholdRow, type SoilWaterModel } from "@/lib/monitoring/thresholdTypes";
 import { STATION_COORDS } from "@/lib/geo";
 import type { PilotStationId } from "@/lib/publicStations";
 import { statusFor, worstStatus, STATUS_SURFACE, type MetricStatus } from "@/lib/monitoring/status";
@@ -347,14 +347,14 @@ function ObservatoryBento({
 
   const advisoryStatus = (metric: ObservatoryMetric | null | undefined, quantity: string): MetricStatus | null => {
     if (!metric || metric.value === null) return null;
-    const resolved = resolveReferenceSeverity(thresholds, quantity, Number(metric.value));
+    const observedAt = metric.provenance.observedAt;
+    const applicable = thresholds.filter((row) => row.is_active && ["OPERATIONAL", "SITE_VALIDATED"].includes(row.validation_status) &&
+      !["SENSOR_QUALITY", "DEVICE_HEALTH"].includes(row.basis) &&
+      (!row.effective_from || (!!observedAt && Date.parse(row.effective_from) <= Date.parse(observedAt))));
+    const resolved = resolveSeverity(applicable, quantity, Number(metric.value));
     if (!resolved) return null;
     const level = resolved.severity === "normal" ? "ok" : resolved.severity === "critical" ? "critical" : resolved.severity === "warning" ? "warn" : "watch";
-    const basis = resolved.row.basis === "SENSOR_QUALITY"
-      ? "quality"
-      : resolved.row.validation_status === "PILOT"
-        ? "pilot"
-        : "reference";
+    const basis = "configured";
     return { level, basis };
   };
 
@@ -369,9 +369,9 @@ function ObservatoryBento({
   const battery = infraMetric("battery");
 
   // One status per region — see the note above ObservatoryBento.
-  const primaryStatus = worstStatus([status(salinity), status(waterLevel)]);
+  const primaryStatus = isDemo ? worstStatus([status(salinity), status(waterLevel)]) : worstStatus([advisoryStatus(salinity, "water_salinity"), advisoryStatus(waterLevel, "water_level")]);
   const infraStatus = worstStatus([status(signal), status(battery)]);
-  const soilStatus = advisoryStatus(soilPh, "soil_ph");
+  const soilStatus = worstStatus([advisoryStatus(soilPh, "soil_ph"), advisoryStatus(soilMoisture, "soil_moisture")]);
 
   // Every cell, without exception: same corner, same hairline, same inset.
   // A box differs from its neighbours only in what it spans and what colour
@@ -752,6 +752,7 @@ export function ObservatoryCanvas({
           mapStations={mapStations}
           network={model.network}
         />
+        <p className="observatory-source-line">STATION_01 · STATION_02 <span>Open-Meteo · {dict.monitoring.regionalContextLabel}</span></p>
       </section>
 
       <section className="instrument-in-2 space-y-6">
@@ -765,6 +766,7 @@ export function ObservatoryCanvas({
             is attached to a quantity, quality condition or active device
             interpretation — there is no separate editorial list with a
             different authority signal. */}
+        <p className="text-sm text-muted">{dict.monitoring.gateAdviceBasis}</p>
         {thresholds.length > 0 ? (
           <ThresholdTable rows={thresholds} soilModels={soilModels} />
         ) : null}

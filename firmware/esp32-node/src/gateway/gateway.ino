@@ -7,7 +7,12 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include "gateway_types.h"
+bool initModem();
+#if __has_include("gateway_secrets.h")
 #include "gateway_secrets.h"
+#else
+#include "gateway_secrets.example.h"
+#endif
 /*
   HORIZON - Gateway node
 
@@ -61,9 +66,10 @@ static const char *CONFIG_URL = "https://horizon.frogsleap.com.vn/api/public/gat
 #define GATEWAY_INGEST_TOKEN_VALUE ""
 #endif
 static const char *GATEWAY_INGEST_TOKEN = GATEWAY_INGEST_TOKEN_VALUE;
-// CONFIG endpoint is currently returning HTTP 403. Keep runtime config polling disabled
-// so the modem cannot steal receive time from LoRa. Re-enable after server auth is ready.
+// Software protocol v1 is implemented. Field-validation interlock remains off.
+// Enabling requires provisioned per-station keys and physical receiver tests.
 static const bool CONFIG_POLL_ENABLED = false;
+static const char *CONFIG_EVENTS_URL = "https://horizon.frogsleap.com.vn/api/public/gateway/configs/events";
 // Keep normal AT chatter quiet. Errors and high-level HTTP status are still printed.
 static const bool MODEM_VERBOSE_AT = false;
 static const char *SIM_APN = "internet";
@@ -120,7 +126,9 @@ static const int BUZZER_MUTE_BUTTON_PIN = 14;
 // the normal state should keep GREEN ON and the other warning relays OFF.
 static const bool RELAY_ACTIVE_LOW = false;
 
-// Alarm thresholds. Distance is the S1 ultrasonic distance-to-water field.
+// Board-local alarm behavior, NOT remotely configurable or agronomic guidance.
+// These distance/pH constants are independent of threshold_registry and alert_configs.
+// Distance is the S1 ultrasonic distance-to-water field.
 static const float WATER_RED_DISTANCE_CM = 50.0f;
 static const float WATER_CRITICAL_DISTANCE_CM = 5.0f;
 static const float SOIL_PH_HIGH_THRESHOLD = 7.0f;
@@ -1392,7 +1400,7 @@ String httpGet(const char *url) {
 
   // This modem firmware already reaches HTTPS URLs directly. AT+HTTPSSL=1 returns ERROR,
   // so do not send that unsupported command.
-  (void)url;
+  configureHttpsForHttpStack();
 
   if (!setGatewayHttpHeaders()) {
     sendAt("AT+HTTPTERM", "OK", 3000);
@@ -1411,173 +1419,19 @@ String httpGet(const char *url) {
     return "";
   }
 
-  modemSerial.println("AT+HTTPREAD");
-  const String readResponse = modemReadUntil(HTTP_TIMEOUT_MS);
-  printSafeHttpResponse(readResponse);
+  const int length = parseHttpActionLength(actionResponse, 0);
+  if (length <= 0 || length > 2048) { sendAt("AT+HTTPTERM", "OK", 3000); return ""; }
+  const String body = readHttpResponseBody(length);
   sendAt("AT+HTTPTERM", "OK", 3000);
-
-  const int headerEnd = readResponse.indexOf("\r\n");
-  const int okStart = readResponse.lastIndexOf("\r\nOK");
-  if (headerEnd < 0 || okStart <= headerEnd) {
-    return readResponse;
-  }
-
-  String body = readResponse.substring(headerEnd + 2, okStart);
-  body.trim();
   return body;
 }
 
-int extractIntNear(const String &text, int from, const char *field, int fallback) {
-  String key = "\"";
-  key += field;
-  key += "\":";
-  const int start = text.indexOf(key, from);
-  if (start < 0) return fallback;
-
-  const int valueStart = start + key.length();
-  int valueEnd = valueStart;
-  while (valueEnd < text.length() && isDigit(text[valueEnd])) {
-    valueEnd += 1;
-  }
-  if (valueEnd == valueStart) return fallback;
-  return text.substring(valueStart, valueEnd).toInt();
-}
-
-int extractBoolOrIntNear(const String &text, int from, const char *field, int fallback) {
-  String key = "\"";
-  key += field;
-  key += "\":";
-  const int start = text.indexOf(key, from);
-  if (start < 0) return fallback;
-
-  const int valueStart = start + key.length();
-  if (text.startsWith("true", valueStart)) return 1;
-  if (text.startsWith("false", valueStart)) return 0;
-  if (text[valueStart] == '1') return 1;
-  if (text[valueStart] == '0') return 0;
-  return fallback;
-}
-
-void sendConfigToStation(const char *stationId, int sampleSeconds, int sleepSeconds) {
-  String command;
-  command.reserve(140);
-  command += "{\"type\":\"config\",\"station_id\":\"";
-  command += stationId;
-  command += "\",\"sample_interval_seconds\":";
-  command += String(sampleSeconds);
-  command += ",\"sleep_interval_seconds\":";
-  command += String(sleepSeconds);
-  command += "}";
-
-  loraSerial.println(command);
-  Serial.print("[CONFIG->LORA] ");
-  Serial.println(command);
-}
-
-void applyGatewayConfig(int sampleSeconds, int sleepSeconds, int tideLevel, int salinityAlert, int buzzerAlert) {
-  configPollIntervalMs = max<uint32_t>(30000UL, static_cast<uint32_t>(sampleSeconds) * 1000UL);
-  gatewaySleepIntervalMs = max<uint32_t>(0UL, static_cast<uint32_t>(sleepSeconds) * 1000UL);
-
-  tideHighAlert = tideLevel >= 1;
-  tideCriticalAlert = tideLevel >= 2;
-  soilSalinityAlert = salinityAlert == 1;
-  forcedBuzzerAlert = buzzerAlert == 1;
-
-  Serial.printf("[CONFIG] gateway poll=%lus sleep=%lus tide=%d salinity=%d buzzer=%d muted=%s\n",
-                configPollIntervalMs / 1000UL,
-                gatewaySleepIntervalMs / 1000UL,
-                tideLevel,
-                salinityAlert,
-                buzzerAlert,
-                buzzerMutedForCurrentCritical ? "yes" : "no");
-}
-
-void parseAndForwardConfigs(const String &body) {
-const char *stations[] = {"STATION_01", "STATION_02", "STATION_03"};
-  for (const char *stationId : stations) {
-    String stationKey = "\"station_id\":\"";
-    stationKey += stationId;
-    stationKey += "\"";
-
-    const int pos = body.indexOf(stationKey);
-    if (pos < 0) {
-      continue;
-    }
-
-    const int sampleSeconds = extractIntNear(body, pos, "sample_interval_seconds", 300);
-    const int sleepSeconds = extractIntNear(body, pos, "sleep_interval_seconds", 0);
-    if (String(stationId) == "STATION_03") {
-      int tideLevel = extractIntNear(body, pos, "tide_alert_level", 0);
-      const int redLight = extractBoolOrIntNear(body, pos, "red_light", tideLevel >= 1 ? 1 : 0);
-      const int criticalTide = extractBoolOrIntNear(body, pos, "tide_critical", tideLevel >= 2 ? 1 : 0);
-      if (criticalTide == 1) {
-        tideLevel = 2;
-      } else if (redLight == 1) {
-        tideLevel = max(tideLevel, 1);
-      }
-
-      const int salinityAlert = extractBoolOrIntNear(
-        body,
-        pos,
-        "soil_salinity_alert",
-        extractBoolOrIntNear(body, pos, "yellow_light", 0)
-      );
-      const int buzzerAlert = extractBoolOrIntNear(
-        body,
-        pos,
-        "buzzer_alert",
-        extractBoolOrIntNear(body, pos, "buzzer_on", tideLevel >= 2 ? 1 : 0)
-      );
-
-      applyGatewayConfig(sampleSeconds, sleepSeconds, tideLevel, salinityAlert, buzzerAlert);
-    } else {
-      sendConfigToStation(stationId, sampleSeconds, sleepSeconds);
-      watchdogDelay(200);
-    }
-  }
-
-  String gatewayKey = "\"gateway_id\":\"";
-  gatewayKey += GATEWAY_ID;
-  gatewayKey += "\"";
-  const int gatewayPos = body.indexOf(gatewayKey);
-  if (gatewayPos >= 0) {
-    const int sampleSeconds = extractIntNear(body, gatewayPos, "sample_interval_seconds", configPollIntervalMs / 1000UL);
-    const int sleepSeconds = extractIntNear(body, gatewayPos, "sleep_interval_seconds", gatewaySleepIntervalMs / 1000UL);
-    int tideLevel = extractIntNear(body, gatewayPos, "tide_alert_level", 0);
-    if (extractBoolOrIntNear(body, gatewayPos, "tide_critical", 0) == 1) tideLevel = 2;
-    if (extractBoolOrIntNear(body, gatewayPos, "red_light", 0) == 1) tideLevel = max(tideLevel, 1);
-    const int salinityAlert = extractBoolOrIntNear(
-      body,
-      gatewayPos,
-      "soil_salinity_alert",
-      extractBoolOrIntNear(body, gatewayPos, "yellow_light", 0)
-    );
-    const int buzzerAlert = extractBoolOrIntNear(
-      body,
-      gatewayPos,
-      "buzzer_alert",
-      extractBoolOrIntNear(body, gatewayPos, "buzzer_on", tideLevel >= 2 ? 1 : 0)
-    );
-    applyGatewayConfig(sampleSeconds, sleepSeconds, tideLevel, salinityAlert, buzzerAlert);
-  }
-}
-
-void pollRuntimeConfigs() {
-  if (!MODEM_ENABLED || !CONFIG_POLL_ENABLED) return;
-  if (pairedBatchTriggered || pendingStation1Ready || pendingStation2Ready || modemHttpBusy) return;
-  if (loraSerial.available() > 0 || (lastSimpleLoRaActivityMs != 0 && millis() - lastSimpleLoRaActivityMs < 5000)) return;
-if (millis() - lastConfigPollMs < configPollIntervalMs) return;
-  lastConfigPollMs = millis();
-
-  Serial.println("[CONFIG] Kiem tra cau hinh server...");
-  const String body = httpGet(CONFIG_URL);
-  if (body.length() == 0) {
-    Serial.println("[CONFIG] Khong co phan hoi cau hinh");
-    return;
-  }
-
-  parseAndForwardConfigs(body);
-}
+// Legacy JSON configuration/downlink and STATION_03 gateway mapping removed.
+void pollRuntimeConfigs();
+void serviceRemoteConfig();
+void beginRemoteConfig();
+bool consumeRemoteConfigByte(char c);
+void sendRemoteConfigForStation(bool station1);
 
 void maybeEnterGatewaySleep() {
   if (gatewaySleepIntervalMs == 0 || loraLine.length() > 0 || pairedBatchTriggered || pendingStation1Ready || pendingStation2Ready || modemHttpBusy) {
@@ -1590,7 +1444,7 @@ void maybeEnterGatewaySleep() {
   esp_deep_sleep_start();
 }
 
-HttpPostOutcome httpPostJson(const String &payload) {
+HttpPostOutcome httpPostJsonTo(const String &payload, const char *targetUrl) {
   if (!MODEM_ENABLED) {
     Serial.println("[HTTP] Bo POST: MODEM_ENABLED=false");
     return HTTP_POST_RETRY;
@@ -1602,7 +1456,7 @@ HttpPostOutcome httpPostJson(const String &payload) {
   }
 
   Serial.printf("[HTTP] POST %u byte -> %s\n",
-                static_cast<unsigned int>(payload.length()), WEB_SERVER_URL);
+                static_cast<unsigned int>(payload.length()), targetUrl);
   printSafePayloadDiagnostic(payload);
 
   // Clean previous session. ERROR here is harmless if no session exists.
@@ -1619,7 +1473,7 @@ HttpPostOutcome httpPostJson(const String &payload) {
   configureHttpsForHttpStack();
 
   String urlCommand = "AT+HTTPPARA=\"URL\",\"";
-  urlCommand += WEB_SERVER_URL;
+  urlCommand += targetUrl;
   urlCommand += "\"";
   if (!sendAt(urlCommand, "OK", 5000)) {
     Serial.println("[HTTP FAIL] Khong set duoc URL");
@@ -1784,6 +1638,28 @@ uint32_t &lastAcceptedAtFor(const String &stationId) {
     return lastAcceptedAtStation1;
   }
   return lastAcceptedAtStation2;
+}
+
+HttpPostOutcome httpPostJson(const String &payload) { return httpPostJsonTo(payload, WEB_SERVER_URL); }
+#include "../shared/gateway_config_arduino.h"
+static horizon::GatewayRuntime remoteGateway;
+static uint32_t remoteForwardAttempt=0;
+void beginRemoteConfig(){remoteGateway.begin();}
+bool consumeRemoteConfigByte(char c){return remoteGateway.consume(c);}
+void pollRuntimeConfigs(){
+ if(!MODEM_ENABLED||!CONFIG_POLL_ENABLED||pairedBatchTriggered||pendingStation1Ready||pendingStation2Ready||modemHttpBusy)return;
+ if(loraSerial.available()>0||(lastSimpleLoRaActivityMs&&millis()-lastSimpleLoRaActivityMs<5000)||millis()-lastConfigPollMs<configPollIntervalMs)return;
+ lastConfigPollMs=millis();modemHttpBusy=true;const String body=httpGet(CONFIG_URL);modemHttpBusy=false;
+ if(!remoteGateway.ingest(body))Serial.println("[CONFIG] HTTP/contract rejected; durable desired state remains on server");
+}
+void sendRemoteConfigForStation(bool station1){if(CONFIG_POLL_ENABLED)remoteGateway.sendDue(loraSerial,millis(),station1?1:2);}
+void serviceRemoteConfig(){
+ if(!CONFIG_POLL_ENABLED)return;
+ remoteGateway.sendDue(loraSerial,millis());
+ if(remoteGateway.eventCount&&millis()-remoteForwardAttempt>=30000&&!pairedBatchTriggered&&!pendingStation1Ready&&!pendingStation2Ready&&!modemHttpBusy&&loraSerial.available()==0&&millis()-lastSimpleLoRaActivityMs>5000){
+ remoteForwardAttempt=millis();modemHttpBusy=true;const HttpPostOutcome result=httpPostJsonTo(remoteGateway.eventJson(),CONFIG_EVENTS_URL);modemHttpBusy=false;if(result==HTTP_POST_DELIVERED)remoteGateway.forwarded();
+ // Non-2xx, auth/configuration faults and timeouts retain the same bounded evidence for reconnect.
+ }
 }
 
 void sendStationAck(const String &messageId) {
@@ -2632,6 +2508,7 @@ const uint32_t seq = static_cast<uint32_t>(simpleField(line, 1).toInt());
   loraGarbageBadWindows = 0;
   lastSimpleLoRaActivityMs = millis();
   sendSimpleAck(station1, seq);  // ACK before any HTTP work.
+  sendRemoteConfigForStation(station1); // Target the station while its configuration listen window is open.
   markDashboardStationSeen(station1);
 
   uint32_t &lastSeq = station1 ? lastSimpleSeq1 : lastSimpleSeq2;
@@ -2785,6 +2662,7 @@ bool tryCompleteSimpleFrameNow() {
 }
 
 void consumeSimpleLoRaByte(char c) {
+  if (!simpleCapturingFrame && consumeRemoteConfigByte(c)) return;
   if (!simpleCapturingFrame) {
     if (c == '\r' || c == '\n') {
       simpleMarkerProbe = "";
@@ -2959,6 +2837,7 @@ void readSimpleLoRaUart() {
 }
 
 void setup() {
+  beginRemoteConfig();
   Serial.begin(DEBUG_BAUD);
   delay(300);
 
@@ -2994,7 +2873,7 @@ loraSerial.setRxBufferSize(LORA_RX_BUFFER_BYTES);
   pinMode(LORA_AUX_PIN, INPUT_PULLUP);
   Serial.println("[LORA] RX PRIORITY: HTTP/403 FIX GIU NGUYEN, ACK ngan de nghe 2 tram");
   Serial.printf("[LORA] AUX IO%d=%s\n", LORA_AUX_PIN, digitalRead(LORA_AUX_PIN) == HIGH ? "HIGH" : "LOW");
-  Serial.printf("[CONFIG] runtime_poll=%s (server hien dang tra 403)\n", CONFIG_POLL_ENABLED ? "BAT" : "TAT");
+  Serial.printf("[CONFIG] runtime_poll=%s (protocol v1; field interlock)\n", CONFIG_POLL_ENABLED ? "BAT" : "TAT");
 
   Serial.println("[FLASH] Gateway khong dung SPIFFS/SD");
 
@@ -3035,8 +2914,8 @@ void loop() {
 
   // Only after one fresh packet from BOTH stations do we power 4G and upload.
   servicePairedBatchUpload();
-  // Runtime CONFIG GET remains disabled while the endpoint returns 403.
-  if (CONFIG_POLL_ENABLED) pollRuntimeConfigs();
+  // Keep remote polling disabled until station config delivery and revision ACKs are field-verified.
+  if (CONFIG_POLL_ENABLED) { serviceRemoteConfig(); pollRuntimeConfigs(); }
   maybeEnterGatewaySleep();
   updateStatusOutputs();
   watchdogDelay(10);

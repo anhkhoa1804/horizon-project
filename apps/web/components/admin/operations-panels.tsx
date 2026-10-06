@@ -102,7 +102,7 @@ export function AlertConfigPanel({
   return (
     <SectionShell
       title="Ngưỡng cảnh báo"
-      lead="Ngưỡng vận hành do người phụ trách đặt cho triển khai này. Đây không phải khuyến nghị khoa học — cơ sở khoa học được ghi riêng trong docs/SCIENTIFIC_REFERENCES.md, và hai thứ đó cố ý tách nhau."
+      lead="Quy tắc cảnh báo mong muốn do người phụ trách lưu. Chưa nối với bộ đánh giá cảnh báo hay firmware; màu quan trắc sử dụng bảng ngưỡng đang hiệu lực phía trên."
     >
       {configs.length > 0 ? (
         <div className="divide-y divide-border border-y border-border">
@@ -114,7 +114,7 @@ export function AlertConfigPanel({
                 </p>
                 <p className="text-sm text-muted">
                   {c.comparison === "above" ? "Cảnh báo khi vượt" : "Cảnh báo khi thấp hơn"}
-                  {c.enabled ? "" : " · đang tắt"}
+                  {c.enabled ? " · đã đánh dấu bật, chưa thực thi" : " · đã đánh dấu tắt"}
                 </p>
               </div>
               <p className="text-sm [font-family:var(--font-data)]">
