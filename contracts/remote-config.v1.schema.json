@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "horizon.remote-config.v1",
+  "title": "HORIZON remote station configuration v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "config_revision",
+    "station_id",
+    "sample_interval_seconds",
+    "sleep_interval_seconds",
+    "mode"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": 1
+    },
+    "config_revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295
+    },
+    "station_id": {
+      "enum": ["STATION_01", "STATION_02"]
+    },
+    "sample_interval_seconds": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 86400
+    },
+    "sleep_interval_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 86400
+    },
+    "mode": {
+      "enum": ["normal", "rain_saver", "maintenance"]
+    }
+  },
+  "x-wire": {
+    "prefix": "HC1",
+    "max_frame_bytes": 192,
+    "types": ["SET", "ACK", "REJECTED", "APPLIED"],
+    "reasons": [
+      "ok",
+      "stale",
+      "conflict",
+      "persistence",
+      "unsupported",
+      "invalid"
+    ],
+    "crc": "CRC16-CCITT-FALSE",
+    "mac": "HMAC-SHA256 uppercase hex over body|CRC",
+    "station_codes": ["S1", "S2"]
+  }
+}

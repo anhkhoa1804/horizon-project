@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800" role="img" aria-label="Ảnh giữ chỗ 04">
+  <defs>
+    <pattern id="dots04" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.2" fill="rgba(19,29,27,0.10)" />
+    </pattern>
+  </defs>
+  <rect width="1200" height="800" fill="#f0ece1" />
+  <rect width="1200" height="800" fill="url(#dots04)" />
+  <rect x="470" y="250" width="260" height="300" rx="10" fill="none" stroke="#0c5f7d" stroke-opacity="0.34" stroke-width="3" />
+  <line x1="600" y1="250" x2="600" y2="170" stroke="#0c5f7d" stroke-opacity="0.34" stroke-width="3" />
+  <circle cx="600" cy="160" r="12" fill="#0c5f7d" fill-opacity="0.40" />
+  <line x1="470" y1="550" x2="730" y2="550" stroke="#197a3f" stroke-opacity="0.34" stroke-width="3" />
+  <line x1="240" y1="640" x2="960" y2="640" stroke="rgba(19,29,27,0.16)" stroke-width="2" />
+  <text x="64" y="726" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="22" letter-spacing="4" fill="rgba(19,29,27,0.42)">PLACEHOLDER · 04</text>
+</svg>

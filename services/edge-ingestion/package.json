@@ -1,0 +1,21 @@
+{
+  "name": "@eco-sense/edge-ingestion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build:edge": "esbuild src/edgeEntry.ts --bundle --platform=neutral --format=esm --outfile=../../infra/supabase/functions/edge-ingest/bundle.mjs",
+    "test": "tsx --test tests/contract.test.ts",
+    "test:all": "tsx --test tests/contract.test.ts tests/integration.test.ts",
+    "test:integration": "tsx --test tests/integration.test.ts",
+    "mock:ingest": "tsx scripts/mock_ingest.ts",
+    "simulator": "tsx scripts/simulator.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "esbuild": "^0.25.5",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}

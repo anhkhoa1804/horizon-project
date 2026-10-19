@@ -1,0 +1,39 @@
+{
+  "name": "eco-sense-con-ho",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Eco-Sense Con Ho monorepo scaffold",
+  "engines": {
+    "node": ">=22.0.0 <25"
+  },
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "infra/supabase"
+  ],
+  "scripts": {
+    "check": "npm run check -w @eco-sense/edge-ingestion && npm run check -w @eco-sense/web",
+    "lint": "npm run lint -w @eco-sense/web",
+    "test": "npm run test -w @eco-sense/edge-ingestion",
+    "test:integration": "npm run test:integration -w @eco-sense/edge-ingestion",
+    "test:web": "npm run test -w @eco-sense/web",
+    "test:deploy-credentials": "node --test infra/supabase/tests/credential-audit.test.mjs",
+    "test:rls": "npm run test:rls -w @eco-sense/supabase-infra",
+    "test:all": "npm run test:all -w @eco-sense/edge-ingestion",
+    "build:edge": "npm run build:edge -w @eco-sense/edge-ingestion",
+    "db:migrate": "npm run migrate -w @eco-sense/supabase-infra",
+    "db:validate-migrations": "node infra/supabase/validate-migrations.mjs",
+    "db:deploy": "npm run deploy -w @eco-sense/supabase-infra",
+    "verify:deploy": "node infra/supabase/verify-deploy.mjs",
+    "firmware:build:gateway": "pio run -d firmware/esp32-node -e gateway",
+    "firmware:build:station1": "pio run -d firmware/esp32-node -e station1",
+    "firmware:build:station2": "pio run -d firmware/esp32-node -e station2",
+    "firmware:build:targets": "npm run firmware:build:gateway && npm run firmware:build:station1 && npm run firmware:build:station2",
+    "mock:ingest": "npm run mock:ingest -w @eco-sense/edge-ingestion",
+    "simulator": "npm run simulator -w @eco-sense/edge-ingestion",
+    "dashboard": "npm run dev -w @eco-sense/web",
+    "qa:vertical-slice": "npm run check && npm run lint && npm run test && npm run test:web && npm run build:edge && npm run build -w @eco-sense/web && npm run simulator && npm run mock:ingest",
+    "test:remote-config": "node scripts/generate-remote-config.mjs --check && node scripts/build-remote-config-host.mjs && npm exec --workspace apps/web -- tsx --conditions=react-server --test tests/remoteConfiguration.test.ts",
+    "test:remote-config:browser": "node scripts/build-remote-config-host.mjs && npm run build -w @eco-sense/web && node scripts/remote-config-browser-qa.cjs"
+  }
+}

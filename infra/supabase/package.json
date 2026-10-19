@@ -1,0 +1,20 @@
+{
+  "name": "@eco-sense/supabase-infra",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "migrate": "node apply-migrations.mjs",
+    "verify": "node verify-deploy.mjs",
+    "verify:architecture": "node verify-architecture.mjs",
+    "deploy": "powershell -ExecutionPolicy Bypass -File ./deploy.ps1",
+    "deploy:sh": "bash ./deploy.sh",
+    "push-secrets": "node push-edge-secrets.mjs",
+    "test:rls": "node --test tests/rls.test.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "supabase": "^2.30.4"
+  }
+}

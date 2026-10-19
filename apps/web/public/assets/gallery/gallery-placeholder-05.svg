@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800" role="img" aria-label="Ảnh giữ chỗ 05">
+  <defs>
+    <pattern id="dots05" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.2" fill="rgba(19,29,27,0.10)" />
+    </pattern>
+    <radialGradient id="glow05" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#0c5f7d" stop-opacity="0.12" />
+      <stop offset="100%" stop-color="#0c5f7d" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="800" fill="#f0ece1" />
+  <rect width="1200" height="800" fill="url(#dots05)" />
+  <rect width="1200" height="800" fill="url(#glow05)" />
+  <g fill="none" stroke="#0c5f7d" stroke-opacity="0.26" stroke-width="2">
+    <circle cx="600" cy="360" r="70" />
+    <circle cx="600" cy="360" r="130" />
+    <circle cx="600" cy="360" r="190" />
+  </g>
+  <circle cx="600" cy="360" r="9" fill="#0c5f7d" fill-opacity="0.5" />
+  <text x="64" y="726" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="22" letter-spacing="4" fill="rgba(19,29,27,0.42)">PLACEHOLDER · 05</text>
+</svg>

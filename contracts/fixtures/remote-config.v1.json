@@ -1,0 +1,58 @@
+{
+  "warning": "Synthetic test key; never provision this key on a device.",
+  "key": "test-only-config-key-01234567890123456789",
+  "fixtures": [
+    {
+      "config": {
+        "contract_version": 1,
+        "config_revision": 4294967295,
+        "station_id": "STATION_01",
+        "sample_interval_seconds": 5,
+        "sleep_interval_seconds": 0,
+        "mode": "maintenance"
+      },
+      "type": "SET",
+      "reason": "ok",
+      "frame": "HC1|1|SET|S1|4294967295|5|0|maintenance|ok|B002|360ECD16295F838821F64AFDAEA001C1179F6DF40E0B58D4F384DC68D6A312A4"
+    },
+    {
+      "config": {
+        "contract_version": 1,
+        "config_revision": 4294967295,
+        "station_id": "STATION_01",
+        "sample_interval_seconds": 5,
+        "sleep_interval_seconds": 0,
+        "mode": "maintenance"
+      },
+      "type": "ACK",
+      "reason": "ok",
+      "frame": "HC1|1|ACK|S1|4294967295|5|0|maintenance|ok|0200|674E45A13CEAD91E42824278693562E49E2904E1B5F744CB4EAA5EEEFB4BEB22"
+    },
+    {
+      "config": {
+        "contract_version": 1,
+        "config_revision": 4294967295,
+        "station_id": "STATION_01",
+        "sample_interval_seconds": 5,
+        "sleep_interval_seconds": 0,
+        "mode": "maintenance"
+      },
+      "type": "APPLIED",
+      "reason": "ok",
+      "frame": "HC1|1|APPLIED|S1|4294967295|5|0|maintenance|ok|1C93|BBA5C0A911765F31E711C35F62B949A68BE3794AD3919DF5F4B9AD0352EFAD3D"
+    },
+    {
+      "config": {
+        "contract_version": 1,
+        "config_revision": 4294967295,
+        "station_id": "STATION_01",
+        "sample_interval_seconds": 5,
+        "sleep_interval_seconds": 0,
+        "mode": "maintenance"
+      },
+      "type": "REJECTED",
+      "reason": "stale",
+      "frame": "HC1|1|REJECTED|S1|4294967295|5|0|maintenance|stale|2FD9|864C270AB6CE58BB6506044A0FF8D7086306DC10B39E9931A5D2F9C747AA3335"
+    }
+  ]
+}

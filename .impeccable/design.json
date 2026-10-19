@@ -1,0 +1,590 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-03T17:58:43+07:00",
+  "title": "Design System: HORIZON",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "River-chart Blue",
+        "canonical": "#0c5f7d",
+        "tonalRamp": [
+          "oklch(15% 0.10 230)",
+          "oklch(25% 0.10 230)",
+          "oklch(35% 0.10 230)",
+          "oklch(45% 0.10 230)",
+          "oklch(55% 0.10 230)",
+          "oklch(65% 0.10 230)",
+          "oklch(75% 0.10 230)",
+          "oklch(85% 0.10 230)"
+        ]
+      },
+      "brand-green": {
+        "role": "secondary",
+        "displayName": "HORIZON Leaf Green",
+        "canonical": "#2c9e57",
+        "tonalRamp": [
+          "oklch(15% 0.15 152)",
+          "oklch(25% 0.15 152)",
+          "oklch(35% 0.15 152)",
+          "oklch(45% 0.15 152)",
+          "oklch(55% 0.15 152)",
+          "oklch(65% 0.15 152)",
+          "oklch(75% 0.15 152)",
+          "oklch(85% 0.15 152)"
+        ]
+      },
+      "brand-orange": {
+        "role": "tertiary",
+        "displayName": "HORIZON Harvest Orange",
+        "canonical": "#f28c00",
+        "tonalRamp": [
+          "oklch(15% 0.17 65)",
+          "oklch(25% 0.17 65)",
+          "oklch(35% 0.17 65)",
+          "oklch(45% 0.17 65)",
+          "oklch(55% 0.17 65)",
+          "oklch(65% 0.17 65)",
+          "oklch(75% 0.17 65)",
+          "oklch(85% 0.17 65)"
+        ]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Survey Paper",
+        "canonical": "#f7f4ed",
+        "tonalRamp": [
+          "oklch(15% 0.01 85)",
+          "oklch(25% 0.01 85)",
+          "oklch(35% 0.01 85)",
+          "oklch(45% 0.01 85)",
+          "oklch(55% 0.01 85)",
+          "oklch(65% 0.01 85)",
+          "oklch(75% 0.01 85)",
+          "oklch(85% 0.01 85)"
+        ]
+      },
+      "canvas-recessed": {
+        "role": "neutral",
+        "displayName": "Recessed Paper",
+        "canonical": "#f0ece1",
+        "tonalRamp": [
+          "oklch(15% 0.02 85)",
+          "oklch(25% 0.02 85)",
+          "oklch(35% 0.02 85)",
+          "oklch(45% 0.02 85)",
+          "oklch(55% 0.02 85)",
+          "oklch(65% 0.02 85)",
+          "oklch(75% 0.02 85)",
+          "oklch(85% 0.02 85)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Raised Paper",
+        "canonical": "#fffdf8",
+        "tonalRamp": [
+          "oklch(15% 0.01 85)",
+          "oklch(25% 0.01 85)",
+          "oklch(35% 0.01 85)",
+          "oklch(45% 0.01 85)",
+          "oklch(55% 0.01 85)",
+          "oklch(65% 0.01 85)",
+          "oklch(75% 0.01 85)",
+          "oklch(85% 0.01 85)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "River Ink",
+        "canonical": "#131d1b",
+        "tonalRamp": [
+          "oklch(15% 0.01 160)",
+          "oklch(25% 0.01 160)",
+          "oklch(35% 0.01 160)",
+          "oklch(45% 0.01 160)",
+          "oklch(55% 0.01 160)",
+          "oklch(65% 0.01 160)",
+          "oklch(75% 0.01 160)",
+          "oklch(85% 0.01 160)"
+        ]
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "#55635f",
+        "tonalRamp": [
+          "oklch(15% 0.02 160)",
+          "oklch(25% 0.02 160)",
+          "oklch(35% 0.02 160)",
+          "oklch(45% 0.02 160)",
+          "oklch(55% 0.02 160)",
+          "oklch(65% 0.02 160)",
+          "oklch(75% 0.02 160)",
+          "oklch(85% 0.02 160)"
+        ]
+      },
+      "divider": {
+        "role": "neutral",
+        "displayName": "Hairline Divider",
+        "canonical": "rgba(19, 29, 27, 0.11)",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(25% 0 0)",
+          "oklch(35% 0 0)",
+          "oklch(45% 0 0)",
+          "oklch(55% 0 0)",
+          "oklch(65% 0 0)",
+          "oklch(75% 0 0)",
+          "oklch(85% 0 0)"
+        ]
+      },
+      "status-safe": {
+        "role": "secondary",
+        "displayName": "Safe Green",
+        "canonical": "#197a3f",
+        "tonalRamp": [
+          "oklch(15% 0.12 150)",
+          "oklch(25% 0.12 150)",
+          "oklch(35% 0.12 150)",
+          "oklch(45% 0.12 150)",
+          "oklch(55% 0.12 150)",
+          "oklch(65% 0.12 150)",
+          "oklch(75% 0.12 150)",
+          "oklch(85% 0.12 150)"
+        ]
+      },
+      "status-warning": {
+        "role": "tertiary",
+        "displayName": "Legibility Amber",
+        "canonical": "#8f5300",
+        "tonalRamp": [
+          "oklch(15% 0.13 60)",
+          "oklch(25% 0.13 60)",
+          "oklch(35% 0.13 60)",
+          "oklch(45% 0.13 60)",
+          "oklch(55% 0.13 60)",
+          "oklch(65% 0.13 60)",
+          "oklch(75% 0.13 60)",
+          "oklch(85% 0.13 60)"
+        ]
+      },
+      "status-warning-wash": {
+        "role": "tertiary",
+        "displayName": "Warning Tint",
+        "canonical": "rgba(143, 83, 0, 0.09)",
+        "tonalRamp": [
+          "oklch(15% 0.10 60)",
+          "oklch(25% 0.10 60)",
+          "oklch(35% 0.10 60)",
+          "oklch(45% 0.10 60)",
+          "oklch(55% 0.10 60)",
+          "oklch(65% 0.10 60)",
+          "oklch(75% 0.10 60)",
+          "oklch(85% 0.10 60)"
+        ]
+      },
+      "status-danger": {
+        "role": "tertiary",
+        "displayName": "Field Alert Red",
+        "canonical": "#b02318",
+        "tonalRamp": [
+          "oklch(15% 0.17 25)",
+          "oklch(25% 0.17 25)",
+          "oklch(35% 0.17 25)",
+          "oklch(45% 0.17 25)",
+          "oklch(55% 0.17 25)",
+          "oklch(65% 0.17 25)",
+          "oklch(75% 0.17 25)",
+          "oklch(85% 0.17 25)"
+        ]
+      },
+      "series-water": {
+        "role": "secondary",
+        "displayName": "Water-series Blue",
+        "canonical": "#2563eb",
+        "tonalRamp": [
+          "oklch(15% 0.19 260)",
+          "oklch(25% 0.19 260)",
+          "oklch(35% 0.19 260)",
+          "oklch(45% 0.19 260)",
+          "oklch(55% 0.19 260)",
+          "oklch(65% 0.19 260)",
+          "oklch(75% 0.19 260)",
+          "oklch(85% 0.19 260)"
+        ]
+      },
+      "series-soil": {
+        "role": "secondary",
+        "displayName": "Soil-series Teal",
+        "canonical": "#0d8285",
+        "tonalRamp": [
+          "oklch(15% 0.10 190)",
+          "oklch(25% 0.10 190)",
+          "oklch(35% 0.10 190)",
+          "oklch(45% 0.10 190)",
+          "oklch(55% 0.10 190)",
+          "oklch(65% 0.10 190)",
+          "oklch(75% 0.10 190)",
+          "oklch(85% 0.10 190)"
+        ]
+      },
+      "cover-ink": {
+        "role": "neutral",
+        "displayName": "Cover White",
+        "canonical": "#fffaf0",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(25% 0 0)",
+          "oklch(35% 0 0)",
+          "oklch(45% 0 0)",
+          "oklch(55% 0 0)",
+          "oklch(65% 0 0)",
+          "oklch(75% 0 0)",
+          "oklch(85% 0 0)"
+        ]
+      },
+      "cover-coordinate": {
+        "role": "neutral",
+        "displayName": "Cover Coordinate",
+        "canonical": "#ece5d2",
+        "tonalRamp": [
+          "oklch(15% 0.03 90)",
+          "oklch(25% 0.03 90)",
+          "oklch(35% 0.03 90)",
+          "oklch(45% 0.03 90)",
+          "oklch(55% 0.03 90)",
+          "oklch(65% 0.03 90)",
+          "oklch(75% 0.03 90)",
+          "oklch(85% 0.03 90)"
+        ]
+      },
+      "cover-supporting": {
+        "role": "neutral",
+        "displayName": "Cover Supporting Text",
+        "canonical": "#f0ebdd",
+        "tonalRamp": [
+          "oklch(15% 0.02 90)",
+          "oklch(25% 0.02 90)",
+          "oklch(35% 0.02 90)",
+          "oklch(45% 0.02 90)",
+          "oklch(55% 0.02 90)",
+          "oklch(65% 0.02 90)",
+          "oklch(75% 0.02 90)",
+          "oklch(85% 0.02 90)"
+        ]
+      },
+      "cover-rule": {
+        "role": "neutral",
+        "displayName": "Cover Rule",
+        "canonical": "#afa994",
+        "tonalRamp": [
+          "oklch(15% 0.02 90)",
+          "oklch(25% 0.02 90)",
+          "oklch(35% 0.02 90)",
+          "oklch(45% 0.02 90)",
+          "oklch(55% 0.02 90)",
+          "oklch(65% 0.02 90)",
+          "oklch(75% 0.02 90)",
+          "oklch(85% 0.02 90)"
+        ]
+      },
+      "diagram-night": {
+        "role": "neutral",
+        "displayName": "Connected Night",
+        "canonical": "#142924",
+        "tonalRamp": [
+          "oklch(15% 0.04 175)",
+          "oklch(25% 0.04 175)",
+          "oklch(35% 0.04 175)",
+          "oklch(45% 0.04 175)",
+          "oklch(55% 0.04 175)",
+          "oklch(65% 0.04 175)",
+          "oklch(75% 0.04 175)",
+          "oklch(85% 0.04 175)"
+        ]
+      },
+      "diagram-paper": {
+        "role": "neutral",
+        "displayName": "Diagram Paper",
+        "canonical": "#f5f1e6",
+        "tonalRamp": [
+          "oklch(15% 0.02 90)",
+          "oklch(25% 0.02 90)",
+          "oklch(35% 0.02 90)",
+          "oklch(45% 0.02 90)",
+          "oklch(55% 0.02 90)",
+          "oklch(65% 0.02 90)",
+          "oklch(75% 0.02 90)",
+          "oklch(85% 0.02 90)"
+        ]
+      },
+      "diagram-muted": {
+        "role": "neutral",
+        "displayName": "Diagram Muted",
+        "canonical": "#c0cec7",
+        "tonalRamp": [
+          "oklch(15% 0.02 160)",
+          "oklch(25% 0.02 160)",
+          "oklch(35% 0.02 160)",
+          "oklch(45% 0.02 160)",
+          "oklch(55% 0.02 160)",
+          "oklch(65% 0.02 160)",
+          "oklch(75% 0.02 160)",
+          "oklch(85% 0.02 160)"
+        ]
+      },
+      "diagram-line": {
+        "role": "neutral",
+        "displayName": "Diagram Line",
+        "canonical": "#779a8c",
+        "tonalRamp": [
+          "oklch(15% 0.05 155)",
+          "oklch(25% 0.05 155)",
+          "oklch(35% 0.05 155)",
+          "oklch(45% 0.05 155)",
+          "oklch(55% 0.05 155)",
+          "oklch(65% 0.05 155)",
+          "oklch(75% 0.05 155)",
+          "oklch(85% 0.05 155)"
+        ]
+      },
+      "diagram-accent": {
+        "role": "secondary",
+        "displayName": "Diagram Mist",
+        "canonical": "#a5d2c3",
+        "tonalRamp": [
+          "oklch(15% 0.06 165)",
+          "oklch(25% 0.06 165)",
+          "oklch(35% 0.06 165)",
+          "oklch(45% 0.06 165)",
+          "oklch(55% 0.06 165)",
+          "oklch(65% 0.06 165)",
+          "oklch(75% 0.06 165)",
+          "oklch(85% 0.06 165)"
+        ]
+      },
+      "stream-connected": {
+        "role": "tertiary",
+        "displayName": "Connected Signal Red",
+        "canonical": "#bc352c",
+        "tonalRamp": [
+          "oklch(15% 0.17 25)",
+          "oklch(25% 0.17 25)",
+          "oklch(35% 0.17 25)",
+          "oklch(45% 0.17 25)",
+          "oklch(55% 0.17 25)",
+          "oklch(65% 0.17 25)",
+          "oklch(75% 0.17 25)",
+          "oklch(85% 0.17 25)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Newsreader Display",
+        "purpose": "Place-led Home cover and chapter headings."
+      },
+      "headline": {
+        "displayName": "Newsreader Headline",
+        "purpose": "Numbered story chapters."
+      },
+      "title": {
+        "displayName": "Be Vietnam Pro Title",
+        "purpose": "Compact route and report titles."
+      },
+      "body": {
+        "displayName": "Be Vietnam Pro Body",
+        "purpose": "Interface and explanatory copy."
+      },
+      "label": {
+        "displayName": "Roboto Mono Label",
+        "purpose": "Station codes, timestamps, and measurement values."
+      }
+    },
+    "shadows": [
+      {
+        "name": "xs",
+        "value": "0 1px 1px rgb(19 29 27 / 0.03)",
+        "purpose": "Barely lifted shared surface edge."
+      },
+      {
+        "name": "sm",
+        "value": "0 1px 2px rgb(19 29 27 / 0.04)",
+        "purpose": "Low component separation."
+      },
+      {
+        "name": "md",
+        "value": "0 2px 6px rgb(19 29 27 / 0.05)",
+        "purpose": "Moderate shared surface separation."
+      },
+      {
+        "name": "lg",
+        "value": "0 4px 12px rgb(19 29 27 / 0.06)",
+        "purpose": "Highest shared light-theme shadow."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-standard",
+        "value": "cubic-bezier(0.2, 0, 0, 1)",
+        "purpose": "Standard interface and layout transitions."
+      },
+      {
+        "name": "ease-brand",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Section reveals and larger object movement."
+      },
+      {
+        "name": "motion-base",
+        "value": "190ms",
+        "purpose": "Default shared control response."
+      },
+      {
+        "name": "motion-reveal",
+        "value": "620ms",
+        "purpose": "Section reveal, suppressed for reduced motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Filled primary action with a visible keyboard focus ring.",
+      "html": "<button class=\"ds-button-primary\">Open observatory</button>",
+      "css": ".ds-button-primary { min-height: 44px; padding: 8px 20px; border: 0; border-radius: var(--radius-xl); background: var(--h-brand-blue); color: var(--h-canvas); font: 500 14px/1.2 var(--font-interface, 'Segoe UI', system-ui, sans-serif); white-space: nowrap; transition: background-color var(--motion-base, 190ms) var(--ease-standard, ease); } .ds-button-primary:hover { background-color: color-mix(in srgb, var(--h-brand-blue) 90%, transparent); } .ds-button-primary:focus-visible { outline: 2px solid var(--h-brand-blue); outline-offset: 2px; } .ds-button-primary:active { filter: brightness(.94); } .ds-button-primary:disabled { opacity: .5; pointer-events: none; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary action with a light rule and a shared focus ring.",
+      "html": "<button class=\"ds-button-outline\">View details</button>",
+      "css": ".ds-button-outline { min-height: 44px; padding: 8px 20px; border: 1px solid var(--h-border); border-radius: var(--radius-xl); background: transparent; color: var(--h-foreground); font: 500 14px/1.2 var(--font-interface, 'Segoe UI', system-ui, sans-serif); transition: background-color var(--motion-base, 190ms) var(--ease-standard, ease); } .ds-button-outline:hover { background: var(--h-wash-hover); } .ds-button-outline:focus-visible { outline: 2px solid var(--h-brand-blue); outline-offset: 2px; } .ds-button-outline:active { background: var(--h-wash-active); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Quieter action with no resting surface.",
+      "html": "<button class=\"ds-button-ghost\">Cancel</button>",
+      "css": ".ds-button-ghost { min-height: 44px; padding: 8px 20px; border: 0; border-radius: var(--radius-xl); background: transparent; color: var(--h-foreground-muted); font: 500 14px/1.2 var(--font-interface, 'Segoe UI', system-ui, sans-serif); transition: background-color var(--motion-base, 190ms) var(--ease-standard, ease); } .ds-button-ghost:hover { background: var(--h-wash-hover); color: var(--h-foreground); } .ds-button-ghost:focus-visible { outline: 2px solid var(--h-brand-blue); outline-offset: 2px; } .ds-button-ghost:active { background: var(--h-wash-active); }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Full-width paper field with shared rounded shape and keyboard focus.",
+      "html": "<label class=\"ds-field-label\">Location<input class=\"ds-input\" placeholder=\"Choose a station\" /></label>",
+      "css": ".ds-field-label { display: grid; gap: 6px; color: var(--h-foreground); font: 500 14px/1.4 var(--font-interface, 'Segoe UI', system-ui, sans-serif); } .ds-input { width: 100%; min-height: 44px; padding: 8px 16px; border: 1px solid var(--h-border); border-radius: var(--radius-xl); background: var(--h-canvas); color: var(--h-foreground); font: 400 16px/1.4 var(--font-interface, 'Segoe UI', system-ui, sans-serif); } .ds-input::placeholder { color: var(--h-foreground-muted); } .ds-input:focus-visible { outline: 2px solid var(--h-brand-blue); outline-offset: 2px; } .ds-input:disabled { opacity: .55; }"
+    },
+    {
+      "name": "Active Header Link",
+      "kind": "nav",
+      "description": "Compact route link with an underline for the current location.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Primary\"><a class=\"ds-nav-link ds-nav-active\" href=\"#\" aria-current=\"page\">Home</a></nav>",
+      "css": ".ds-nav { display: flex; gap: 4px; } .ds-nav-link { position: relative; display: inline-flex; min-height: 44px; align-items: center; padding: 8px 12px; color: var(--h-foreground-muted); font: 500 14px/1.2 var(--font-interface, 'Segoe UI', system-ui, sans-serif); text-decoration: none; transition: color var(--motion-base, 190ms) var(--ease-standard, ease), background-color var(--motion-base, 190ms) var(--ease-standard, ease); } .ds-nav-link:hover { background: var(--h-wash-hover); color: var(--h-foreground); } .ds-nav-link:focus-visible { outline: 2px solid var(--h-brand-blue); outline-offset: 2px; } .ds-nav-active { color: var(--h-brand-blue); } .ds-nav-active::after { position: absolute; right: 12px; bottom: 5px; left: 12px; height: 2px; background: currentColor; content: ''; }"
+    },
+    {
+      "name": "Status Label",
+      "kind": "chip",
+      "refersTo": "status-chip-warning",
+      "description": "Compact semantic label for an unverified or warning state.",
+      "html": "<span class=\"ds-status\">Unverified reference</span>",
+      "css": ".ds-status { display: inline-flex; min-height: 24px; align-items: center; padding: 3px 8px; border: 1px solid color-mix(in srgb, var(--h-warning) 32%, transparent); border-radius: var(--radius-xs); background: var(--h-warning-bg); color: var(--h-warning); font: 600 11px/1.3 var(--font-interface, 'Segoe UI', system-ui, sans-serif); }"
+    },
+    {
+      "name": "Cover Title Rows",
+      "kind": "custom",
+      "description": "Place-led cover with exactly two intentional title lines and one action.",
+      "html": "<section class=\"ds-cover\"><p class=\"ds-cover-place\">CỒN HÔ · VĨNH LONG</p><h1><span>This is Cồn Hô.</span><span>This is HORIZON.</span></h1><p class=\"ds-cover-copy\">Three field points record water, soil, and the data link at Cồn Hô.</p><a class=\"ds-cover-action\" href=\"#observatory\">View the monitoring network →</a></section>",
+      "css": ".ds-cover { min-height: 360px; padding: 48px 32px 24px; background: linear-gradient(90deg, rgba(12,29,26,.83), rgba(12,29,26,.48) 45%, rgba(12,29,26,.04) 85%), linear-gradient(0deg, rgba(12,29,26,.3), transparent 60%); color: #fffaf0; } .ds-cover-place { margin-bottom: 24px; color: #ece5d2; font: 11px/1.5 var(--font-data, ui-monospace, monospace); letter-spacing: .08em; } .ds-cover h1 { font: 450 clamp(48px, 7.5vw, 96px)/1.08 var(--font-editorial, Georgia, serif); letter-spacing: -.025em; } .ds-cover h1 span { display: block; white-space: nowrap; } .ds-cover-copy { max-width: 42ch; margin-top: 28px; color: #f0ebdd; font: 400 16px/1.65 var(--font-interface, 'Segoe UI', system-ui, sans-serif); } .ds-cover-action { display: inline-flex; min-height: 44px; align-items: center; margin-top: 20px; border-bottom: 1px solid #afa994; color: #fffaf0; font: 400 14px/1.4 var(--font-interface, 'Segoe UI', system-ui, sans-serif); text-decoration: none; } .ds-cover-action:hover { text-decoration: underline; } .ds-cover-action:focus-visible { outline: 2px solid var(--h-brand-blue); outline-offset: 4px; } @media (max-width: 767px) { .ds-cover { padding: 56px 20px 20px; } .ds-cover h1 { font-size: clamp(32px, 8.4vw, 61px); } }"
+    },
+    {
+      "name": "Station Register",
+      "kind": "custom",
+      "description": "Geography-linked station selection for the Observatory instrument.",
+      "html": "<ol class=\"ds-station-register\"><li><button aria-pressed=\"true\"><code>STATION_01</code><span>Freshness label</span></button></li></ol>",
+      "css": ".ds-station-register { margin: 20px 0 0; padding: 0; list-style: none; } .ds-station-register button { display: flex; width: 100%; min-height: 88px; flex-direction: column; align-items: flex-start; justify-content: center; gap: 8px; padding: 16px; border-top: 1px solid var(--h-border); color: var(--h-foreground); text-align: left; } .ds-station-register button[aria-pressed=true] { background: var(--h-selection-surface); } .ds-station-register code { color: var(--h-brand-blue); font: 500 11px/1.5 var(--font-data, ui-monospace, monospace); } .ds-station-register button:focus-visible { outline: 2px solid var(--h-brand-blue); outline-offset: 2px; }"
+    },
+    {
+      "name": "Station Instrument Reading",
+      "kind": "custom",
+      "description": "Selected station value with unit and available provenance context.",
+      "html": "<dl class=\"ds-reading\"><dt>Water level</dt><dd>— <small>cm</small></dd><p>Unavailable · no value recorded</p></dl>",
+      "css": ".ds-reading { min-width: 0; padding: 20px 0; border-block: 1px solid var(--h-border-strong); } .ds-reading dt { color: var(--h-foreground-muted); font: 400 12px/1.4 var(--font-interface, 'Segoe UI', system-ui, sans-serif); } .ds-reading dd { display: flex; align-items: baseline; gap: 8px; margin-top: 8px; color: var(--h-foreground); font: 400 clamp(44px, 6vw, 80px)/1.25 var(--font-data, ui-monospace, monospace); } .ds-reading small { font-size: 13px; } .ds-reading p { margin-top: 8px; color: var(--h-foreground-muted); font: 400 11px/1.5 var(--font-data, ui-monospace, monospace); }"
+    },
+    {
+      "name": "Operations Selector",
+      "kind": "input",
+      "description": "Touch-sized mobile selector for every Admin workflow section.",
+      "html": "<label class=\"ds-operations-label\">Operations section<select class=\"ds-operations-select\"><option>Network overview</option><option>Reports</option></select></label>",
+      "css": ".ds-operations-label { display: grid; gap: 6px; color: var(--h-foreground-muted); font: 500 12px/1.4 var(--font-interface, 'Segoe UI', system-ui, sans-serif); } .ds-operations-select { width: 100%; min-height: 44px; padding: 8px; border: 1px solid var(--h-border); border-radius: 2px; background: var(--h-canvas); color: var(--h-foreground); font: 400 14px/1.4 var(--font-interface, 'Segoe UI', system-ui, sans-serif); } .ds-operations-select:focus-visible { outline: 2px solid var(--h-brand-blue); outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Cồn Hô Field Atlas",
+    "overview": "HORIZON is grounded in the real field system at Cồn Hô: its geography, commissioned illustration and documentary media, sensor stations, gateway, and observations. Keep the existing project identity. The cover can carry the creative expression; the working tools favor quiet surfaces, aligned edges, and legible records.\n\nThe home story connects place, hardware, geography, the data path, agricultural questions, and community reports. The Observatory behaves like a station-scoped scientific instrument, the Report flow like a progressive field notebook, and Admin like a compact operations console. Use the same warm canvas, editorial and interface type, station identifiers, and data provenance across these distinct tasks.",
+    "keyCharacteristics": [
+      "Quiet warm canvas with documentary media and a two-row Cồn Hô cover.",
+      "Connected engineering path shown as a dark, numbered diagram.",
+      "Observatory measurements and trend follow the selected station.",
+      "Report evidence and administrative navigation are designed for task completion on phones and desktop."
+    ],
+    "rules": [
+      {
+        "name": "The Brand Is Not Data Rule",
+        "body": "HORIZON green and orange identify the mark; status and chart colors encode their own meanings.",
+        "section": "colors"
+      },
+      {
+        "name": "The Surface Contrast Rule",
+        "body": "Keep cover and diagram tones on those specific surfaces. Do not use them as generic status colors.",
+        "section": "colors"
+      },
+      {
+        "name": "The Three Registers Rule",
+        "body": "Use Newsreader for editorial titles, Be Vietnam Pro for prose and controls, and Roboto Mono for identifiers and readings.",
+        "section": "typography"
+      },
+      {
+        "name": "The Diagram Carries the Grid Rule",
+        "body": "Keep the global canvas quiet; geography and the connected diagram provide the spatial structure.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use the existing Cồn Hô illustration, commissioned media, equipment photographs, and geography as the source of the visual story.",
+      "Do keep the cover title to its two authored rows and lead with place, context, and Observatory action.",
+      "Do preserve station identity: `STATION_01` water, `STATION_02` soil and microclimate, `STATION_03` gateway location/role, and `GATEWAY_01` the technical gateway.",
+      "Do keep each Observatory reading tied to its selected station and preserve source, time, freshness, and quality when provided.",
+      "Do keep demo readings explicitly marked and external context attributed separately from HORIZON telemetry.",
+      "Do keep location, observation, and evidence visible together on one report page, with the existing three-file combined media limit.",
+      "Do retain visible focus, responsive navigation, and outdoor touch targets."
+    ],
+    "donts": [
+      "Don't add station counts or a second system register to the cover.",
+      "Don't invent measurements, status, thresholds, recommendations, field validation, or device acknowledgements.",
+      "Don't treat missing data as zero, external weather as HORIZON telemetry, EC as salinity, or bulk soil EC as ECe.",
+      "Don't imply that stored configuration or calibration records prove device receipt, calibration, or execution.",
+      "Don't let the connected stream dot read as a device-health indicator.",
+      "Don't add a decorative global grid; keep spatial geometry in maps and the connected data path."
+    ]
+  }
+}

@@ -1,0 +1,162 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { ingestTelemetry, MockDb } from '../src/index.js';
+import type { IngestConfig } from '../src/ingest.js';
+import type { TelemetryPayloadV1 } from '../src/types.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, '..', '..', '..');
+const webMockDir = path.join(repoRoot, 'apps', 'web', 'mock');
+
+const stations = [
+  { id: 'STATION_01', name: 'Con Ho Water', lat: 10.073972, lng: 106.250417, status: 'active' as const, secret: 'station-secret-01' },
+  { id: 'STATION_02', name: 'Con Ho Soil', lat: 10.072444, lng: 106.253056, status: 'active' as const, secret: 'station-secret-02' },
+  { id: 'STATION_03', name: 'Con Ho Gateway', lat: 10.071, lng: 106.254167, status: 'active' as const, secret: 'station-secret-03' },
+];
+
+const deviceSecrets = Object.fromEntries(stations.map((station) => [station.id, station.secret]));
+// STATION_03 is the mapped gateway location, not a water telemetry source.
+const telemetryStations = stations.filter((station) => station.id !== 'STATION_03');
+const otaCatalog = {
+  STATION_01: { update_available: true, target_version: '1.0.3', binary_url: 'https://example.com/ota/station-01.bin', sha256: 'mock', size_bytes: 1432200 },
+  STATION_02: { update_available: false },
+  STATION_03: { update_available: false },
+};
+
+const config: IngestConfig = {
+  allowedContractVersion: 'v1',
+  maxTimestampDriftSeconds: 300,
+  gatewayIngestToken: 'gateway-token-01',
+};
+
+function round(value: number, digits = 2) {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function generatePayload(stationIndex: number, now: number): TelemetryPayloadV1 {
+  const station = stations[stationIndex];
+  const drift = Math.sin((stationIndex + now / 5000) * 0.9);
+  const salinity = round(1.02 + stationIndex * 0.18 + drift * 0.08, 2);
+  const waterLevel = round(54 - stationIndex * 1.8 + drift * 2.2, 1);
+  const battery = round(3.98 - stationIndex * 0.09, 2);
+  const signal = -82 - stationIndex * 4;
+
+  if (station.id === 'STATION_02') {
+    return {
+      contract_version: 'v1',
+      reading_kind: 'soil',
+      device_id: station.id,
+      message_id: `${station.id}-${now}`,
+      timestamp: now,
+      fault_flags: 0,
+      soil: {
+        air_temp_c: round(29 + drift, 1),
+        air_humidity_pct: round(75 + drift * 4, 1),
+        soil_temp_c: round(28 + drift, 1),
+        soil_moisture_pct: round(43 + drift * 2, 1),
+        soil_ec_ms_cm: round(0.11 + drift * 0.01, 3),
+        soil_ph: round(6.8 + drift * 0.1, 1),
+      },
+      battery_voltage: battery,
+      signal_strength_dbm: signal,
+      firmware_version: 'simulator-soil-v1',
+    };
+  }
+
+  return {
+    contract_version: 'v1',
+    device_id: station.id,
+    message_id: `${station.id}-${now}`,
+    timestamp: now,
+    salinity,
+    water_level: waterLevel,
+    fault_flags: 0,
+    sensor_status: { ec_probe: 'ok', ultrasonic: 'ok' },
+    battery_voltage: battery,
+    signal_strength_dbm: signal,
+    firmware_version: '1.0.2',
+    temperature_c: 29 + stationIndex * 0.5,
+  };
+}
+
+async function writeMockFiles(db: MockDb) {
+  await mkdir(webMockDir, { recursive: true });
+  const snapshot = db.getSnapshot();
+
+  const latestReadings = snapshot.environmentalReadings.map((reading) => ({
+    station_id: reading.station_id,
+    timestamp: new Date(reading.timestamp * 1000).toISOString(),
+    salinity: reading.salinity,
+    water_level: reading.water_level,
+    fault_flags: reading.fault_flags,
+    sensor_status: {
+      ec_probe: reading.ec_probe_status,
+      ultrasonic: reading.ultrasonic_status,
+    },
+    battery_voltage: snapshot.healthLogs.find((health) => health.station_id === reading.station_id)?.battery_voltage ?? null,
+    signal_strength_dbm: snapshot.healthLogs.find((health) => health.station_id === reading.station_id)?.signal_strength_dbm ?? null,
+  }));
+
+  const alerts = snapshot.environmentalEvents.map((event) => ({
+    station_id: event.station_id,
+    severity: event.severity,
+    title: event.event_type === 'HIGH_SALINITY' ? 'Salinity warning' : event.event_type === 'LOW_BATTERY' ? 'Battery warning' : 'Sensor fault',
+    message: event.event_type === 'HIGH_SALINITY'
+      ? `Salinity crossed the alert threshold at station ${event.station_id}.`
+      : event.event_type === 'LOW_BATTERY'
+        ? `Battery is below the safe operating window at station ${event.station_id}.`
+        : `Sensor fault requires field inspection at station ${event.station_id}.`,
+  }));
+
+  await writeFile(path.join(webMockDir, 'stations.json'), JSON.stringify(stations.map(({ secret, ...station }) => station), null, 2));
+  await writeFile(path.join(webMockDir, 'latest_readings.json'), JSON.stringify(latestReadings, null, 2));
+  await writeFile(path.join(webMockDir, 'alerts.json'), JSON.stringify(alerts, null, 2));
+}
+
+async function runBatch() {
+  const now = Math.floor(Date.now() / 1000);
+  const db = new MockDb(deviceSecrets, otaCatalog);
+  const responses = [] as unknown[];
+
+  for (let index = 0; index < telemetryStations.length; index += 1) {
+    const payload = generatePayload(index, now + index);
+    const response = await ingestTelemetry(
+      {
+        headers: {
+          'x-gateway-token': 'gateway-token-01',
+          'x-contract-version': payload.contract_version,
+        },
+        payload,
+      },
+      db,
+      config,
+      now + index,
+    );
+    responses.push({ station_id: payload.device_id, response });
+  }
+
+  await writeMockFiles(db);
+
+  console.log(JSON.stringify({ generated_at: new Date().toISOString(), responses, snapshot: db.getSnapshot() }, null, 2));
+}
+
+async function main() {
+  const continuous = process.env.SIMULATOR_CONTINUOUS === '1';
+  const intervalMs = Number(process.env.SIMULATOR_INTERVAL_MS || '30000');
+
+  do {
+    await runBatch();
+    if (!continuous) {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  } while (continuous);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

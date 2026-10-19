@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 560" width="800" height="560" role="img" aria-label="Sơ đồ minh họa trạm đo nước">
+  <defs>
+    <pattern id="hwdots1" width="20" height="20" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1" fill="rgba(19,29,27,0.09)" />
+    </pattern>
+  </defs>
+  <rect width="800" height="560" fill="#f0ece1" />
+  <rect width="800" height="560" fill="url(#hwdots1)" />
+
+  <!-- post -->
+  <rect x="392" y="120" width="10" height="300" fill="rgba(19,29,27,0.32)" />
+  <!-- enclosure -->
+  <rect x="330" y="120" width="134" height="96" rx="8" fill="#fffdf8" stroke="#0c5f7d" stroke-opacity="0.45" stroke-width="2.5" />
+  <text x="397" y="163" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="15" fill="rgba(19,29,27,0.55)">ESP32</text>
+  <text x="397" y="188" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="rgba(19,29,27,0.38)">TRẠM 1</text>
+
+  <!-- ultrasonic sensor pointing down -->
+  <rect x="372" y="240" width="50" height="26" rx="4" fill="#fffdf8" stroke="#0c5f7d" stroke-opacity="0.45" stroke-width="2" />
+  <g stroke="#0c5f7d" stroke-opacity="0.30" stroke-width="2" fill="none">
+    <path d="M382 280 Q397 292 412 280" />
+    <path d="M375 296 Q397 314 419 296" />
+    <path d="M368 312 Q397 336 426 312" />
+  </g>
+  <text x="470" y="258" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="rgba(19,29,27,0.45)">A02YYUW · mực nước</text>
+
+  <!-- water line -->
+  <path d="M0 400 C 140 388, 260 412, 400 400 S 660 388, 800 400" fill="none" stroke="#0c5f7d" stroke-opacity="0.40" stroke-width="2.5" />
+  <rect y="400" width="800" height="160" fill="#0c5f7d" fill-opacity="0.06" />
+
+  <!-- EC probe submerged -->
+  <rect x="386" y="400" width="22" height="70" rx="4" fill="#fffdf8" stroke="#0c5f7d" stroke-opacity="0.45" stroke-width="2" />
+  <text x="430" y="452" font-family="ui-monospace, Menlo, monospace" font-size="12" fill="rgba(19,29,27,0.45)">ES-EC-WT-01 · độ mặn</text>
+
+  <text x="32" y="524" font-family="ui-monospace, Menlo, monospace" font-size="16" letter-spacing="3" fill="rgba(19,29,27,0.40)">SƠ ĐỒ MINH HỌA · PLACEHOLDER</text>
+</svg>

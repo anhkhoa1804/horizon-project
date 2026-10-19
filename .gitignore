@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+**/.env.supabase
+
+# Build / generated output
+**/coverage/
+**/dist/
+**/.next/
+**/.supabase/
+supabase/.temp/
+**/infra/supabase/.temp/
+**/firmware/**/.pio/
+firmware/**/build/
+.tmp/platformio/
+.tmp/platformio-core/
+
+# TypeScript generated state
+*.tsbuildinfo
+
+# OS / logs
+.DS_Store
+Thumbs.db
+*.log
+
+# Claude local workspace
+.claude/
+
+# Archived documentation
+docs/archive/*
+!docs/archive/HORIZON_AUDIT_REPORT.md
+# Firmware per-deployment secrets (see gateway_secrets.example.h)
+firmware/**/gateway_secrets.h
+
+firmware/**/station_01_config_secrets.h
+firmware/**/station_02_config_secrets.h
+firmware/esp32-node/build_entries/generated/

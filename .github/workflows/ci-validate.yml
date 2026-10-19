@@ -1,0 +1,73 @@
+name: CI Validate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('firmware/esp32-node/platformio.ini') }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install pinned PlatformIO Core
+        run: python -m pip install platformio==6.1.18
+
+      - name: Build ESP32 gateway target
+        run: npm run firmware:build:gateway
+
+      - name: Build ESP32 station 01 target
+        run: npm run firmware:build:station1
+
+      - name: Build ESP32 station 02 target
+        run: npm run firmware:build:station2
+
+      - name: Validate migration naming
+        run: npm run db:validate-migrations
+
+      - name: Verify deploy credential diagnostics
+        run: npm run test:deploy-credentials
+
+      - name: Typecheck edge-ingestion
+        run: npm run check -w @eco-sense/edge-ingestion
+
+      - name: Typecheck web
+        run: npm run check -w @eco-sense/web
+
+      - name: Lint web
+        run: npm run lint
+
+      - name: Ingestion contract tests
+        run: npm run test -w @eco-sense/edge-ingestion
+
+      - name: Web unit tests
+        run: npm run test:web
+
+      - name: Build edge bundle
+        run: npm run build:edge
+
+      - name: Build Next.js PWA
+        run: npm run build -w @eco-sense/web
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key

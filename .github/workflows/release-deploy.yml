@@ -1,0 +1,60 @@
+name: Release Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply migrations
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_POOLER_URL: ${{ secrets.DATABASE_POOLER_URL }}
+
+      - name: Push edge secrets
+        run: npm run push-secrets -w @eco-sense/supabase-infra
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MAX_TIMESTAMP_DRIFT_SECONDS: ${{ secrets.MAX_TIMESTAMP_DRIFT_SECONDS }}
+          DEFAULT_CONTRACT_VERSION: v1
+          SALINITY_WARNING_LEVEL: ${{ secrets.SALINITY_WARNING_LEVEL }}
+          SALINITY_CRITICAL_LEVEL: ${{ secrets.SALINITY_CRITICAL_LEVEL }}
+          LOW_BATTERY_VOLTAGE: ${{ secrets.LOW_BATTERY_VOLTAGE }}
+          LOW_SIGNAL_STRENGTH_DBM: ${{ secrets.LOW_SIGNAL_STRENGTH_DBM }}
+
+      - name: Build edge bundle
+        run: npm run build:edge
+
+      - name: Deploy edge-ingest
+        run: npx supabase functions deploy edge-ingest --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" --no-verify-jwt
+        working-directory: infra/supabase
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Post-deploy integration tests
+        run: npm run test:integration
+        env:
+          LIVE_SUPABASE_INTEGRATION: "1"
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          EDGE_INGEST_URL: ${{ secrets.EDGE_INGEST_URL }}

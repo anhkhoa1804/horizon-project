@@ -1,0 +1,21 @@
+{
+  "latest": {
+    "gateway_id": "GATEWAY_01",
+    "station_id": "STATION_01",
+    "message_id": "temp-1",
+    "timestamp": 1235,
+    "air_temp_c": 32.5,
+    "soil_temp_c": 32.5,
+    "air_humidity_pct": 66,
+    "receivedAt": "2026-09-02T11:19:20.347Z",
+    "summary": {
+      "station_id": "STATION_01",
+      "gateway_id": "GATEWAY_01",
+      "message_id": "temp-1",
+      "air_temp_c": 32.5,
+      "soil_temp_c": 32.5,
+      "air_humidity_pct": 66,
+      "timestamp": 1235
+    }
+  }
+}

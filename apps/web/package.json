@@ -1,0 +1,47 @@
+{
+  "name": "@eco-sense/web",
+  "private": true,
+  "version": "0.2.0",
+  "scripts": {
+    "dev": "next dev --port 4173",
+    "build": "next build",
+    "start": "next start --port 4173",
+    "lint": "next lint",
+    "check": "tsc --noEmit && tsc --noEmit -p tsconfig.testcheck.json",
+    "test": "tsx --conditions=react-server --test tests/repositoryScope.test.ts tests/soilReadingRepository.test.ts tests/soilTrendRepository.test.ts tests/dailySoilTrendRepository.test.ts tests/stationDetailSoil.test.ts tests/reportPersistence.test.ts tests/reportMedia.test.ts tests/loginRateLimit.test.ts tests/i18n.test.ts tests/stationLinks.test.ts tests/externalWeather.test.ts tests/signalGroups.test.ts tests/noHardcodedVietnamese.test.ts tests/singleBackground.test.ts tests/metricStatus.test.ts tests/observatoryComposition.test.ts tests/sourceHygiene.test.ts tests/adminAuthConfig.test.ts tests/reportRateLimit.test.ts tests/secretBoundary.test.ts tests/safeRedirect.test.ts tests/seedSecrets.test.ts tests/supabaseEnvNames.test.ts tests/gatewayIngestAuth.test.ts tests/gatewayPromotion.test.ts tests/adminOperations.test.ts tests/adminFreshnessTruth.test.ts tests/telemetryReadback.integration.test.ts tests/adminMutations.integration.test.ts tests/thresholdRegistry.test.ts tests/partialWaterReadings.test.ts tests/runtimeControlAudit.test.ts tests/remoteConfiguration.test.ts",
+    "pretest": "node ../../scripts/generate-remote-config.mjs --check && node ../../scripts/build-remote-config-host.mjs"
+  },
+  "dependencies": {
+    "@radix-ui/react-label": "^2.1.7",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@supabase/ssr": "^0.6.1",
+    "@supabase/supabase-js": "^2.49.8",
+    "@tanstack/react-query": "^5.80.7",
+    "@vercel/analytics": "^1.6.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.513.0",
+    "next": "^15.3.3",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "recharts": "^2.15.3",
+    "server-only": "^0.0.1",
+    "tailwind-merge": "^3.3.0"
+  },
+  "devDependencies": {
+    "@ducanh2912/next-pwa": "^10.2.9",
+    "@electric-sql/pglite": "^0.5.8",
+    "@tailwindcss/postcss": "^4.1.8",
+    "@types/leaflet": "^1.9.22",
+    "@types/node": "^22.15.29",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^15.5.19",
+    "playwright": "^1.63.0",
+    "tailwindcss": "^4.1.8",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}

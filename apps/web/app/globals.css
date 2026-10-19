@@ -1,0 +1,2297 @@
+@import "tailwindcss";
+
+/* ===========================================================================
+ * HORIZON — BRAND SYSTEM
+ * ===========================================================================
+ *
+ * One visual grammar, inherited by every page. The order of this file is the
+ * order of the system:
+ *
+ *   BRAND → CANVAS → TEXT → BORDER → DATA → ATMOSPHERE → TYPE → LAYOUT →
+ *   MOTION → COMPONENTS
+ *
+ * Every colour is a raw `--h-*` value declared three times:
+ *   1. `:root`                                → light (the default)
+ *   2. `@media (prefers-color-scheme: dark)`  → system dark, guarded by
+ *      `:not([data-theme="light"])`              so an explicit light choice wins
+ *   3. `:root[data-theme="dark"]`             → explicit dark choice wins
+ *
+ * Nothing below the palette blocks may hardcode a hex, and no component may
+ * invent an opacity: the wash tokens exist so `white/5`-style guesses never
+ * reappear.
+ * ======================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* ---------------------------------------------------------------- BRAND
+   * Sampled from logo.png's actual pixels. Green and orange ARE HORIZON —
+   * they carry identity, never data state. Blue is the interactive voice
+   * (links, controls, focus); it is deliberately teal-leaning rather than a
+   * default SaaS blue, so it sits beside the green without arguing with it.
+   */
+  --h-brand-green: #2c9e57;
+  --h-brand-orange: #f28c00;
+  --h-brand-blue: #0c5f7d;
+
+  /* --------------------------------------------------------------- CANVAS
+   * Warm paper, not grey. The reference is a field notebook / map sheet:
+   * pigment on stock, with the recessed step slightly *warmer* rather than
+   * simply darker.
+   */
+  --h-canvas: #fbfaf6;
+  --h-canvas-subtle: #f0ece1;
+  --h-canvas-elevated: #fbf9f4;
+  --h-surface: #ffffff;
+  --h-surface-raised: #ffffff;
+
+  /* ----------------------------------------------------------------- TEXT
+   * Near-black carries a green cast so type belongs to the same family as
+   * the brand mark instead of reading as pure neutral ink.
+   */
+  --h-foreground: #131d1b;
+  --h-foreground-muted: #55635f;
+  --h-foreground-subtle: #626e69;
+
+  /* --------------------------------------------------------------- BORDER */
+  --h-border: rgba(19, 29, 27, 0.18);
+  --h-border-strong: rgba(19, 29, 27, 0.2);
+  --h-border-accent: rgba(12, 95, 125, 0.42);
+
+  /* ----------------------------------------------------------------- DATA
+   * The environmental status vocabulary. Semantic only — never brand, never
+   * decoration. `safe/warning/danger/informational` are the system-level
+   * names; the legacy healthy/watch/risk aliases below keep existing
+   * components compiling against the same values.
+   */
+  --h-safe: #197a3f;
+  --h-safe-bg: rgba(25, 122, 63, 0.09);
+  /* Darkened from #a35f00, which gave the 10px "Chưa xác minh" provenance
+   * badge only 4.07:1 on its own 9% tint — below the 4.5:1 that text this
+   * small requires. #8f5300 is the same amber at 5.01:1 on the chip and
+   * 5.61:1 on bare canvas. The dark-mode amber already passed, so only the
+   * light value moves. */
+  --h-warning: #8f5300;
+  --h-warning-bg: rgba(143, 83, 0, 0.09);
+  --h-danger: #b02318;
+  --h-danger-bg: rgba(176, 35, 24, 0.09);
+  --h-informational: #0c5f7d;
+  --h-informational-bg: rgba(12, 95, 125, 0.09);
+  --h-neutral: #5b6570;
+  --h-neutral-bg: rgba(91, 101, 112, 0.09);
+  --h-fault: #6d28d9;
+  --h-fault-bg: rgba(109, 40, 217, 0.09);
+
+  /* ------------------------------------------------------- STATUS SURFACES
+   * A SECOND, STRONGER STATUS TINT — for whole regions, not chips.
+   *
+   * The `-bg` values above are sized for a 10px badge sitting inside body
+   * text: at 9% they colour a chip without shouting. Fill a 400px Bento
+   * region with the same value and the status stops registering as status
+   * at all — which is exactly what the owner reported ("too soft", "muddy
+   * beige") against a screenshot of the Monitoring canvas.
+   *
+   * These are deliberately not just the same hues at higher alpha. The
+   * warning *text* colour is #8f5300 — a brown, chosen for contrast against
+   * a pale chip — and a large surface of it reads as beige, not as caution.
+   * The surface therefore uses a true amber (#e08600), the safe surface a
+   * brighter green than its text token, and critical a coral red. Each is
+   * the colour the status should *look* like at scale; the text tokens above
+   * remain the colour it must be to stay readable at 10px.
+   *
+   * Kept separate rather than raising --h-*-bg so alert banners, provenance
+   * badges and the report form — all tuned against the 9% chip — are
+   * untouched by a change made for the observatory canvas.
+   */
+  --h-status-normal: #35cf6c;
+  --h-status-warning: #ffc21a;
+  --h-status-critical: #ff6b5f;
+  --h-status-none: #ffffff;
+
+  /* Data visualisation */
+  --h-threshold: #b02318;
+  --h-salinity: #0d8285;
+  --h-water-level: #2563eb;
+  --h-grid: rgba(19, 29, 27, 0.1);
+  --h-domain-water: #ffffff;
+  --h-domain-soil: #ffffff;
+  --h-domain-weather: #ffffff;
+  --h-domain-infrastructure: #ffffff;
+
+  /* ----------------------------------------------------------------- WASH
+   * Interaction surfaces. These replace scattered `bg-muted/20`,
+   * `bg-white/5`, `bg-black/20` guesses — every hover/active/selected state
+   * in the product resolves to one of these four, so the interaction
+   * language is identical on both themes and in every component.
+   */
+  --h-wash-hover: rgba(19, 29, 27, 0.04);
+  --h-wash-active: rgba(12, 95, 125, 0.07);
+  --h-wash-sunken: rgba(19, 29, 27, 0.03);
+  --h-scrim: rgba(19, 29, 27, 0.4);
+  --h-field-ink: #17231f;
+  --h-field-paper: #f5f2e9;
+  --h-field-muted: #c6d0ca;
+  --h-field-line: #93a79b;
+  --h-field-accent: #f0b751;
+  --h-cover-ink: #ffffff;
+  --h-cover-accent: #f5bd63;
+  --h-cover-text: rgba(255, 255, 255, 0.92);
+  --h-cover-subtle: rgba(255, 255, 255, 0.78);
+  --h-cover-rule: rgba(255, 255, 255, 0.45);
+  --h-cover-hover: rgba(255, 255, 255, 0.12);
+  --h-cover-shadow: rgba(12, 23, 22, 0.78);
+
+  /* ----------------------------------------------------------- ATMOSPHERE
+   * The background language, as tokens so the four layers can be tuned per
+   * theme without touching a component. Dark needs a lighter ink at a LOWER
+   * alpha than light does, or the grid becomes visible noise.
+   */
+  --h-grid-line: rgba(19, 29, 27, 0.028);
+  --h-grid-line-major: rgba(19, 29, 27, 0.045);
+  /* Atmospheric pools. Extremely low alpha — they should register as light,
+     never as a gradient. Light mode reads as morning survey paper: warm
+     white at the top, a cool blue-white pool through the centre, warm
+     neutral at the edges.
+
+     `--h-atmos-lift` is the cool-white centre bloom and `--h-atmos-vignette`
+     the edge falloff. Light mode previously set the vignette to
+     `transparent`, which is why the page read as a flat sheet: with no
+     centre-to-edge falloff at all there was no depth for the pools to sit
+     in. It is now a WARM NEUTRAL rather than a black — light mode gains
+     depth by warming its edges, not by darkening them. */
+  --h-atmos-cool: rgba(12, 95, 125, 0.085);
+  --h-atmos-warm: rgba(242, 140, 0, 0.055);
+  --h-atmos-green: rgba(25, 122, 63, 0.05);
+  --h-atmos-lift: rgba(212, 231, 240, 0.5);
+  --h-atmos-vignette: rgba(193, 180, 152, 0.2);
+
+  --h-selection: rgba(12, 95, 125, 0.18);
+  --h-selection-surface: #d9f1fa;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    /* An observatory at night: deep graphite carrying the same green cast as
+       the brand, NOT near-black. Pure black flattens the hairline borders
+       into glowing seams and makes the green/orange mark look like it is
+       floating on nothing. */
+    --h-brand-green: #45c078;
+    --h-brand-orange: #ffa62e;
+    --h-brand-blue: #76c9e5;
+
+    /* Graphite, not near-black. The previous ramp bottomed out at #121817 —
+       dark enough that the atmosphere gradient, the grid and the Bento's own
+       surfaces all collapsed into one flat black field. These are a step
+       lighter and a step cooler (green-black → blue-grey graphite), which
+       gives the layered background somewhere to actually be visible and
+       keeps the status tints readable on top of it. */
+    --h-canvas: #242e38;
+    --h-canvas-subtle: #202932;
+    --h-canvas-elevated: #303d49;
+    --h-surface: #35434f;
+    --h-surface-raised: #40505e;
+
+    --h-foreground: #eef2f0;
+    --h-foreground-muted: #c0cbc7;
+    --h-foreground-subtle: #aab7b2;
+
+    --h-border: rgba(255, 255, 255, 0.2);
+    --h-border-strong: rgba(255, 255, 255, 0.19);
+    --h-border-accent: rgba(79, 176, 212, 0.45);
+
+    --h-safe: #4cb87a;
+    --h-safe-bg: rgba(76, 184, 122, 0.14);
+    --h-warning: #d69a44;
+    --h-warning-bg: rgba(214, 154, 68, 0.14);
+    --h-danger: #e27066;
+    --h-danger-bg: rgba(226, 112, 102, 0.14);
+    --h-informational: #4fb0d4;
+    --h-informational-bg: rgba(79, 176, 212, 0.14);
+    --h-neutral: #808c93;
+    --h-neutral-bg: rgba(128, 140, 147, 0.14);
+    --h-fault: #a78bfa;
+    --h-fault-bg: rgba(167, 139, 250, 0.14);
+
+    /* Region-scale status surfaces — see the note in :root. Slightly higher
+       alpha than light mode: a tint has to work harder to read as colour
+       against graphite than against off-white. */
+    --h-status-normal: #087737;
+    --h-status-warning: #a35a00;
+    --h-status-critical: #b33438;
+    --h-status-none: var(--h-surface);
+
+    --h-threshold: #e27066;
+    --h-salinity: #34b7b0;
+    --h-water-level: #5b8def;
+    --h-grid: rgba(255, 255, 255, 0.1);
+    --h-domain-water: var(--h-surface);
+    --h-domain-soil: var(--h-surface);
+    --h-domain-weather: var(--h-surface);
+    --h-domain-infrastructure: var(--h-surface);
+
+    --h-wash-hover: rgba(255, 255, 255, 0.045);
+    --h-wash-active: rgba(79, 176, 212, 0.1);
+    --h-wash-sunken: rgba(0, 0, 0, 0.22);
+    --h-scrim: rgba(0, 0, 0, 0.55);
+    --h-field-ink: #17231f;
+    --h-field-paper: #f5f2e9;
+    --h-field-muted: #c6d0ca;
+    --h-field-line: #93a79b;
+    --h-field-accent: #f0b751;
+    --h-cover-ink: #ffffff;
+    --h-cover-accent: #f5bd63;
+    --h-cover-text: rgba(255, 255, 255, 0.92);
+    --h-cover-subtle: rgba(255, 255, 255, 0.78);
+    --h-cover-rule: rgba(255, 255, 255, 0.45);
+    --h-cover-hover: rgba(255, 255, 255, 0.12);
+    --h-cover-shadow: rgba(12, 23, 22, 0.78);
+
+    --h-grid-line: rgba(255, 255, 255, 0.045);
+    --h-grid-line-major: rgba(255, 255, 255, 0.07);
+    --h-atmos-cool: rgba(79, 176, 212, 0.14);
+    --h-atmos-warm: rgba(255, 166, 46, 0.05);
+    --h-atmos-green: rgba(69, 192, 120, 0.07);
+    /* The lighter graphite centre. Without it the canvas token alone is a
+       single flat value and dark mode reads as one sheet of near-black. */
+    --h-atmos-lift: rgba(150, 172, 186, 0.26);
+    --h-atmos-vignette: rgba(10, 14, 20, 0.3);
+    /* Brighter in dark mode: the band is doing more work here, standing in
+       for the horizon a night sky would otherwise lose entirely. */
+
+    --h-selection: rgba(79, 176, 212, 0.26);
+    --h-selection-surface: #173e4d;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --h-brand-green: #45c078;
+  --h-brand-orange: #ffa62e;
+  --h-brand-blue: #76c9e5;
+
+  /* Kept in lockstep with the media-query block above — see the note there. */
+  --h-canvas: #242e38;
+  --h-canvas-subtle: #202932;
+  --h-canvas-elevated: #303d49;
+  --h-surface: #35434f;
+  --h-surface-raised: #40505e;
+
+  --h-foreground: #eef2f0;
+  --h-foreground-muted: #c0cbc7;
+  --h-foreground-subtle: #aab7b2;
+
+  --h-border: rgba(255, 255, 255, 0.2);
+  --h-border-strong: rgba(255, 255, 255, 0.19);
+  --h-border-accent: rgba(79, 176, 212, 0.45);
+
+  --h-safe: #4cb87a;
+  --h-safe-bg: rgba(76, 184, 122, 0.14);
+  --h-warning: #d69a44;
+  --h-warning-bg: rgba(214, 154, 68, 0.14);
+  --h-danger: #e27066;
+  --h-danger-bg: rgba(226, 112, 102, 0.14);
+  --h-informational: #4fb0d4;
+  --h-informational-bg: rgba(79, 176, 212, 0.14);
+  --h-neutral: #808c93;
+  --h-neutral-bg: rgba(128, 140, 147, 0.14);
+  --h-fault: #a78bfa;
+  --h-fault-bg: rgba(167, 139, 250, 0.14);
+
+  /* Kept in lockstep with the media-query block above. */
+  --h-status-normal: #087737;
+  --h-status-warning: #a35a00;
+  --h-status-critical: #b33438;
+  --h-status-none: var(--h-surface);
+
+  --h-threshold: #e27066;
+  --h-salinity: #34b7b0;
+  --h-water-level: #5b8def;
+  --h-grid: rgba(255, 255, 255, 0.1);
+  --h-domain-water: var(--h-surface);
+  --h-domain-soil: var(--h-surface);
+  --h-domain-weather: var(--h-surface);
+  --h-domain-infrastructure: var(--h-surface);
+
+  --h-wash-hover: rgba(255, 255, 255, 0.045);
+  --h-wash-active: rgba(79, 176, 212, 0.1);
+  --h-wash-sunken: rgba(0, 0, 0, 0.22);
+  --h-scrim: rgba(0, 0, 0, 0.55);
+  --h-field-ink: #17231f;
+  --h-field-paper: #f5f2e9;
+  --h-field-muted: #c6d0ca;
+  --h-field-line: #93a79b;
+  --h-field-accent: #f0b751;
+  --h-cover-ink: #ffffff;
+  --h-cover-accent: #f5bd63;
+  --h-cover-text: rgba(255, 255, 255, 0.92);
+  --h-cover-subtle: rgba(255, 255, 255, 0.78);
+  --h-cover-rule: rgba(255, 255, 255, 0.45);
+  --h-cover-hover: rgba(255, 255, 255, 0.12);
+  --h-cover-shadow: rgba(12, 23, 22, 0.78);
+
+  --h-grid-line: rgba(255, 255, 255, 0.045);
+  --h-grid-line-major: rgba(255, 255, 255, 0.07);
+  --h-atmos-cool: rgba(79, 176, 212, 0.14);
+  --h-atmos-warm: rgba(255, 166, 46, 0.05);
+  --h-atmos-green: rgba(69, 192, 120, 0.07);
+  --h-atmos-lift: rgba(150, 172, 186, 0.26);
+  --h-atmos-vignette: rgba(10, 14, 20, 0.3);
+
+  --h-selection: rgba(79, 176, 212, 0.26);
+  --h-selection-surface: #173e4d;
+}
+
+/*
+ * `@theme inline` maps Tailwind's utility namespace onto the palette.
+ * `inline` matters: `bg-canvas` compiles to `background-color:
+ * var(--h-canvas)` — resolved live per theme — instead of baking a snapshot
+ * of the light value into the utility, which would make runtime theme
+ * switching repaint nothing.
+ */
+@theme inline {
+  /* Brand */
+  --color-brand-green: var(--h-brand-green);
+  --color-brand-orange: var(--h-brand-orange);
+  --color-brand-blue: var(--h-brand-blue);
+
+  /* Canvas + surfaces */
+  --color-canvas: var(--h-canvas);
+  --color-canvas-subtle: var(--h-canvas-subtle);
+  --color-canvas-elevated: var(--h-canvas-elevated);
+  --color-surface: var(--h-surface);
+  --color-surface-raised: var(--h-surface-raised);
+  /* Legacy aliases — many components still say bg-background / bg-card. */
+  --color-background: var(--h-canvas);
+  --color-card: var(--h-surface);
+
+  /* Text */
+  --color-foreground: var(--h-foreground);
+  --color-foreground-muted: var(--h-foreground-muted);
+  --color-foreground-subtle: var(--h-foreground-subtle);
+  --color-muted: var(--h-foreground-muted);
+
+  /* Border */
+  --color-border: var(--h-border);
+  --color-border-strong: var(--h-border-strong);
+  --color-border-accent: var(--h-border-accent);
+
+  /* Interactive voice */
+  --color-accent: var(--h-brand-blue);
+  --color-accent-2: var(--h-salinity);
+
+  /* Data — system names */
+  --color-safe: var(--h-safe);
+  --color-safe-bg: var(--h-safe-bg);
+  --color-warning: var(--h-warning);
+  --color-warning-bg: var(--h-warning-bg);
+  --color-danger: var(--h-danger);
+  --color-danger-bg: var(--h-danger-bg);
+  --color-informational: var(--h-informational);
+  --color-informational-bg: var(--h-informational-bg);
+
+  /* Data — legacy aliases kept so status components need no rewrite */
+  --color-healthy: var(--h-safe);
+  --color-healthy-bg: var(--h-safe-bg);
+  --color-watch: var(--h-warning);
+  --color-watch-bg: var(--h-warning-bg);
+  --color-risk: var(--h-danger);
+  --color-risk-bg: var(--h-danger-bg);
+  --color-offline: var(--h-neutral);
+  --color-offline-bg: var(--h-neutral-bg);
+  --color-critical: var(--h-danger);
+  --color-fault: var(--h-fault);
+  --color-fault-bg: var(--h-fault-bg);
+
+  /* Region-scale status surfaces (bg-status-normal / -warning / -critical /
+     -none). Whole-region tints, not chips — see the note in :root. */
+  --color-status-normal: var(--h-status-normal);
+  --color-status-warning: var(--h-status-warning);
+  --color-status-critical: var(--h-status-critical);
+  --color-status-none: var(--h-status-none);
+
+  /* Wash — the only sanctioned interaction surfaces */
+  --color-wash-hover: var(--h-wash-hover);
+  --color-wash-active: var(--h-wash-active);
+  --color-wash-sunken: var(--h-wash-sunken);
+
+  /* Visualisation */
+  --color-threshold: var(--h-threshold);
+  --color-salinity: var(--h-salinity);
+  --color-water-level: var(--h-water-level);
+  --color-grid: var(--h-grid);
+}
+
+@theme {
+  /* Radius scale — replaces ad-hoc rounded-[Npx] arbitrary values */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+
+  --shadow-xs: 0 1px 1px rgb(19 29 27 / 0.03);
+  --shadow-sm: 0 1px 2px rgb(19 29 27 / 0.04);
+  --shadow-md: 0 2px 6px rgb(19 29 27 / 0.05);
+  --shadow-lg: 0 4px 12px rgb(19 29 27 / 0.06);
+
+  /* ------------------------------------------------------------ TYPE SCALE
+   * Six page-title registers, one per page purpose. The ORDER is the
+   * hierarchy and may not change; the exact sizes may. Each is a clamp() so
+   * the hierarchy holds at every viewport with no per-breakpoint overrides,
+   * and so no primary title ever needs a raw text-3xl/text-5xl again.
+   *
+   * The gap between `editorial` and `observatory` is deliberately small:
+   * Monitoring and Report are first-class destinations, not subsections of
+   * the marketing site.
+   */
+  /* Pulled back from a 6.75rem cap (108px at 1440) — a 5.5rem cap was tried
+     before that and found too small in the 88svh frame, but 108px turned out
+     to overcorrect: across Home/About/Monitoring/Report side by side, Home
+     read as a different design system rather than the same family at a
+     bigger size. 6rem lands between the two: still the largest, most
+     cinematic title on the site, but proportionate to its neighbours instead
+     of dominating by an order of magnitude. */
+  /* Retuned with the hero copy, not independently of it. The display title is
+     now a full sentence rather than a four-noun fragment, and the constraint
+     is still TWO LINES on desktop — so the type came down from a 96px ceiling
+     and the measure went up (max-w-5xl on the hero block). 60px over a 1024px
+     measure gives ~34 characters a line, which is two lines for both the
+     Vietnamese and the English title and keeps them within a few characters
+     of each other so the hero does not resize on a language switch. */
+  --text-title-display: clamp(2.5rem, 1.25rem + 4.3vw, 4.75rem);
+  /* About's tier — one step down from Home, one step up from Monitoring and
+     Report, so the four pages read as one ladder instead of "Home" and
+     "everything else". */
+  --text-title-editorial: clamp(2.25rem, 1.45rem + 3.6vw, 4.5rem);
+  /* Capped at 2.75rem, down from 3.5rem. Monitoring is an instrument, not a
+     landing page: at 56px the page title outweighed the salinity reading it
+     exists to introduce, and pushed the Bento most of a screen down. It stays
+     clearly a page title and clearly below About's editorial tier. */
+  --text-title-observatory: clamp(1.875rem, 1.35rem + 2.1vw, 2.75rem);
+  --text-title-task: clamp(2rem, 1.45rem + 2.5vw, 3.125rem);
+  --text-title-instrument: clamp(1.75rem, 1.35rem + 1.9vw, 2.625rem);
+  --text-title-operational: clamp(1.5rem, 1.25rem + 1.1vw, 2rem);
+
+  /* Section headings — one step below any page title. */
+  --text-section: clamp(1.5rem, 1.2rem + 1.3vw, 2.125rem);
+
+  --text-eyebrow: 11px;
+  --text-h1: 24px;
+  --text-h2: 20px;
+  --text-body: 16px;
+  --text-body-dense: 14px;
+  --text-caption: 12px;
+  --text-data: 20px;
+
+  /* --------------------------------------------------------- WIDTH SYSTEM
+   * Five levels, the ONLY permitted horizontal measures:
+   *   reading  — prose column, measured in characters
+   *   content  — standard single-column page content
+   *   wide     — shell chrome and most page sections
+   *   spatial  — map / bento canvas; the deliberate, still-bounded breakout
+   *   full-bleed — edge to edge, via .full-bleed only
+   */
+  --width-reading: 68ch;
+  --width-content: 1200px;
+  --width-wide: 1200px;
+  --width-spatial: 1360px;
+  --width-content-wide: 1200px; /* legacy alias */
+
+  --gutter: 1.25rem;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-24: 96px;
+
+  /* ------------------------------------------------------- SECTION RHYTHM
+   * Four tiers for VERTICAL story structure, distinct from the fixed
+   * `--space-*` steps above (which size gaps inside a component).
+   *
+   * These are the page's breathing, and they are fluid rather than
+   * breakpoint-stepped: a story transition should grow smoothly with the
+   * viewport instead of jumping at 768px. The chapter tier is what separates
+   * one movement of the story from the next; without it the page reads as
+   * stacked cards rather than as an edited document.
+   *
+   *   tight    — related blocks inside one idea
+   *   normal   — between ideas in the same section
+   *   large    — between sections
+   *   chapter  — between major story movements
+   */
+  --rhythm-tight: clamp(1.5rem, 1.2rem + 1.4vw, 2.5rem);
+  --rhythm-normal: clamp(2.5rem, 2rem + 2.4vw, 4rem);
+  --rhythm-large: clamp(4rem, 3rem + 4.8vw, 7rem);
+  /* Raised from clamp(6rem, …, 11rem) after the owner reported chapters
+     reading as compressed. Only the CHAPTER tier moves: the smaller tiers
+     were not the problem, and scaling all four would just make the page long
+     without making the story structure any clearer. At 1440 this resolves to
+     ~208px between major movements. */
+  --rhythm-chapter: clamp(7rem, 4.5rem + 10vw, 13rem);
+
+  /* Inner padding for any bordered / tinted / framed block. One token, so a
+     framed block can never end up with its text closer to its own border
+     than the block beside it. The previous ad-hoc `p-6 md:p-7` topped out
+     at 28px, which is what made the bands read as compressed against their
+     edges. */
+  --pad-frame: clamp(1.5rem, 1.1rem + 1.5vw, 2.25rem);
+
+  /* THE BENTO CELL SYSTEM.
+   *
+   * The Monitoring grid is built from ONE square base cell; every region is
+   * an integer multiple of it (2×1, 2×2, 3×2). For that to read as a system
+   * rather than as eight cards that happen to be adjacent, the things which
+   * repeat in every cell have to be identical in every cell — so they are
+   * tokens rather than per-box utility classes.
+   *
+   * `--bento-gap` is deliberately NOT a clamp. The gap enters the base-cell
+   * arithmetic (unit = (width − 3·gap) ÷ 4), so a gap that changed with the
+   * viewport would make the aspect-ratio squares drift out of square at
+   * widths between the breakpoints. Fixed gap, fixed geometry.
+   *
+   * `--bento-pad` does scale, because it never enters that arithmetic: it is
+   * inset INSIDE a cell whose size is already decided. At 390 the base cell
+   * is ~81px, which a 20px inset would leave unusable; at 1440 a 12px inset
+   * would leave the primary numerals stranded against the border.
+   */
+  --bento-gap: 0.5rem;
+  --bento-pad: clamp(0.75rem, 0.55rem + 0.7vw, 1.25rem);
+  /* Between a cell's header row and the value block beneath it. */
+  --bento-header-gap: 0.5rem;
+}
+
+:root {
+  /* Motion. `--ease-brand` is the product's signature curve: a fast start
+     that settles long, which is what makes compression and reveal read as
+     one object moving rather than a value being swapped. */
+  --motion-fast: 130ms;
+  --motion-base: 190ms;
+  --motion-medium: 260ms;
+  --motion-slow: 420ms;
+  /* Section reveal is deliberately slower than any interaction timing. At
+     420ms with a 10px rise the content was arriving faster than the eye
+     registers it as movement, so the page read as blocks popping in rather
+     than composing. 620ms with a longer travel is still well short of
+     decorative — it just gives the motion enough duration to be perceived as
+     motion. Interaction timings are untouched: a button that took 620ms to
+     respond would feel broken. */
+  --motion-reveal: 620ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-brand: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Header geometry — single source for both states, so the shell, the
+     wordmark and the scroll-margin of anchor targets can never disagree.
+     Proportions recovered from the header the project owner preferred
+     (88px resting / 64px compact): tighter and more editorial than the
+     120px band that replaced it, and — because the compact travel is now
+     24px rather than 44px — it shifts far less flow content while the
+     reader is mid-scroll. */
+  --header-h: 5rem;
+  --header-logo: 2.75rem;
+
+  --z-sticky: 20;
+  --z-dropdown: 40;
+  --z-popover: 50;
+  --z-toast: 70;
+  --z-drawer: 80;
+  --z-modal: 90;
+  --z-critical: 100;
+}
+
+@media (min-width: 640px) {
+  :root {
+    --gutter: 1.75rem;
+    --header-h: 5.5rem;
+    --header-logo: 3rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --gutter: 2.5rem;
+    --header-h: 5.5rem;
+    --header-logo: 3.25rem;
+  }
+}
+
+/* The compact state. Declared once, on the header, so every dependent
+   measure interpolates from one class change. 24px of header travel and
+   8px of logo travel — deliberately small, because this height sits in
+   normal flow and every pixel of it moves the whole page. */
+.site-header.is-compact {
+  --header-h: 4rem;
+  --header-logo: 2.25rem;
+}
+@media (min-width: 1024px) {
+  .site-header.is-compact {
+    --header-h: 4rem;
+    --header-logo: 2.5rem;
+  }
+}
+
+/* ===========================================================================
+ * LAYOUT
+ * ======================================================================== */
+
+/*
+ * The four bounded measures. Each applies the SAME gutter, so every section
+ * shares one left edge until the narrower measure runs out of room. There
+ * are no other permitted horizontal measures in the product.
+ */
+.h-reading,
+.h-content,
+.h-wide,
+.h-spatial {
+  margin-inline: auto;
+  width: 100%;
+  padding-inline: var(--gutter);
+}
+.h-reading {
+  max-width: calc(var(--width-reading) + var(--gutter) * 2);
+}
+.h-content {
+  max-width: calc(var(--width-content) + var(--gutter) * 2);
+}
+.h-wide {
+  max-width: calc(var(--width-wide) + var(--gutter) * 2);
+}
+.h-spatial {
+  max-width: calc(var(--width-spatial) + var(--gutter) * 2);
+}
+
+.full-bleed {
+  width: 100vw;
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/*
+ * Section rhythm utilities. Applied to a container, they space its direct
+ * children — so a page declares its own story structure once at the top
+ * rather than each section carrying an ad-hoc `space-y-28 md:space-y-36`.
+ * That is what made the four public pages drift apart: every page invented
+ * its own vertical spacing and none of them matched.
+ */
+.h-flow > * + * {
+  margin-top: var(--rhythm-normal);
+}
+.h-flow-large > * + * {
+  margin-top: var(--rhythm-large);
+}
+.h-flow-chapter > * + * {
+  margin-top: var(--rhythm-chapter);
+}
+
+/*
+ * Per-section gap overrides.
+ *
+ * A flow container sets the DEFAULT gap; an individual child may ask for a
+ * different one. Without this, every chapter break on a page was identical —
+ * which is even pacing rather than editorial pacing. The reader got no signal
+ * about which transitions are major movements and which merely continue the
+ * same thought, so the page read as a stack of equally-spaced blocks.
+ *
+ * A class selector outranks the sibling rule above, so a child carrying one
+ * of these wins regardless of source order.
+ */
+.h-flow-chapter > .h-gap-normal,
+.h-flow-large > .h-gap-normal {
+  margin-top: var(--rhythm-normal);
+}
+.h-flow-chapter > .h-gap-large,
+.h-flow-large > .h-gap-large {
+  margin-top: var(--rhythm-large);
+}
+.h-flow-chapter > .h-gap-chapter,
+.h-flow-large > .h-gap-chapter {
+  margin-top: var(--rhythm-chapter);
+}
+
+/*
+ * The standard first-screen block. Every public page opens with one, which
+ * is what makes Home / About / Monitoring / Report read as members of the
+ * same system: identical top offset, identical bottom clearance, identical
+ * relationship to the section that follows.
+ */
+.h-hero {
+  padding-top: var(--rhythm-large);
+  padding-bottom: var(--rhythm-large);
+}
+
+/* Anchor targets clear the sticky header rather than hiding beneath it. */
+[id] {
+  scroll-margin-top: calc(var(--header-h) + 1.5rem);
+}
+
+/* ===========================================================================
+ * ATMOSPHERE — the four background layers
+ * ======================================================================== */
+
+/*
+ * LAYER 1 + 3: the drafting grid and the atmospheric pools, on one fixed
+ * element behind every page.
+ *
+ * Pure CSS, fixed position: no JS, no canvas, no image request, and nothing
+ * per-frame. Because it is fixed, content
+ * scrolls over a stationary surface, which is the cheapest correct way to
+ * express spatial depth.
+ *
+ * `transform: translateZ(0)` promotes this to its own compositor layer. It
+ * is a full-viewport element carrying four gradients; without promotion the
+ * browser repaints all of it on every scroll frame, which is one of the two
+ * things that made the page shake under the header.
+ */
+.horizon-atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: var(--h-canvas);
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+/* Layer 1 — the graticule. 64px minor module, 256px major.
+ *
+ * Static. This layer used to drift against the scroll; the whole scroll-driven
+ * system was removed because the effect read as either invisible or wrong, and
+ * the page is stronger as a still composition. All four gradients therefore sit
+ * at one fixed position — the minor and major modules are one drawing.
+ *
+ * The mask fades the grid toward the edges so it reads as a survey sheet laid
+ * on the page rather than wallpaper running under it.
+ */
+.horizon-atmosphere::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, var(--h-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--h-grid-line) 1px, transparent 1px),
+    linear-gradient(to right, var(--h-grid-line-major) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--h-grid-line-major) 1px, transparent 1px);
+  background-size:
+    64px 64px,
+    64px 64px,
+    256px 256px,
+    256px 256px;
+  background-position:
+    center,
+    center,
+    center,
+    center;
+  -webkit-mask-image: radial-gradient(ellipse 96% 80% at 50% 42%, #000 42%, transparent 100%);
+  mask-image: radial-gradient(ellipse 96% 80% at 50% 42%, #000 42%, transparent 100%);
+}
+
+/* Layer 3 — two soft atmospheric pools. The warm one sits high-left where
+   the wordmark lives, so the brand's orange is present in the light of the
+   page itself rather than only in the logo.
+
+   `--h-atmos-vignette` adds the graphite falloff that makes dark mode read
+   as a lit room rather than a flat black rectangle: the canvas token is
+   already the lighter *centre* value, and this darkens the outer edges
+   around it. It resolves to `transparent` in light mode, where paper should
+   stay evenly lit. */
+.horizon-atmosphere::after {
+  content: "";
+  position: absolute;
+  /* Slack on every side so the layer never exposes an edge. */
+  inset: -32%;
+  background-image:
+    /* Painted top-down. Vignette first so it sits ON TOP and closes the
+       composition; the centre lift is last so everything else floats in it. */
+    radial-gradient(ellipse 120% 92% at 50% 34%, transparent 34%, var(--h-atmos-vignette) 100%),
+    radial-gradient(ellipse 90% 60% at 72% 10%, var(--h-atmos-cool), transparent 62%),
+    radial-gradient(ellipse 70% 50% at 12% 2%, var(--h-atmos-warm), transparent 58%),
+    radial-gradient(ellipse 80% 55% at 28% 88%, var(--h-atmos-green), transparent 60%),
+    radial-gradient(ellipse 110% 75% at 50% 46%, var(--h-atmos-lift), transparent 68%);
+  will-change: transform;
+}
+
+/*
+ * (The horizon band that used to sit here is gone.)
+ *
+ * It was a wide low-contrast gradient parked at 58% of the page, and it
+ * existed for exactly one reason: to give the scroll-driven parallax an
+ * identifiable edge to be measured against. Parallax was removed, so the band
+ * lost its only job — and what remained was its side effect: a soft horizontal
+ * shadow across the middle of every page, which is the "bóng ngang" reported
+ * against the background. Deleted rather than softened; the atmosphere is now
+ * the graticule and the gradient pools, neither of which has an edge.
+ */
+
+/*
+ * LAYER 2: the dot field. Hero moments only — never a whole-page texture.
+ * `--dot-fade` keeps it from running into the content below the hero.
+ */
+/*
+ * THE DOT FIELD IS GONE — deliberately, and this note is here so it does not
+ * come back by accident.
+ *
+ * There used to be a second global texture: a 26px radial-dot field bled
+ * edge-to-edge behind every hero. Because it lived on the shared PageHero and
+ * the graticule lives on the always-present atmosphere, the two were on
+ * screen together on all four public routes — dots and squares competing over
+ * the same area, which is what made the pages read as visually busy.
+ *
+ * One primary background system, per the owner's direction: the square
+ * survey grid, over the gradient atmosphere. If a sparse dot texture is ever
+ * wanted again it belongs inside BackgroundAtmosphere, scoped to a region,
+ * and never simultaneously with the grid over that same region.
+ */
+
+/* A hairline brand rule — the green→orange sweep of the mark, used to open
+   major sections. One deliberate brand gesture, not a decoration. */
+.brand-rule {
+  height: 2px;
+  width: 2.5rem;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--h-brand-green), var(--h-brand-orange));
+}
+
+.panel-surface {
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  background: linear-gradient(180deg, var(--h-atmos-cool) 0%, var(--h-surface) 100%);
+}
+
+/* ===========================================================================
+ * MOTION
+ * ======================================================================== */
+
+/*
+ * Scroll reveal. Groups, not elements: a section's eyebrow, headline, body
+ * and visual arrive as one gesture with a small stagger, which communicates
+ * hierarchy. Staggering every element instead would just look busy.
+ *
+ * The hidden state is scoped to `.js .horizon-reveal` and `.js` is set by
+ * the component on mount — so a reader without JS (or one where hydration
+ * fails) sees content rather than a permanently blank page.
+ */
+.js .horizon-reveal {
+  opacity: 0;
+  transform: translateY(18px);
+}
+.horizon-reveal {
+  transition:
+    opacity var(--motion-reveal) var(--ease-brand),
+    transform var(--motion-reveal) var(--ease-brand);
+}
+.js .horizon-reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Grouped stagger. Applied by Reveal to its own direct children when
+   `stagger` is set — 70ms apart, four steps, then everything after arrives
+   together so a long section never turns into a slow cascade. */
+.js .horizon-reveal[data-stagger] > * {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity var(--motion-reveal) var(--ease-brand),
+    transform var(--motion-reveal) var(--ease-brand);
+}
+.js .horizon-reveal[data-stagger].is-visible > * {
+  opacity: 1;
+  transform: none;
+}
+.js .horizon-reveal[data-stagger].is-visible > *:nth-child(1) {
+  transition-delay: 0ms;
+}
+.js .horizon-reveal[data-stagger].is-visible > *:nth-child(2) {
+  transition-delay: 70ms;
+}
+.js .horizon-reveal[data-stagger].is-visible > *:nth-child(3) {
+  transition-delay: 140ms;
+}
+.js .horizon-reveal[data-stagger].is-visible > *:nth-child(n + 4) {
+  transition-delay: 210ms;
+}
+
+/* Instrument entrance — Monitoring only. Communicates "data has arrived",
+   so it plays once per mount and never loops. */
+/* Reveal travel raised from 10px/12px to 22px/26px. Below roughly 20px a
+   translate reads as a rendering artefact rather than an entrance — the
+   distance is what makes it legible as a deliberate arrival. */
+@keyframes horizon-instrument-in {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.instrument-in {
+  animation: horizon-instrument-in var(--motion-reveal) var(--ease-brand) both;
+}
+.instrument-in-1 {
+  animation-delay: 90ms;
+}
+.instrument-in-2 {
+  animation-delay: 190ms;
+}
+.instrument-in-3 {
+  animation-delay: 290ms;
+}
+
+/* Marketing hero entrance — once, on first paint. */
+@keyframes horizon-entrance {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-entrance {
+  animation: horizon-entrance var(--motion-reveal) var(--ease-brand) both;
+}
+
+/*
+ * A scroll container that keeps the gesture and drops the bar.
+ *
+ * Used where a strip must stay swipeable on a narrow phone but the bar
+ * itself would read as a rendering accident rather than as a control — the
+ * observation log's metric list, which wraps from `sm` up and only scrolls
+ * below it. Not a general-purpose utility: hiding a scrollbar on anything a
+ * reader must scroll to finish reading hides the fact that there is more.
+ */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+ * Red geographic waves identify the island and its surveyed stations.
+ * Telemetry freshness is communicated separately in the monitoring panels.
+ */
+.horizon-marker-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: horizon-pulse 2s var(--ease-standard) infinite;
+}
+@keyframes horizon-pulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+/* Nav active indicator. The header remounts on every route change, so a
+   plain transition never plays — there is no surviving node to animate
+   from. This fades the mark in on mount instead. */
+@keyframes horizon-nav-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/*
+ * The soft accent wash behind the current nav item — the treatment used by
+ * the header the project owner preferred, restored here in place of the
+ * gradient underline that replaced it. A wash reads as "you are here" at a
+ * glance in a way a 2px rule does not, and it survives the tighter tablet
+ * spacing without colliding with its neighbours.
+ *
+ * Drawn on a ::before at z-index -1 so it sits behind the label without
+ * needing an opaque background that would break the transparent header.
+ */
+.nav-link-active {
+  position: relative;
+}
+.nav-link-active::before {
+  content: none;
+}
+.nav-link-active::after {
+  content: "";
+  position: absolute;
+  right: .75rem;
+  bottom: .35rem;
+  left: .75rem;
+  height: 2px;
+  background: currentColor;
+}
+.site-header--cover nav a:not(.nav-link-active),
+.site-header--cover > div > div > button {
+  color: var(--h-cover-ink);
+}
+.site-header--cover .nav-link-active { color: var(--h-cover-ink); }
+.site-header--cover nav a:hover { background: var(--h-cover-hover); }
+.site-header--cover .nav-link-active::after { background: var(--h-cover-accent); }
+.site-header--cover [role="radiogroup"] button[aria-checked="true"] {
+  border-color: var(--h-cover-accent);
+  color: var(--h-cover-ink);
+}
+.site-header--cover [role="radiogroup"] button:not([aria-checked="true"]) { color: var(--h-cover-text); }
+.site-header--cover [role="radiogroup"] { border: 0; }
+.site-header--cover + main .horizon-cover__inner { padding-top: clamp(4.75rem, 10vh, 7rem); }
+.site-header--cover .horizon-cover__link:focus-visible { outline-offset: 4px; }
+
+/*
+ * Bento tile hover. Border accent + lift + wash together, so the response is
+ * unmistakably "this is interactive" rather than a colour twitch. Pointer-
+ * device only, so it never sticks on touch.
+ */
+.bento-tile {
+  padding: var(--pad-frame);
+  /* A real fill, not just a border. At rest this rule previously left the
+     card fully transparent over the atmosphere gradient — combined with a
+     diluted border it made adjacent cards in the Bento canvas read as one
+     merged shape rather than distinct tiles ("overlapping", reported against
+     a live screenshot). --h-surface is a deliberate step off the page
+     canvas (paper vs. a slightly lifted card), the same relationship used
+     everywhere else a raised surface appears in this system. */
+  background-color: var(--h-surface);
+  transition:
+    border-color var(--motion-base) var(--ease-standard),
+    background-color var(--motion-base) var(--ease-standard),
+    transform var(--motion-base) var(--ease-brand),
+    box-shadow var(--motion-base) var(--ease-standard);
+}
+@media (hover: hover) and (pointer: fine) {
+  .bento-tile:hover {
+    border-color: var(--h-border-accent);
+    background-color: var(--h-wash-hover);
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-sm);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .js .horizon-reveal,
+  .js .horizon-reveal[data-stagger] > * {
+    opacity: 1;
+    transform: none;
+  }
+  .bento-tile:hover {
+    transform: none;
+  }
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ===========================================================================
+ * ARTICLE BODY
+ * ======================================================================== */
+
+.prose-horizon > * + * {
+  margin-top: 1.5rem;
+}
+.prose-horizon p,
+.prose-horizon li {
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  color: var(--h-foreground-muted);
+}
+.prose-horizon h2,
+.prose-horizon h3,
+.prose-horizon h4 {
+  color: var(--h-foreground);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 2.75rem;
+}
+.prose-horizon h2 {
+  font-size: 1.5rem;
+}
+.prose-horizon h3 {
+  font-size: 1.25rem;
+}
+.prose-horizon h4 {
+  font-size: 1.0625rem;
+}
+.prose-horizon strong {
+  color: var(--h-foreground);
+  font-weight: 600;
+}
+.prose-horizon ul,
+.prose-horizon ol {
+  padding-left: 1.25rem;
+}
+.prose-horizon ul {
+  list-style: disc;
+}
+.prose-horizon ol {
+  list-style: decimal;
+}
+.prose-horizon li + li {
+  margin-top: 0.5rem;
+}
+
+/* ===========================================================================
+ * BRAND MARK
+ * ===========================================================================
+ *
+ * The synthetic dark-mode keyline that lived here is gone. It stacked four
+ * offset `drop-shadow()` filters to trace the PNG's alpha, because that
+ * artwork's dark outlines vanished against a graphite canvas.
+ *
+ * The mark is now `brand/logo.svg`, which carries its OWN white keyline. The
+ * filter would have doubled it into a thick halo — exactly the "sticker" look
+ * the original note warned about. One keyline, drawn by the designer, in the
+ * asset.
+ * ======================================================================== */
+
+/* Compact legal credit belongs to the map it qualifies. It is deliberately
+   solid and readable; the footer must not carry attribution for a map that
+   is not visible there. */
+.leaflet-control-attribution {
+  background: var(--h-surface-raised) !important;
+  color: var(--h-foreground-muted) !important;
+  font-size: 10px !important;
+}
+
+.leaflet-control-attribution a {
+  color: var(--h-brand-blue) !important;
+}
+
+/* ===========================================================================
+ * BASE
+ * ======================================================================== */
+
+/*
+ * These resets MUST stay inside `@layer base`. `@import "tailwindcss"`
+ * declares `@layer theme, base, components, utilities`, and an unlayered
+ * rule outranks every layered rule regardless of specificity — when
+ * `a { color: inherit }` sat unlayered it beat `.text-background` and every
+ * other text-colour utility on anchors, rendering filled buttons at 2.33:1.
+ */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--h-brand-blue);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--h-selection);
+  }
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  /*
+   * `clip`, NOT `hidden`. `overflow-x: hidden` forces the other axis to
+   * `auto`, making <html> a scroll container — and a scroll-container
+   * ancestor silently disables `position: sticky` on everything inside it,
+   * which is what made the header scroll away instead of sticking.
+   * `clip` clips the .full-bleed 100vw overshoot identically but creates no
+   * scroll container.
+   */
+  overflow-x: clip;
+  color: var(--h-foreground);
+  font-family: var(--font-interface), "Segoe UI", system-ui, sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * THE BASE COLOUR LIVES ON <html>, AND <body> MUST STAY TRANSPARENT.
+ *
+ * This is a paint-order constraint, not a style preference, and getting it
+ * wrong is invisible to every check that reads computed styles.
+ *
+ * `.horizon-atmosphere` is `position: fixed; z-index: -1`. In the root
+ * stacking context the painting order is:
+ *
+ *   1. background of the root element (<html>)
+ *   2. negative-z-index descendants        ← the atmosphere
+ *   3. backgrounds of in-flow block boxes  ← <body>
+ *   4. inline content, then z-index >= 0
+ *
+ * <body> is painted at step 3, AFTER the atmosphere at step 2. So while
+ * `html, body { background: var(--h-canvas) }` looked symmetric and
+ * harmless, body's opaque fill covered the atmosphere completely: the
+ * graticule, all five gradient layers, the vignette and every pixel of
+ * displacement were being painted and then hidden.
+ *
+ * That — not insufficiently strong gradients — is why the page read as flat
+ * warm white in light mode and flat graphite in dark. Computed styles were
+ * correct throughout; only a screenshot could show it.
+ *
+ * <html> keeps the opaque base so there is never a white flash before the
+ * atmosphere paints, and so overscroll gutters are the canvas colour.
+ */
+html {
+  background: var(--h-canvas);
+}
+body {
+  background: transparent;
+}
+
+/* Theme transition — colour only, never transform or layout, so flipping
+   the toggle reads as the canvas changing rather than the page re-animating.
+   `html` and the atmosphere carry the background half now that body is
+   transparent; transitioning body's background would animate nothing. */
+html,
+.horizon-atmosphere,
+header,
+footer,
+main {
+  transition:
+    background-color var(--motion-medium) var(--ease-standard),
+    border-color var(--motion-medium) var(--ease-standard),
+    color var(--motion-medium) var(--ease-standard);
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * HOME HERO — THE OPENING SCENE
+ * ---------------------------------------------------------------------------
+ *
+ * One continuous canvas from the top of the document. The header sits ON this
+ * rather than above it, so there is no seam between "navigation" and "hero" —
+ * which is what previously made the page open on a pale strip with a picture
+ * pasted underneath.
+ *
+ * `position: absolute` from the document top (not `fixed`) so it scrolls away
+ * normally; the hero section is the positioning context's full width via the
+ * viewport-width trick, because the page's own measure is capped by `.h-wide`.
+ */
+.hero-canvas {
+  /* Rendered as a sibling of the header inside PublicShell, so `top: 0` is
+     literally the top of the page — no header height or main padding to
+     compensate for, which is what the previous negative-margin version got
+     wrong (--header-h is 5.5rem while the header renders at 65px). */
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100svh;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+
+  /*
+   * THE TRANSITION, and why it is a MASK rather than a gradient overlay.
+   *
+   * Every previous attempt painted a gradient that faded to `var(--h-canvas)`
+   * on top of the picture. That can never be continuous, because the page
+   * below the hero is not flat canvas — it is canvas PLUS the atmosphere
+   * layers (graticule, gradient pools, vignette). So the fade always resolved
+   * to a slightly different surface than the thing underneath it, and the
+   * mismatch read as a band: dark in dark mode, muddy beige in light.
+   *
+   * Masking the image's own alpha instead means there is no destination
+   * colour to match. The picture simply becomes transparent over the last
+   * quarter of the hero and the REAL page background — whatever it happens to
+   * be, in either theme — shows through. Continuity is structural rather than
+   * something to be tuned.
+   *
+   * Long and soft: the dissolve now begins at 40% and runs to the bottom —
+   * ~540px of travel at 900px tall — across nine stops rather than four. The
+   * earlier four-stop version started at 62% and, with big jumps between
+   * stops, the eye could still find the point where the falloff began. More
+   * stops over a longer distance means no single step is large enough to
+   * register as a boundary.
+   */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 40%,
+    rgba(0, 0, 0, 0.97) 52%,
+    rgba(0, 0, 0, 0.88) 62%,
+    rgba(0, 0, 0, 0.72) 71%,
+    rgba(0, 0, 0, 0.52) 79%,
+    rgba(0, 0, 0, 0.32) 86%,
+    rgba(0, 0, 0, 0.16) 92%,
+    rgba(0, 0, 0, 0.06) 96%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 40%,
+    rgba(0, 0, 0, 0.97) 52%,
+    rgba(0, 0, 0, 0.88) 62%,
+    rgba(0, 0, 0, 0.72) 71%,
+    rgba(0, 0, 0, 0.52) 79%,
+    rgba(0, 0, 0, 0.32) 86%,
+    rgba(0, 0, 0, 0.16) 92%,
+    rgba(0, 0, 0, 0.06) 96%,
+    transparent 100%
+  );
+}
+
+.hero-canvas__image {
+  object-fit: cover;
+  /* Bottom-biased: keep the waterline and islet as the frame shortens. */
+  object-position: center 62%;
+}
+
+/*
+ * The scrim. Two passes, both static.
+ *
+ * Vertical first: a soft darkening at the very top so the header's own text
+ * and logo stay legible over whatever part of the sky lands behind them, then
+ * clear through the middle, then a fade into the page ground at the bottom so
+ * the hero ENDS WITHOUT AN EDGE. That bottom fade is the fix for the
+ * "horizontal band across the page" — an image that simply stops draws a hard
+ * line the width of the viewport.
+ *
+ * Horizontal second: protects the type column on wide screens without
+ * flattening the whole picture, which is what a full-frame dark overlay does.
+ */
+.hero-canvas__scrim {
+  position: absolute;
+  inset: 0;
+  /*
+   * ONE radial pool under the copy. Nothing else.
+   *
+   * THIS RULE USED TO END WITH `var(--h-canvas) 100%` — a bottom fade meant to
+   * dissolve the picture into the page. That fade WAS the "bóng ma": in dark
+   * mode `--h-canvas` is graphite, so the bottom of the hero rendered as a
+   * dark band, and in light mode as a muddy beige one. Every previous pass
+   * treated it as a tuning problem and moved the stop lower, which only made
+   * the band thinner.
+   *
+   * It is deleted, not softened. The hero now ends on a clean edge and the
+   * separation from Section 01 comes from whitespace (the shell's
+   * margin-bottom), which is what an editorial layout should use anyway.
+   *
+   * No gradient touches the bottom or the top edge any more: this is a single
+   * ellipse behind the headline, fading to fully transparent well before it
+   * reaches any side of the frame.
+   */
+  background: radial-gradient(
+    92% 76% at 20% 48%,
+    color-mix(in srgb, var(--h-canvas) 86%, transparent) 0%,
+    color-mix(in srgb, var(--h-canvas) 60%, transparent) 36%,
+    color-mix(in srgb, var(--h-canvas) 20%, transparent) 62%,
+    transparent 80%
+  );
+}
+
+/* Below md the type spans the full measure, so the pool is centred. Still no
+   edge gradient of any kind. */
+@media (max-width: 767px) {
+  .hero-canvas__scrim {
+    background: radial-gradient(
+      135% 56% at 50% 42%,
+      color-mix(in srgb, var(--h-canvas) 88%, transparent) 0%,
+      color-mix(in srgb, var(--h-canvas) 62%, transparent) 48%,
+      color-mix(in srgb, var(--h-canvas) 18%, transparent) 74%,
+      transparent 92%
+    );
+  }
+}
+
+/* Keep the Cồn Hô scene legible in dark mode. The copy pool on the canvas is
+   enough contrast treatment; dimming the photograph made it read as texture
+   instead of a real place. */
+
+/*
+ * THE HEADER OVER THE HERO.
+ *
+ * On Home only, while the reader is still on the first screen, the header has
+ * no background and no bottom border — it reads as part of the picture. The
+ * scrolled/compact state (`.site-header` picks up its own classes) restores
+ * the surface, because over page content the header does need to separate
+ * itself from what it overlaps.
+ */
+.home-hero-shell {
+  /* The opening screen: a full viewport minus the chrome above it. The canvas
+     behind it (`.hero-canvas`, painted at shell level) covers the whole 100svh
+     including the header, so the two edges line up without either knowing the
+     other's height. */
+  position: relative;
+  min-height: calc(100svh - var(--header-h) - 2rem);
+  display: flex;
+  flex-direction: column;
+  isolation: isolate;
+  /* Breathing room before the story starts. The rhythm utilities space a
+     container's CHILDREN, and the hero is a sibling ahead of that container,
+     so without this the first chapter began at the exact pixel the hero
+     ended — measured at 0px, which is what made the opening feel cramped.
+     ~112px at desktop, ~64px on a phone. */
+  margin-bottom: var(--rhythm-large);
+}
+
+/* FIELD ATLAS: two shared widths, section-specific surfaces. */
+:root { --width-text: 980px; --width-media: 1160px; --width-content: var(--width-text); --width-wide: var(--width-media); --width-spatial: var(--width-media); --width-content-wide: var(--width-media); --width-reading: var(--width-text); --chapter-space: clamp(7rem, 13vw, 13rem); }
+.h-text,.h-media { width: 100%; margin-inline: auto; padding-inline: var(--gutter); }
+.h-text { max-width: calc(var(--width-text) + 2 * var(--gutter)); }
+.h-media { max-width: calc(var(--width-media) + 2 * var(--gutter)); }
+.h-text .h-text,.h-media .h-media,.h-spatial .h-media { padding-inline: 0; }
+.public-main--home { padding-top: 0; }
+.public-main:not(.public-main--home) .h-text { padding-inline: 0; max-width: var(--width-text); }
+.horizon-atmosphere::before,.horizon-atmosphere::after { display: none; }
+.site-header { background: var(--h-canvas); border-bottom: 1px solid var(--h-border); }
+.site-header.site-header--cover { background: transparent; border-bottom: 0; backdrop-filter: none; }
+.hero-canvas { top: 0; height: max(760px, 100svh); mask-image: none; -webkit-mask-image: none; }
+.hero-canvas__image { object-position: center 62%; }
+.hero-canvas__scrim { background: linear-gradient(90deg,rgba(12,29,26,.83),rgba(12,29,26,.48) 45%,rgba(12,29,26,.04) 85%),linear-gradient(0deg,rgba(12,29,26,.3),transparent 60%); }
+.horizon-cover { min-height: calc(max(760px, 100svh) - var(--header-h)); color: #fffaf0; display: flex; position: relative; }
+.horizon-cover__inner { max-width: calc(var(--width-text) + var(--gutter) * 2); min-height: inherit; display: flex; flex-direction: column; justify-content: space-between; padding-block: clamp(4rem,9vh,7rem) 2rem; }
+.horizon-cover__body { display: block; }
+.horizon-cover__coordinates { font: .7rem/1.5 var(--font-data); letter-spacing: .08em; color: #ece5d2; margin-bottom: 1.5rem; }
+.horizon-cover__title { font-family: var(--font-editorial),Georgia,serif; font-size: clamp(3rem,7.5vw,6rem); font-weight: 450; letter-spacing: -.025em; line-height: 1.08; max-width: none; }
+.horizon-cover__title span { display: block; white-space: nowrap; }
+.horizon-cover__subtitle { max-width: 42ch; font-size: 1.05rem; line-height: 1.65; color: #f0ebdd; margin-top: 1.75rem; }
+.horizon-cover__link,.horizon-cover__continue { display: inline-flex; align-items: center; gap: .65rem; min-height: 44px; color: #fffaf0; font-size: .85rem; }
+.horizon-cover__link { margin-top: 1.25rem; border-bottom: 1px solid #afa994; }
+.horizon-cover__continue { align-self: flex-end; font-size: .7rem; }
+.field-atlas-flow { padding-block: var(--chapter-space) 4rem; }
+.field-atlas-flow > .translation-notice { max-width: var(--width-text); }
+.home-chapters > * + * { margin-top: var(--chapter-space); }
+.chapter-heading { position: relative; }
+.chapter-heading[id] { scroll-margin-top: calc(var(--header-h) + 1.5rem); }
+.chapter-index { display: flex; gap: .5rem; overflow-x: auto; margin-bottom: 3rem; }
+.chapter-index a { display: grid; place-items: center; min-width: 44px; min-height: 44px; font: .7rem var(--font-data); border-bottom: 1px solid var(--h-border-strong); }
+.chapter-index a:hover { background: var(--h-selection-surface); }
+.chapter-number { display: inline-block; margin-bottom: 1.3rem; font: 500 .75rem/1.3 var(--font-data); color: var(--h-brand-blue); }
+.chapter-heading__title { font-family: var(--font-editorial),Georgia,serif; font-weight: 450; font-size: clamp(2.3rem,4.5vw,4rem); line-height: 1.08; letter-spacing: -.025em; max-width: 22ch; }
+.chapter-heading > p { max-width: 64ch; font-size: 1rem; line-height: 1.7; }
+.atlas-introduction > div:not(.chapter-heading) { max-width: calc(var(--width-text) + 2 * var(--gutter)); padding-inline: var(--gutter); margin-inline: auto; }
+.atlas-introduction > div > p { max-width: 64ch; }
+.atlas-introduction > .chapter-heading { padding-inline: var(--gutter); }
+.atlas-node-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1.5rem; margin-top: 3rem; align-items: start; }
+.atlas-node { min-width: 0; }
+.atlas-node__image { position: relative; height: auto; aspect-ratio: 4 / 3; background: var(--h-canvas-subtle); overflow: hidden; }
+.atlas-node__text { padding-block: 1.4rem; border-bottom: 1px solid var(--h-border-strong); }
+.atlas-node__text > p { display: flex; gap: 1rem; font: .72rem/1.5 var(--font-data); color: var(--h-brand-blue); }
+.atlas-node__text h3 { font-size: clamp(1.35rem,2.2vw,1.85rem); margin-block: .65rem; line-height: 1.3; min-height: 2.6em; }
+.atlas-node__text > span { display: block; font-size: .9rem; line-height: 1.6; min-height: 3.2em; }
+.full-bleed { width: 100vw; margin-left: calc(50% - 50vw); }
+.atlas-field-story figure { margin-top: 2rem; }
+.atlas-documentary > .chapter-heading { padding: 0; max-width: var(--width-text); margin-bottom: 2rem; }
+.atlas-documentary figcaption { font-size: .75rem; color: var(--h-foreground-muted); margin-top: .8rem; }
+.atlas-field-story iframe,.atlas-documentary iframe { border-radius: 0; }
+.atlas-data-section { padding-block: clamp(4rem,7vw,7rem); color: #f5f1e6; background: #142924; }
+.atlas-data-section .chapter-number { color: #a5d2c3; }
+.atlas-data-section .chapter-heading > p { color: #c0cec7; }
+.atlas-data-diagram { max-width: calc(var(--width-media) + 2 * var(--gutter)); margin-inline: auto; padding-inline: var(--gutter); }
+.atlas-data-path { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 1rem; padding-block: 1.5rem; position: relative; }
+.atlas-data-path::before { content: ''; position: absolute; top: 2.7rem; left: 3%; right: 3%; height: 1px; background: #779a8c; }
+.atlas-data-node { position: relative; min-width: 0; }
+.atlas-data-index { display: grid; place-items: center; width: 2.4rem; height: 2.4rem; border: 1px solid #779a8c; background: #142924; font: .7rem var(--font-data); position: relative; }
+.atlas-data-node h3 { margin-top: 1.25rem; font: 500 clamp(.78rem,1.25vw,1rem)/1.4 var(--font-data); }
+.atlas-data-node p { margin-top: .65rem; font-size: .8rem; line-height: 1.65; color: #c0cec7; }
+.atlas-data-arrow { position: absolute; top: .6rem; right: .1rem; width: 1.15rem; height: 1.15rem; background: #142924; color: #a5d2c3; }
+.atlas-use-cases { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 2rem; margin-top: 3rem; }
+.atlas-use-case { min-width: 0; }
+.atlas-use-case__image { position: relative; aspect-ratio: 1.2; overflow: hidden; }
+.atlas-use-case:nth-child(2) { margin-top: 4rem; }
+.atlas-use-case:nth-child(3) { margin-top: 8rem; }
+.atlas-use-case__body { padding-top: 1.5rem; }
+.atlas-use-case__body .chapter-number { margin-bottom: .7rem; }
+.atlas-use-case h3 { font-size: 1.45rem; line-height: 1.3; }
+.atlas-use-case__flow { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-block: 1rem; color: var(--h-brand-blue); font-size: .75rem; }
+.atlas-use-case p { font-size: .85rem; line-height: 1.7; margin-top: .7rem; color: var(--h-foreground-muted); }
+.atlas-use-case p span { color: var(--h-foreground); font-weight: 600; }
+.atlas-status-list { list-style: none; }
+.atlas-status-row { display: grid; grid-template-columns: 2rem minmax(0,1.3fr) 1.5rem minmax(0,1fr) auto; gap: 1.5rem; align-items: start; padding-block: 1.8rem; border-top: 1px solid var(--h-border-strong); }
+.atlas-status-index,.atlas-status-id { font: .7rem/1.5 var(--font-data); color: var(--h-brand-blue); }
+.atlas-status-copy h3 { font-size: 1.3rem; margin-block: .5rem; }
+.atlas-status-copy > p:not(.atlas-status-id) { font-size: .8rem; line-height: 1.6; color: var(--h-foreground-muted); }
+.atlas-status-intro { display: none; }
+.atlas-status-icon { width: 1.3rem; height: 1.3rem; color: var(--h-brand-blue); }
+.atlas-status-metrics { display: flex; flex-wrap: wrap; gap: .5rem 1rem; font-size: .8rem; line-height: 1.7; }
+.atlas-status-freshness { display: flex; flex-direction: column; gap: .8rem; }
+.atlas-contact { border-top: 1px solid var(--h-border-strong); }
+.atlas-contact a { min-height: 44px; }
+.observatory-page-head { display: flex; justify-content: space-between; gap: 1rem; align-items: start; padding-block: 1.5rem 2rem; }
+.observatory-page-head h1 { font-size: clamp(1.4rem,2.5vw,2rem); font-weight: 600; }
+.observatory-page-head p { font: .7rem/1.6 var(--font-data); color: var(--h-foreground-muted); margin-top: .6rem; }
+.field-observatory { display: grid; gap: 3.5rem; }
+.field-geography { display: grid; grid-template-columns: minmax(210px,.28fr) minmax(0,1fr); border-block: 1px solid var(--h-border-strong); scroll-margin-top: calc(var(--header-h) + 1rem); }
+.field-register { position: relative; padding: 1.5rem 1.5rem 1.5rem 0; }
+.field-register-title { font-size: .8rem; font-weight: 600; }
+.field-register ol { margin-top: 1.25rem; }
+.field-register button { display: flex; flex-direction: column; gap: .55rem; width: 100%; text-align: left; min-height: 88px; padding: 1rem; border-top: 1px solid var(--h-border); }
+.field-register button > span:first-child { font: .7rem/1.5 var(--font-data); }
+.field-register button[aria-pressed=true] { background: var(--h-selection-surface); }
+.field-geography .leaflet-container { height: 350px; border-radius: 0; }
+.field-geography > div:last-child { min-width: 0; }
+.telemetry-dot { position: absolute; right: 1.5rem; top: 1.8rem; width: 7px; height: 7px; border-radius: 50%; background: #bc352c; animation: telemetry-blink 2s ease-in-out infinite; }
+@keyframes telemetry-blink { 50% { opacity: .3; } }
+.field-instrument,.field-context,.field-reference,.field-events { width: 100%; max-width: var(--width-text); margin-inline: auto; }
+.field-instrument > header { display: flex; justify-content: space-between; gap: 1.5rem; padding-bottom: 1.8rem; }
+.instrument-code { font: .75rem/1.5 var(--font-data); color: var(--h-brand-blue); }
+.field-instrument h2 { font-family: var(--font-editorial),Georgia,serif; font-size: clamp(2rem,4vw,3rem); margin-block: .5rem; }
+.field-instrument header p:last-child { font-size: .85rem; color: var(--h-foreground-muted); }
+.instrument-observed { display: flex; flex-wrap: wrap; flex-direction: column; gap: .6rem; font: .75rem/1.5 var(--font-data); }
+.field-primary { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); padding-block: 2rem; border-block: 1px solid var(--h-border-strong); }
+.field-reading { min-width: 0; }
+.field-reading dt { font-size: .75rem; color: var(--h-foreground-muted); }
+.field-reading dd { display: flex; align-items: baseline; gap: .5rem; font: 400 1.8rem/1.25 var(--font-data); margin-top: .5rem; }
+.field-reading small { font-size: .8rem; }
+.field-reading--primary dd { font-size: clamp(2.75rem,6vw,5rem); letter-spacing: -.04em; }
+.field-reading p { font-size: .65rem; margin-top: .5rem; color: var(--h-foreground-muted); }
+.reading-basis--critical { color: var(--h-critical) !important; }
+.instrument-domain { padding-block: 1.5rem; border-bottom: 1px solid var(--h-border); }
+.instrument-domain h3 { font-size: .7rem; margin-bottom: 1rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
+.field-secondary { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 1.5rem; }
+.instrument-source { font: .65rem/1.5 var(--font-data); color: var(--h-foreground-muted); padding-top: 1rem; }
+.field-empty { padding: 2rem; background: var(--h-canvas-subtle); }
+.field-empty h3 { font: 500 .8rem/1.5 var(--font-data); text-transform: uppercase; }
+.field-empty p { font-size: .85rem; color: var(--h-foreground-muted); margin-top: .6rem; }
+.gateway-register { padding-block: 2rem; border-block: 1px solid var(--h-border); }
+.gateway-register > p { font-size: .85rem; line-height: 1.7; max-width: 68ch; margin-top: 1rem; }
+.field-trend { height: 360px; padding-block: 1.5rem; border-block: 1px solid var(--h-border-strong); }
+.field-trend.field-trend--empty { height: auto; min-height: 120px; }
+.leaflet-control-zoom a { min-width: 44px; min-height: 44px; line-height: 44px !important; }
+.field-context { padding-block: 1.5rem; border-top: 1px solid var(--h-border); }
+.field-context header { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; }
+.field-context h2 { font-size: 1rem; font-weight: 600; }
+.field-context header p { font-size: .7rem; color: var(--h-foreground-muted); }
+.field-context > p { margin-top: 1.5rem; }
+.field-reference { border-block: 1px solid var(--h-border-strong); padding-block: 1rem; scroll-margin-top: calc(var(--header-h) + 1rem); }
+.field-reference summary { min-height: 44px; cursor: pointer; font-size: .8rem; font-weight: 600; display: flex; align-items: center; justify-content: space-between; }
+.field-reference summary::after { content: '+'; font-size: 1.3rem; }
+.field-reference[open] summary::after { content: 'âˆ’'; }
+.field-events li { padding-block: 1rem; border-bottom: 1px solid var(--h-border); font-size: .85rem; }
+.field-events time { font-size: .7rem; color: var(--h-foreground-muted); }
+.report-opening { padding-block: 1.25rem 2rem; border: 0; }
+.report-opening h1 { font-family: var(--font-editorial),Georgia,serif; font-size: clamp(2.2rem,4.5vw,3.5rem); line-height: 1.12; font-weight: 450; max-width: 20ch; }
+.report-opening p { max-width: 60ch; margin-top: 1rem; line-height: 1.7; color: var(--h-foreground-muted); }
+.report-notebook { grid-template-columns: 1fr; gap: 2.5rem; padding-bottom: 4rem; }
+.report-notebook > aside ol { display: flex; flex-direction: row; gap: 1.5rem; }
+.report-notebook > aside li { flex: 1; }
+.report-notebook > aside button { min-height: 72px; border: 0; border-radius: 12px; background: var(--h-canvas-subtle); padding: 1rem; display: flex; align-items: center; gap: .8rem; }
+.report-notebook > aside button[aria-current=step] { background: var(--h-selection-surface); }
+.report-notebook > aside button > span:first-child { display: none; }
+.report-notebook > aside button > span { display: inline; margin: 0; }
+.report-notebook > aside button > span:nth-child(2) { display: grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--h-border-strong); font-family: var(--font-data); }
+.report-notebook > aside button[aria-current=step] > span:nth-child(2) { background: var(--h-brand-blue); color: white; border-color: transparent; }
+.report-notebook > div { max-width: none; }
+.report-notebook h2 { font-family: var(--font-editorial),Georgia,serif; font-size: clamp(1.8rem,3.5vw,2.7rem); font-weight: 450; line-height: 1.2; }
+.report-location-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 2rem; }
+.report-location-map { min-width: 0; }
+.report-location-map .leaflet-container { height: 440px; border-radius: 14px; }
+.report-location-map > p { margin-top: .7rem; font-size: .7rem; color: var(--h-foreground-muted); }
+.report-station-list { min-width: 0; display: grid; gap: .75rem; }
+.report-station-choice { display: grid; grid-template-columns: 72px minmax(0,1fr) 1.5rem; gap: 1rem; align-items: center; min-height: 102px; padding: .75rem; border: 1px solid var(--h-border); border-radius: 14px; background: var(--h-surface); cursor: pointer; transition: background-color 180ms; }
+.report-station-photo { position: relative; width: 72px; height: 72px; border-radius: 9px; overflow: hidden; }
+.report-station-photo > svg { position: absolute; bottom: 4px; right: 4px; padding: 4px; width: 26px; height: 26px; border-radius: 6px; background: var(--h-canvas); color: var(--h-brand-blue); }
+.report-station-choice:has(input:checked) { background: var(--h-selection-surface); }
+.report-station-choice:focus-within { outline: 2px solid var(--h-brand-blue); outline-offset: 2px; }
+.report-station-choice > svg { width: 72px; height: 72px; padding: 23px; border-radius: 9px; background: var(--h-canvas-subtle); color: var(--h-brand-blue); }
+.report-station-choice strong { display: block; font-size: 1rem; }
+.report-station-choice small { display: block; font-size: .75rem; line-height: 1.5; color: var(--h-foreground-muted); }
+.report-station-choice code { display: block; font: .65rem/1.5 var(--font-data); margin-top: .35rem; color: var(--h-brand-blue); }
+.station-choice-check { display: grid; place-items: center; min-width: 44px; }
+.report-observation-choices label { min-height: 80px; border: 1px solid var(--h-border); border-radius: 12px; background: var(--h-surface); box-shadow: none; }
+.report-observation-choices label:has(input:checked) { background: var(--h-selection-surface); box-shadow: none; }
+.report-notebook textarea { border-radius: 14px; background: var(--h-surface); padding: 1.3rem; line-height: 1.8; min-height: 240px; }
+.report-evidence { background: var(--h-canvas-subtle); border-radius: 16px; padding: clamp(1rem,3vw,2rem); }
+.report-evidence-actions { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1rem; }
+.evidence-choice { padding: 1rem; border: 1px solid var(--h-border-strong); display: flex; flex-direction: column; gap: .8rem; min-width: 0; }
+.evidence-choice > svg { width: 1.5rem; height: 1.5rem; color: var(--h-brand-blue); }
+.evidence-choice label { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-size: .8rem; font-weight: 600; }
+.evidence-choice:focus-within { outline: 2px solid var(--h-brand-blue); outline-offset: 2px; }
+.evidence-choice button { font-size: .75rem; white-space: normal; }
+.evidence-remove { min-width: 44px; min-height: 44px; display: grid; place-items: center; }
+.evidence-previews { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1rem; }
+.evidence-previews li { min-width: 0; }
+.evidence-previews audio { max-width: 100%; }
+.report-review { background: transparent; }
+.upload-status { display: grid; gap: .7rem; font-size: .8rem; padding-block: 1rem; }
+.upload-status progress { width: 100%; height: 6px; accent-color: var(--h-brand-blue); }
+.admin-console-layout--with-nav { display: grid; grid-template-columns: 210px minmax(0,1fr); gap: 2.5rem; align-items: start; }
+.operations-nav { position: sticky; top: calc(var(--header-h) + 1rem); padding-block: 1.5rem; }
+.operations-nav > p { font: .65rem/1.5 var(--font-data); color: var(--h-foreground-muted); margin-bottom: 1rem; }
+.operations-nav a { display: flex; align-items: center; min-height: 44px; padding: .75rem; font-size: .8rem; }
+.operations-nav a[aria-current=location] { background: var(--h-selection-surface); font-weight: 600; }
+.operations-nav select { display: none; }
+.admin-console-workspace { min-width: 0; }
+.admin-console-workspace > [id] { scroll-margin-top: calc(var(--header-h) + 1.5rem); }
+.admin-console-heading { padding-block: 1rem; border-bottom: 1px solid var(--h-border-strong); }
+.admin-console-heading p { font-size: .8rem; max-width: 68ch; margin-top: .5rem; }
+.admin-console-workspace .rounded-xl,.admin-console-workspace .rounded-lg,.admin-login-card { border-radius: 2px; box-shadow: none; }
+.login-submission-status { margin-top: 1.5rem; padding-block: .5rem; }
+@media (min-width: 768px) and (max-width: 1023px) { .site-header nav a svg { display: none; } .site-header nav a { padding-inline: .5rem; font-size: .75rem; } }
+@media (max-width: 1023px) {
+ .atlas-node-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+ .atlas-node--station_03 { display: block; }
+ .atlas-node--station_03 .atlas-node__text { align-self: center; }
+ .atlas-data-path { grid-template-columns: 1fr; gap: 2rem; }
+ .atlas-data-path::before { width: 1px; height: auto; left: 1.2rem; top: 2rem; bottom: 2rem; right: auto; }
+ .atlas-data-node { display: grid; grid-template-columns: 2.4rem minmax(0,1fr); gap: .3rem 1.5rem; }
+ .atlas-data-index { grid-row: span 2; }
+ .atlas-data-node h3 { margin-top: 0; }
+ .atlas-data-node p { margin-top: 0; }
+ .atlas-data-arrow { left: .65rem; right: auto; top: 3rem; transform: rotate(90deg); }
+ .atlas-status-row { grid-template-columns: 1.5rem minmax(0,1fr) auto; gap: 1rem; }
+ .atlas-status-icon { display: none; }
+ .atlas-status-metrics { grid-column: 2; }
+ .atlas-status-freshness { grid-column: 3; grid-row: 1/3; }
+ .admin-console-layout--with-nav { grid-template-columns: 1fr; gap: .5rem; }
+ .operations-nav { z-index: 20; padding-block: .75rem; background: var(--h-canvas); top: var(--header-h); }
+ .operations-nav ol,.operations-nav > p { display: none; }
+ .operations-nav select { display: block; width: 100%; min-height: 44px; border: 1px solid var(--h-border); background: var(--h-canvas); padding: .5rem; }
+}
+@media (max-width: 767px) {
+ .horizon-cover__title { font-size: clamp(2rem,8.4vw,3.8rem); }
+ .horizon-cover__inner { padding-top: 3.5rem; }
+ .horizon-cover__subtitle { max-width: 31ch; font-size: .9rem; }
+ .hero-canvas__image { object-position: 65% center; }
+ .horizon-cover { min-height: calc(max(720px, 100svh) - var(--header-h)); }
+ .hero-canvas { height: max(720px, 100svh); }
+ .chapter-heading__title { font-size: 2.25rem; }
+ .atlas-node-grid,.atlas-use-cases { grid-template-columns: 1fr; gap: 2.5rem; }
+ .atlas-node--station_03 { display: block; grid-column: auto; }
+ .atlas-node__image { height: auto; aspect-ratio: 4 / 3; }
+ .atlas-node__text h3,.atlas-node__text > span { min-height: 0; }
+ .atlas-use-case:nth-child(2),.atlas-use-case:nth-child(3) { margin-top: 0; }
+ .atlas-use-case__image { aspect-ratio: 1.5; }
+ .atlas-status-freshness { grid-column: 2; grid-row: auto; }
+ .field-geography { grid-template-columns: 1fr; }
+ .field-register { padding: 1rem 0; }
+ .field-register ol { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .5rem; margin-top: .75rem; }
+ .field-register button { padding: .6rem .25rem; min-height: 80px; }
+ .field-register button > span:first-child { font-size: .6rem; }
+ .field-register button > span:last-child { font-size: .65rem; }
+ .field-geography .leaflet-container { height: 300px; }
+ .field-instrument > header { flex-direction: column; gap: .7rem; }
+ .instrument-observed { flex-direction: row; gap: .75rem; }
+ .field-secondary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+ .field-primary { gap: 1rem; }
+ .field-reading--primary dd { font-size: clamp(2rem,8vw,3.5rem); }
+ .field-trend { height: 330px; }
+ .report-location-layout { grid-template-columns: 1fr; gap: 1rem; }
+ .report-location-map .leaflet-container { height: 280px; }
+ .report-notebook > aside ol { gap: .75rem; }
+ .report-notebook > aside button { flex-wrap: wrap; gap: .25rem .5rem; }
+ .report-notebook > aside button span { font-size: .72rem; }
+ .report-evidence-actions { grid-template-columns: 1fr; }
+ .evidence-choice { display: grid; grid-template-columns: 1.5rem minmax(0,1fr) auto; align-items: center; gap: .7rem; padding: .65rem; }
+ .evidence-previews { grid-template-columns: 1fr; }
+ .evidence-choice button { max-width: 110px; }
+ .observatory-page-head { flex-direction: column; }
+}
+@media (prefers-reduced-motion: reduce) { .telemetry-dot { animation: none; } }
+
+/* Owner refinement: compact titles, full reporting sheet, annotated console. */
+.field-atlas-flow .h-media,.field-atlas-flow .h-spatial { max-width: calc(980px + 2 * var(--gutter)); }
+.chapter-heading__title { max-width: none; font-size: clamp(1.4rem,3.7vw,3.15rem); white-space: nowrap; }
+.horizon-cover__subtitle { max-width: none; font-size: clamp(.75rem,1.3vw,1rem); white-space: nowrap; }
+.report-opening h1 { max-width: none; font-size: clamp(1.75rem,3.7vw,3rem); white-space: nowrap; }
+.monitoring-title-row { display: flex; align-items: center; gap: 1rem; }
+#monitoring-live-signal { display: inline-flex; flex-shrink: 0; }
+.live-signal { position: relative; display: grid; place-items: center; width: 30px; height: 30px; }
+.live-signal > span { width: 12px; height: 12px; border-radius: 50%; background: #bc352c; }
+.live-signal::before,.live-signal::after { content: ''; position: absolute; inset: 5px; border: 1px solid #bc352c; border-radius: 50%; animation: signal-wave 2.4s ease-out infinite; }
+.live-signal::after { animation-delay: 1.2s; }
+@keyframes signal-wave { from { transform: scale(.7); opacity: .8; } to { transform: scale(1.5); opacity: 0; } }
+.report-single { max-width: 860px; margin-inline: auto; }
+.report-single .report-section-title { font: 600 1rem/1.5 var(--font-interface); }
+.report-single .report-location-layout { gap: 1.5rem; }
+.report-single .report-location-map .leaflet-container { height: 310px; }
+.report-single .report-station-list { gap: .5rem; }
+.report-single .report-station-choice { grid-template-columns: 24px minmax(0,1fr) 44px; min-height: 72px; padding: .6rem .85rem; gap: .75rem; border-radius: 8px; }
+.report-single .report-station-choice > svg { width: 22px; height: 22px; padding: 0; background: transparent; border-radius: 0; }
+.report-single .report-station-choice strong { font-size: .85rem; }
+.report-single .report-station-choice small,.report-single .report-station-choice code { font-size: .65rem; }
+.report-single .report-observation-choices { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.report-single .report-observation-choices label { min-height: 60px; padding: .65rem; border-radius: 8px; gap: .6rem; }
+.report-single .report-observation-choices label > span:last-child { font-size: .8rem; }
+.report-single textarea { min-height: 150px; border-radius: 8px; padding: 1rem; }
+.report-single .report-evidence { background: transparent; padding: 0; border-radius: 0; }
+.report-single .report-evidence h3 { font-size: 1rem; }
+.report-single .report-evidence-actions { display: grid; }
+.report-single .evidence-choice { padding: .75rem; min-height: 92px; border-radius: 8px; gap: .5rem; }
+.admin-console-heading { padding: 1.2rem 0; border: 0; }
+.admin-console-heading h1 { display: inline; background: var(--h-selection-surface); box-decoration-break: clone; padding: .15em .4em; line-height: 1.5; }
+.admin-console-workspace { --admin-gap: 2.5rem; }
+.admin-console-workspace > [id] { padding-block: 1rem; }
+.admin-console-workspace [id] h2,.admin-console-workspace [id] h3 { width: fit-content; background: var(--h-canvas-subtle); padding: .3em .5em; box-decoration-break: clone; }
+.admin-console-workspace .rounded-xl,.admin-console-workspace .rounded-lg { border-radius: 12px; }
+.admin-field-board { display: grid; grid-template-columns: 1.1fr 1fr; background: #142924; color: #f5f1e6; border-radius: 14px; padding: 1.5rem; gap: 2rem; }
+.admin-network-drawing { position: relative; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1rem; align-content: center; }
+.admin-network-drawing::before { content: ''; position: absolute; height: 1px; background: #779a8c; left: 16%; right: 16%; top: calc(50% - 36px); }
+.admin-network-drawing > span { display: flex; flex-direction: column; align-items: center; gap: .6rem; z-index: 1; }
+.admin-network-drawing svg { width: 44px; height: 44px; padding: 10px; background: #142924; border: 1px solid #779a8c; border-radius: 50%; color: #a5d2c3; }
+.admin-network-drawing code { font-size: .55rem; color: #c0cec7; }
+.admin-network-drawing .admin-network-destination { grid-column: 1/-1; border: 1px solid #779a8c; padding: .6rem; font: .7rem var(--font-data); letter-spacing: .1em; }
+.admin-board-links { display: grid; gap: .6rem; }
+.admin-board-links a { display: flex; gap: .6rem; align-items: center; min-height: 44px; }
+.admin-keyword { background: #29453d; color: #f5f1e6; padding: .4rem .6rem; font-size: .7rem; }
+.admin-board-links strong { margin-left: auto; font: 1.3rem var(--font-data); }
+.admin-board-links svg { width: 16px; height: 16px; }
+.operations-nav a[aria-current=location] { border-radius: 8px; }
+@media (max-width:767px) {
+ .chapter-heading__title { font-size: clamp(1.25rem,5.5vw,1.8rem); }
+ .report-single .report-location-map .leaflet-container { height: 220px; }
+ .report-single .report-observation-choices { grid-template-columns: repeat(2,minmax(0,1fr)); }
+ .report-single .evidence-choice { min-height: 64px; }
+ .admin-field-board { grid-template-columns: 1fr; gap: 1.5rem; }
+ .monitoring-title-row { gap: .6rem; }
+ .observatory-page-head h1 { font-size: 1.15rem; }
+}
+@media (prefers-reduced-motion:reduce) { .live-signal::before,.live-signal::after { animation: none; } .live-signal::after { display: none; } }
+
+/* Field instruments: shared editorial heading and quiet interactive traces. */
+.tool-page-heading { position: relative; display: flex; align-items: start; justify-content: space-between; gap: 1rem; padding-block: 1.3rem 2.8rem; margin-bottom: 1.4rem; }
+.tool-page-heading h1 { font: 450 clamp(1.75rem,3.7vw,3rem)/1.12 var(--font-editorial),Georgia,serif; letter-spacing: -.025em; white-space: nowrap; }
+.tool-page-heading p { margin-top: 1rem; color: var(--h-foreground-muted); font-size: .9rem; line-height: 1.7; max-width: 60ch; }
+.tool-heading-rule { position: absolute; left: 0; right: 0; height: 1px; bottom: 0; background: var(--h-border); transform-origin: left; animation: heading-rule-in 900ms cubic-bezier(.16,1,.3,1) both; }
+.tool-heading-drawing { width: 110px; height: 40px; color: var(--h-brand-blue); opacity: .65; align-self: end; flex-shrink: 0; }
+.tool-heading-drawing path,.tool-heading-drawing circle { stroke: currentColor; stroke-width: 1; }
+.tool-heading-drawing path { stroke-dasharray: 1; animation: heading-draw 1.4s cubic-bezier(.16,1,.3,1) both; }
+@keyframes heading-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes heading-rule-in { from { scale: .2 1; } to { scale: 1 1; } }
+.box-signal { display: inline-grid; place-items: center; position: relative; width: 15px; height: 15px; flex-shrink: 0; color: var(--h-foreground-muted); }
+.box-signal > span { width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: .45; }
+.box-signal--live { color: #a43a31; }
+.box-signal--live > span { opacity: .85; }
+.box-signal--live::after { content: ''; position: absolute; inset: 3px; border: 1px solid currentColor; border-radius: 50%; animation: box-signal-wave 3s ease-out infinite; }
+@keyframes box-signal-wave { from { scale: .55; opacity: .55; } to { scale: 1.4; opacity: 0; } }
+.observatory-bento > div { min-width: 0; transition: border-color 240ms, box-shadow 240ms; }
+.observatory-bento > div:hover { border-color: color-mix(in srgb,var(--h-brand-blue) 35%,var(--h-border)); }
+.map-box-heading { position: absolute; top: .75rem; right: .75rem; z-index: 450; display: flex; align-items: center; gap: .4rem; padding: .35rem .5rem; border-radius: 6px; background: var(--h-surface); font-size: .65rem; }
+.probe-detail-register { grid-column: 1/-1; margin-top: .5rem; }
+.probe-detail-register summary { cursor: pointer; min-height: 44px; font-size: .75rem; color: var(--h-foreground-muted); }
+.probe-detail-register > div { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 1.5rem; padding-block: 1.5rem; }
+.danger-heatmap { height: 100%; display: flex; flex-direction: column; justify-content: space-between; gap: .5rem; min-width: 0; }
+.heatmap-heading { display: flex; align-items: center; gap: .5rem; }
+.heatmap-heading > svg { width: 14px; height: 14px; color: var(--h-foreground-muted); }
+.heatmap-heading h2 { font: 600 .68rem/1.3 var(--font-interface); text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; }
+.heatmap-heading select { margin-left: auto; font-size: .65rem; max-width: 145px; background: transparent; border-bottom: 1px solid var(--h-border); padding-block: .25rem; }
+.heatmap-body { display: flex; gap: clamp(1rem,3vw,3rem); align-items: center; }
+.heatmap-calendar { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7,11px); grid-template-columns: repeat(12,11px); gap: 3px; flex-shrink: 0; }
+.heatmap-day { display: block; border-radius: 2px; min-width: 0; cursor: pointer; transition: scale 180ms, opacity 180ms; animation: heatmap-arrive 500ms both; }
+.heatmap-day:hover,.heatmap-day:focus-visible,.heatmap-day[aria-pressed=true] { outline: 1px solid var(--h-foreground); outline-offset: 2px; scale: 1.14; z-index: 1; }
+.heatmap-day--unknown { background: var(--h-canvas-subtle); border: 1px solid var(--h-border); }
+.heatmap-day--normal { background: #80b9a2; }
+.heatmap-day--watch,.heatmap-day--low_confidence { background: #d3b35e; }
+.heatmap-day--warning { background: #c87b43; }
+.heatmap-day--critical { background: #a84237; }
+@keyframes heatmap-arrive { from { opacity: .2; } to { opacity: 1; } }
+.heatmap-detail { min-width: 0; }
+.heatmap-detail > span,.heatmap-detail p { font-size: .62rem; color: var(--h-foreground-muted); line-height: 1.5; }
+.heatmap-detail strong { display: block; font: 1.6rem/1.3 var(--font-data); margin-block: .1rem; }
+.heatmap-detail small { font-size: .7rem; }
+.heatmap-legend { display: flex; gap: .8rem; flex-wrap: wrap; }
+.heatmap-legend span { display: flex; align-items: center; gap: .3rem; font-size: .56rem; color: var(--h-foreground-muted); }
+.heatmap-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; }
+.report-single { background: var(--h-surface); border: 1px solid var(--h-border); padding: clamp(1rem,4vw,2.5rem); border-radius: 14px; position: relative; }
+.report-single .report-station-choice { background: transparent; border-color: transparent; border-radius: 8px; }
+.report-single .report-station-choice:has(input:checked) { background: var(--h-selection-surface); }
+.report-single .report-station-choice code { opacity: .75; }
+.report-single .report-observation-choices label { background: transparent; }
+.report-single .report-observation-choices label:has(input:checked) { background: var(--h-selection-surface); }
+.report-single .report-location-map .leaflet-container { border-radius: 9px; }
+.station-choice-check svg { animation: selection-mark 280ms cubic-bezier(.16,1,.3,1); }
+@keyframes selection-mark { from { scale: .6; } to { scale: 1; } }
+.report-single .evidence-choice { background: var(--h-canvas); transition: background 180ms, border-color 180ms; }
+.report-single .evidence-choice:hover { border-color: var(--h-brand-blue); }
+.report-single button:enabled svg { transition: translate 240ms cubic-bezier(.16,1,.3,1); }
+.report-single button:enabled:hover svg { translate: 2px -2px; }
+.atlas-node__image img,.atlas-use-case__image img { transition: scale 650ms cubic-bezier(.16,1,.3,1); }
+.atlas-node:hover img,.atlas-use-case:hover img { scale: 1.025; }
+.atlas-data-node:hover .atlas-data-index { background: #29453d; transition: background 180ms; }
+.admin-network-drawing::before { animation: heading-rule-in 1.4s cubic-bezier(.16,1,.3,1); transform-origin: left; }
+.admin-board-links a:hover .admin-keyword { background: #395d51; transition: background 180ms; }
+@media (max-width:767px) {
+ .tool-heading-drawing { display: none; }
+ .tool-page-heading { flex-wrap: wrap; padding-bottom: 1.8rem; }
+ .tool-page-heading h1 { font-size: clamp(1.6rem,6vw,2rem); }
+ .heatmap-calendar { grid-template-rows: repeat(7,10px); grid-template-columns: repeat(12,10px); gap: 2px; }
+ .heatmap-body { flex-direction: column; align-items: start; gap: 1rem; }
+ .heatmap-detail strong { font-size: 1.8rem; }
+ .heatmap-legend { gap: .55rem; }
+ .probe-detail-register > div { grid-template-columns: repeat(2,minmax(0,1fr)); }
+ .report-single .report-observation-choices { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion:reduce) {
+ .tool-heading-rule,.tool-heading-drawing path,.box-signal--live::after,.heatmap-day,.station-choice-check svg,.admin-network-drawing::before { animation: none; }
+ .atlas-node__image img,.atlas-use-case__image img,.report-single button:enabled svg { transition: none; }
+ .heatmap-day { transition: none; }
+ .heatmap-day:hover,.heatmap-day:focus-visible,.heatmap-day[aria-pressed=true] { scale: 1; }
+}
+
+/* Full-year field calendar and expressive field-journal surfaces. */
+.box-signal { width: 19px; height: 19px; color: #687e74; }
+.box-signal > span { width: 7px; height: 7px; opacity: .95; box-shadow: 0 0 0 3px rgb(104 126 116 / .12); }
+.box-signal--live { color: #a43a31; }
+.box-signal--live::after { inset: 2px; border-width: 1.5px; }
+.danger-heatmap { gap: .35rem; justify-content: space-between; }
+.heatmap-year { margin-left: auto; font: .68rem var(--font-data); color: var(--h-foreground-muted); }
+.heatmap-year-grid { width: 100%; min-width: 0; }
+.heatmap-months { display: grid; gap: 2px; margin-bottom: 4px; font: .5rem/1.2 var(--font-interface); color: var(--h-foreground-muted); }
+.heatmap-months span { white-space: nowrap; }
+.heatmap-calendar { width: 100%; grid-template-rows: repeat(7,minmax(0,1fr)); gap: 2px; }
+.heatmap-day { aspect-ratio: 1; animation: none; }
+.heatmap-day--future { opacity: .35; }
+.heatmap-bottom { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.heatmap-detail,.heatmap-method { font: .55rem/1.4 var(--font-interface); color: var(--h-foreground-muted); }
+.heatmap-method { margin: 0; }
+.heatmap-legend { gap: .5rem; }
+.report-field-opening { display: grid; grid-template-columns: 1.3fr 1fr; min-height: 320px; overflow: hidden; background: #e4e9de; border-radius: 14px; }
+.report-field-art { position: relative; min-height: 320px; }
+.report-field-art img { object-position: 40% 62%; }
+.field-place-label { position: absolute; left: 1.25rem; bottom: 1.25rem; display: flex; gap: 1.5rem; align-items: center; padding: .6rem .8rem; background: #f5f1e6; font: 600 .8rem var(--font-interface); }
+.field-place-label > span { font-size: .55rem; letter-spacing: .1em; }
+.report-field-invitation { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; padding: 2rem 2.5rem; }
+.report-field-invitation h2 { font: 450 clamp(2.3rem,4vw,3.4rem)/1.05 var(--font-editorial); letter-spacing: -.025em; }
+.report-field-invitation mark { background: #cbd7bb; color: inherit; padding: 0 .12em; }
+.report-field-invitation a { display: flex; align-items: center; gap: 1rem; min-height: 44px; font-size: .8rem; border-bottom: 1px solid #849c82; }
+.report-field-invitation a svg { width: 20px; transition: translate 200ms ease-out; }
+.report-field-invitation a:hover svg { translate: 2px 2px; }
+.report-page-index { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--h-border); margin: 1rem 0 3.5rem; }
+.report-page-index a { display: flex; align-items: center; gap: .6rem; min-height: 52px; padding: .6rem 1rem; font-size: .75rem; flex: 1; }
+.report-page-index a:hover { background: var(--h-selection-surface); }
+.report-page-index svg { width: 16px; }
+.report-single { max-width: none; border: 0; border-radius: 0; background: transparent; padding: 0; }
+.report-entry-section { scroll-margin-top: 7rem; }
+.report-single .report-section-title { display: flex; justify-content: space-between; align-items: center; font: 450 1.75rem/1.3 var(--font-editorial); border-bottom: 1px solid var(--h-border); padding-bottom: 1rem; }
+.report-section-state { display: grid; place-items: center; width: 34px; height: 34px; background: #e4e9de; color: #315443; border-radius: 50%; }
+.report-section-state svg { width: 16px; }
+.report-single .report-location-layout { grid-template-columns: 1.2fr 1fr; gap: 2rem; }
+.report-single .report-station-choice { border-bottom: 1px solid var(--h-border); border-radius: 0; min-height: 78px; }
+.report-single .report-station-choice:has(input:checked) { border-radius: 8px; }
+.report-single .report-observation-choices { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.report-single .report-observation-choices label { min-height: 72px; background: var(--h-surface); }
+.report-single textarea { background: var(--h-surface); min-height: 200px; line-height: 1.8; border-radius: 12px; }
+.report-single > div > div { gap: 4rem; display: flex; flex-direction: column; }
+.report-single .report-evidence { background: #e8e9df; border-radius: 14px; padding: 1.5rem; }
+.report-single .report-evidence h3 { font: 450 1.6rem/1.2 var(--font-editorial); }
+.report-single .evidence-choice { background: #f5f1e6; min-height: 112px; padding: 1rem; border-radius: 12px; }
+.admin-login-page { padding-block: 2rem 5rem; }
+.admin-login-composition { display: grid; grid-template-columns: 1.15fr 1fr; align-items: stretch; border-radius: 14px; overflow: hidden; background: var(--h-surface); }
+.admin-login-place { position: relative; min-height: 450px; }
+.admin-login-place img { object-position: 42% 65%; }
+.admin-login-place > div { position: absolute; bottom: 2rem; left: 2rem; right: 2rem; background: #f5f1e6; padding: 1.2rem; display: grid; gap: .6rem; }
+.admin-login-place strong { font: 450 2.4rem var(--font-editorial); letter-spacing: -.025em; }
+.admin-login-place span { font-size: .7rem; }
+.admin-login-place a { display: flex; align-items: center; justify-content: space-between; min-height: 44px; border-top: 1px solid var(--h-border); font-size: .8rem; }
+.admin-login-place a svg { width: 18px; }
+.admin-login-entry { padding: 2.5rem 2rem; display: flex; flex-direction: column; justify-content: center; }
+.admin-login-card { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.admin-login-card__header h2 { font: 450 2rem var(--font-editorial); }
+.admin-login-card input { min-height: 48px; background: var(--h-canvas); }
+.admin-login-card button { min-height: 48px; }
+.admin-field-board { grid-template-columns: 1.1fr 1fr; padding: 0; overflow: hidden; gap: 0; background: #17352c; }
+.admin-field-place { position: relative; min-height: 235px; }
+.admin-field-place img { object-position: 45% 60%; opacity: .78; }
+.admin-field-place > div { position: relative; z-index: 1; padding: 1.5rem; color: #17352c; }
+.admin-field-place span { display: inline-block; background: #f5f1e6; padding: .3rem .6rem; font-size: .7rem; }
+.admin-field-place h2 { width: fit-content; background: #f5f1e6; padding: .1rem .5rem .35rem; margin-top: .6rem; font: 450 2rem var(--font-editorial); }
+.admin-field-place a { display: flex; align-items: center; gap: .8rem; width: fit-content; min-height: 44px; margin-top: 2rem; padding: .4rem .6rem; background: #f5f1e6; font-size: .7rem; }
+.admin-field-place a svg { width: 16px; }
+.admin-board-links { padding: 1.5rem; align-content: center; }
+.admin-board-links a { padding: .5rem 0; border-bottom: 1px solid #456157; }
+.admin-board-links a:last-child { border-bottom: 0; }
+.admin-keyword { background: #35574a; padding: .55rem .7rem; }
+.admin-board-links a:hover .admin-keyword { background: #507562; }
+.admin-console-workspace .tool-page-heading { margin-bottom: 0; }
+@media (max-width:767px) {
+ .danger-heatmap { gap: 1rem; justify-content: flex-start; }
+ .heatmap-calendar { gap: 1px; }
+ .heatmap-months { gap: 1px; font-size: .38rem; }
+ .heatmap-bottom { align-items: start; flex-direction: column; gap: 1rem; }
+ .heatmap-detail,.heatmap-method { font-size: .65rem; }
+ .heatmap-legend span { font-size: .6rem; }
+ .report-field-opening { grid-template-columns: 1fr 1fr; min-height: 250px; }
+ .report-field-art { min-height: 250px; }
+ .report-field-invitation { padding: 1.5rem 1rem; }
+ .report-field-invitation h2 { font-size: 2.05rem; }
+ .report-field-invitation a { font-size: .65rem; gap: .3rem; }
+ .field-place-label { left: .5rem; bottom: .75rem; gap: .5rem; font-size: .65rem; padding: .5rem; }
+ .field-place-label > span { font-size: .4rem; }
+ .report-page-index { margin-bottom: 2.5rem; }
+ .report-page-index a { font-size: .65rem; padding: .4rem .5rem; gap: .35rem; white-space: nowrap; }
+ .report-single .report-location-layout { grid-template-columns: 1fr; gap: 1rem; }
+ .report-single .report-observation-choices { grid-template-columns: repeat(2,minmax(0,1fr)); }
+ .report-single .report-evidence { padding: 1rem; }
+ .report-single .evidence-choice { min-height: 72px; }
+ .report-single > div > div { gap: 3rem; }
+ .admin-login-composition { grid-template-columns: 1fr; }
+ .admin-login-place { min-height: 180px; }
+ .admin-login-place > div { left: 1rem; bottom: 1rem; right: 1rem; padding: .7rem 1rem; grid-template-columns: 1fr 1fr; align-items: center; gap: .2rem; }
+ .admin-login-place strong { font-size: 1.7rem; text-align: right; }
+ .admin-login-place a { grid-column: 1/-1; min-height: 38px; }
+ .admin-login-entry { padding: 1.5rem .5rem; }
+ .admin-field-board { grid-template-columns: 1fr; }
+ .admin-field-place { min-height: 190px; }
+ .admin-field-place > div { padding: 1rem; }
+ .admin-field-place a { margin-top: 1rem; }
+}
+@media (prefers-reduced-motion:reduce) {
+ .report-field-invitation a svg { transition: none; }
+}
+
+
+.heatmap-calendar { height: 72px; }
+.heatmap-day { aspect-ratio: auto; }
+.heatmap-date-picker { display: none; }
+@media (max-width:767px) {
+ .danger-heatmap { gap: .5rem; }
+ .heatmap-months { display: none; }
+ .heatmap-calendar { height: 140px; grid-template-columns: repeat(27,minmax(0,1fr)) !important; grid-template-rows: repeat(14,minmax(0,1fr)); gap: 2px; }
+ .heatmap-bottom { gap: .4rem; }
+ .heatmap-date-picker { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 1rem; font-size: .65rem; color: var(--h-foreground-muted); }
+ .heatmap-date-picker input { min-height: 44px; min-width: 145px; padding: .4rem; background: var(--h-surface); border: 1px solid var(--h-border); border-radius: 8px; font: .7rem var(--font-data); color: var(--h-foreground); }
+ .heatmap-detail,.heatmap-method { font-size: .58rem; }
+}
+
+/* Owner-selected keyword treatment, shared with the Report invitation. */
+.editorial-keyword { background: #cbd7bb; color: inherit; padding: .01em .13em .04em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.atlas-data-section .editorial-keyword { background: #35574a; color: #f5f1e6; }
+.chapter-heading__title { font-weight: 450; line-height: 1.22; }
+.tool-page-heading h1 { line-height: 1.25; }
+.report-field-invitation h2 > span { display: block; }
+.heatmap-day--normal { background: #f3d7d3; }
+.heatmap-day--watch,.heatmap-day--low_confidence { background: #dfa39b; }
+.heatmap-day--warning { background: #c76b61; }
+.heatmap-day--critical { background: #9e362d; }
+.heatmap-day--unknown { background: transparent; border-color: #d9ccc8; }
+.heatmap-day--future { background: transparent; opacity: .3; }
+.box-signal--live > span { box-shadow: 0 0 0 3px rgb(164 58 49 / .12); }
+@media (min-width:768px) {
+ .report-field-opening { grid-template-columns: .85fr 1.65fr; min-height: 220px; }
+ .report-field-art { min-height: 220px; }
+ .report-field-art img { object-position: 35% 66%; }
+ .report-field-invitation { padding: 2.2rem 2rem 1.6rem; justify-content: center; gap: 1.3rem; }
+ .report-field-invitation h2 { display: flex; flex-wrap: wrap; gap: .12em .25em; font-size: clamp(2rem,3.1vw,2.7rem); line-height: 1.25; }
+ .report-field-invitation h2 > span { white-space: nowrap; }
+ .report-field-invitation a { align-self: flex-end; }
+}
+
+/* Compact calendar: six months of genuine history, seven square day rows. */
+.danger-heatmap { gap: .7rem; justify-content: flex-start; }
+.heatmap-months { display: grid; }
+.heatmap-calendar { height: auto; grid-template-columns: repeat(var(--calendar-cols),minmax(0,1fr)) !important; grid-template-rows: repeat(7,minmax(0,1fr)); gap: 2px; }
+.heatmap-calendar > * { aspect-ratio: 1; width: 100%; height: auto; }
+.heatmap-day { padding: 0; scale: 1; }
+.report-field-opening { margin-bottom: 3.5rem; }
+.report-single .report-section-title,.report-description-title { font: 450 clamp(1.4rem,3.7vw,3.15rem)/1.22 var(--font-editorial); color: var(--h-foreground); }
+.report-description-title { display: block; margin-bottom: 1rem; }
+.report-single .report-evidence .report-section-title { padding-bottom: 0; border: 0; }
+@media (max-width:767px) {
+ .danger-heatmap { gap: .7rem; }
+ .heatmap-months { font-size: .45rem; }
+ .report-field-opening { margin-bottom: 2.5rem; }
+ .report-single .report-section-title,.report-description-title { font-size: clamp(1.25rem,5.5vw,1.8rem); }
+ .site-footer .footer-row { flex-direction: row; align-items: center; justify-content: space-between; gap: .7rem; }
+ .site-footer .footer-row > nav { display: none; }
+ .site-footer .footer-brand { gap: .5rem; min-width: 0; }
+ .site-footer .footer-brand img { height: 21px; }
+ .site-footer .footer-brand p { font-size: .6rem; white-space: nowrap; }
+ .site-footer .footer-brand > span { height: 14px; }
+ .site-footer .footer-row > p { font-size: .55rem; white-space: nowrap; }
+}
+.horizon-cover__title > span { width: fit-content; background: #cbd7bb; color: #142924; padding: .02em .1em .05em; line-height: 1.16; }
+
+/* Keep emphasis selective and bring related reporting tasks side by side. */
+.horizon-cover__title > span { background: transparent; color: inherit; padding: 0; line-height: 1.08; }
+.report-single .report-station-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .75rem; align-content: start; }
+.report-single .report-station-choice { grid-template-columns: 20px minmax(0,1fr) 20px; gap: .5rem; min-height: 142px; padding: 1rem .65rem; border: 1px solid var(--h-border); border-radius: 12px; background: var(--h-surface); align-content: center; transition: background 180ms, border-color 180ms; }
+.report-single .report-station-choice:hover { border-color: #849c82; background: #edf0e6; }
+.report-single .report-station-choice:has(input:checked) { border-radius: 12px; border-color: #849c82; }
+.report-single .report-station-choice small { line-height: 1.6; }
+.report-single .report-station-choice .station-choice-check { width: 20px; height: 20px; }
+.report-observation-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; padding: 2rem; background: #eeeade; border-radius: 14px; align-items: start; }
+.report-single .report-observation-choices { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.report-description-title { padding-bottom: 1rem; border-bottom: 1px solid var(--h-border); margin-bottom: 2rem; }
+.report-description-section textarea { min-height: 236px; }
+.danger-heatmap { justify-content: center; gap: .55rem; }
+.heatmap-legend { justify-content: flex-end; gap: .6rem; }
+.heatmap-legend i { border-color: #d9ccc8; }
+@media (max-width:767px) {
+ .report-single .report-station-choice { min-height: 122px; padding: .75rem .5rem; grid-template-columns: 18px minmax(0,1fr) 14px; gap: .4rem; }
+ .report-single .report-station-choice strong { font-size: .78rem; }
+ .report-single .report-station-choice small,.report-single .report-station-choice code { font-size: .58rem; }
+ .report-observation-layout { grid-template-columns: 1fr; gap: 2rem; padding: 1rem; }
+ .danger-heatmap { gap: .45rem; }
+ .heatmap-legend { gap: .4rem; justify-content: flex-start; }
+ .heatmap-legend span { font-size: .5rem; }
+}
+
+/* Calm field surfaces and unboxed reporting rows. */
+.observatory-bento { --h-status-normal: #f6e5e1; --h-status-warning: #edc3b9; --h-status-critical: #da9588; --h-status-none: var(--h-surface); }
+.observatory-bento .region-heading { gap: .35rem; align-items: baseline; flex-wrap: wrap; }
+.region-heading > svg { align-self: center; }
+.region-heading-title { min-width: 0; white-space: normal; overflow: visible; text-overflow: clip; }
+.region-heading-status { white-space: nowrap; }
+.observatory-bento [class*="tabular-nums"] { font-weight: 500; }
+.danger-heatmap { justify-content: flex-start; }
+.heatmap-heading { flex-shrink: 0; }
+.heatmap-centered { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: .55rem; min-height: 0; }
+.report-single .report-location-layout { grid-template-columns: 1fr 1.25fr; }
+.report-single .report-station-list { grid-template-columns: 1fr; gap: 0; }
+.report-single .report-station-choice { min-height: 76px; padding: .65rem .5rem; border: 0; border-bottom: 1px solid var(--h-border); border-radius: 0; background: transparent; grid-template-columns: 22px minmax(0,1fr) 22px; gap: .7rem; }
+.report-single .report-station-choice:hover { background: #edf0e6; }
+.report-single .report-station-choice:has(input:checked) { border-radius: 8px; }
+.report-single .report-station-choice > span:nth-of-type(1) { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: .25rem .75rem; }
+.report-single .report-station-choice strong { grid-column: 1; grid-row: 1; font-size: .85rem; white-space: nowrap; }
+.report-single .report-station-choice small { grid-column: 1/-1; grid-row: 2; white-space: nowrap; }
+.report-single .report-station-choice code { grid-column: 2; grid-row: 1; white-space: nowrap; }
+.report-description-section { margin-top: 0; }
+.report-single .report-observation-choices { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.report-description-section textarea { min-height: 200px; }
+.atlas-status-list { position: relative; isolation: isolate; background: #e8eade; padding-inline: 1.5rem; border-radius: 14px; overflow: hidden; }
+.atlas-status-list::before { content: ''; position: absolute; inset: 0; background: url('/assets/hero/hero.png') right center / cover; opacity: .07; pointer-events: none; z-index: -1; }
+.atlas-status-row { grid-template-columns: 24px minmax(0,1fr) auto; gap: .5rem 1rem; }
+.atlas-status-icon { display: block; grid-column: 1; grid-row: 1; margin-top: .25rem; }
+.atlas-status-copy { grid-column: 2; grid-row: 1; }
+.atlas-status-copy h3 { margin-top: .2rem; }
+.atlas-status-metrics { grid-column: 2/-1; grid-row: 2; flex-wrap: nowrap; white-space: nowrap; overflow-x: auto; max-width: 100%; padding-bottom: .4rem; gap: 1rem; }
+.atlas-status-metrics li { flex-shrink: 0; }
+.atlas-status-freshness { grid-column: 3; grid-row: 1; }
+@media (max-width:767px) {
+ .report-single .report-location-layout { grid-template-columns: 1fr; }
+ .report-single .report-station-choice { min-height: 72px; }
+ .report-single .report-observation-choices { grid-template-columns: repeat(2,minmax(0,1fr)); }
+ .report-single .report-station-choice small,.report-single .report-station-choice code { font-size: .65rem; }
+ .atlas-status-list { padding-inline: 1rem; }
+ .atlas-status-row { grid-template-columns: 22px minmax(0,1fr); gap: .5rem .75rem; }
+ .atlas-status-freshness { grid-column: 2; grid-row: 3; }
+ .heatmap-centered { gap: .45rem; }
+}
+
+/* Compact mobile capabilities and a palette aligned with the year. */
+.network-metric-short { display: none; }
+.heatmap-heading .heatmap-legend { margin-left: auto; flex-wrap: nowrap; }
+.heatmap-heading .heatmap-year { margin-left: .35rem; white-space: nowrap; }
+.heatmap-centered { justify-content: flex-end; }
+.observatory-bento { --h-status-normal: #f6e5e1; --h-status-warning: #edc3b9; --h-status-critical: #da9588; }
+@media (max-width:1023px) {
+ .heatmap-heading { display: grid; grid-template-columns: 14px minmax(0,1fr) auto; gap: .35rem .45rem; }
+ .heatmap-heading > svg { grid-column: 1; grid-row: 1; }
+ .heatmap-heading h2 { grid-column: 2/-1; grid-row: 1; }
+ .heatmap-heading .heatmap-legend { grid-column: 1/3; grid-row: 2; justify-content: flex-start; margin: 0; gap: .4rem; }
+ .heatmap-heading .heatmap-year { grid-column: 3; grid-row: 2; margin: 0; font-size: .58rem; }
+ .heatmap-heading .heatmap-legend span { font-size: .48rem; }
+ .heatmap-heading .heatmap-legend i { width: 6px; height: 6px; }
+}
+@media (max-width:767px) {
+ .atlas-status-metrics .network-metric-full { display: none; }
+ .atlas-status-metrics .network-metric-short { display: list-item; font-size: .7rem; }
+ .atlas-status-metrics { gap: .55rem; overflow-x: visible; }
+ .atlas-data-path { max-width: 280px; margin-inline: auto; }
+ .atlas-data-path::before { display: none; }
+ .atlas-data-node { display: flex; flex-direction: column; align-items: center; text-align: center; gap: .65rem; }
+ .atlas-data-node p { max-width: 26ch; }
+ .atlas-data-arrow { left: 50%; right: auto; top: auto; bottom: -1.65rem; translate: -50% 0; }
+}
+
+/* Mobile correction: readable metric names and one compact history header. */
+@media (max-width:1023px) {
+ .heatmap-heading { display: flex; align-items: center; flex-wrap: nowrap; gap: .35rem; }
+ .heatmap-heading h2 { font-size: .62rem; letter-spacing: .04em; }
+ .heatmap-heading > svg { width: 12px; height: 12px; flex-shrink: 0; }
+ .heatmap-heading .heatmap-legend { margin-left: auto; gap: .25rem; }
+ .heatmap-heading .heatmap-year { margin-left: .3rem; font-size: .58rem; }
+ .heatmap-legend-level--unknown .heatmap-legend-label,.heatmap-legend-level--watch .heatmap-legend-label,.heatmap-legend-level--warning .heatmap-legend-label { display: none; }
+ .heatmap-heading .heatmap-legend span { font-size: .55rem; }
+ .heatmap-centered { justify-content: center; }
+}
+@media (max-width:767px) {
+ .atlas-status-metrics .network-metric-full { display: list-item; }
+ .atlas-status-metrics--soil { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .45rem .7rem; font-size: .75rem; overflow: visible; white-space: normal; }
+ .atlas-status-metrics--soil li { min-width: 0; }
+}
+
+/* Location control appears only with a permitted, resolved device position. */
+.horizon-locate-user {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: var(--background, #fffdf8);
+  color: #277baf;
+  font-size: 24px;
+  cursor: pointer;
+}
+.horizon-locate-user:hover { background: #e9f1f5; }
+.horizon-locate-user:focus-visible { outline: 2px solid #277baf; outline-offset: 2px; }
+
+/* The monitoring status scale progresses from pale rose to stronger red. */
+:root[data-theme="dark"] .observatory-bento {
+  --h-status-normal: #352a2b;
+  --h-status-warning: #553236;
+  --h-status-critical: #763b40;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .observatory-bento {
+    --h-status-normal: #352a2b;
+    --h-status-warning: #553236;
+    --h-status-critical: #763b40;
+  }
+}
+
+/* Align every capability with its station title, at every viewport size. */
+.atlas-status-metrics { display: flex; grid-column: 2/-1; flex-wrap: nowrap; gap: .65rem; font-size: .7rem; white-space: nowrap; overflow: visible; }
+@media (max-width:1023px) {
+  .atlas-status-metrics,.atlas-status-metrics--soil { display: flex; grid-column: 2/-1; flex-wrap: wrap; gap: .25rem .65rem; font-size: .7rem; letter-spacing: normal; white-space: normal; }
+  .atlas-status-metrics .network-metric-full { display: list-item; }
+  .atlas-status-metrics li { white-space: nowrap; }
+}
+
+/* Final refinement: the supplied scenes, the existing two widths, and a quiet dock. */
+:root {
+  --h-scene-day: url('/assets/backgrounds/ae8116c5-7798-4fcc-b634-f182fe6b3859.png');
+  --h-scene-night: url('/assets/backgrounds/e3e98b52-4273-4dd6-abc3-ec48dfef9ea5.png');
+  --h-scene-image: var(--h-scene-day);
+  --h-scene-opacity: .10;
+}
+:root[data-theme="dark"] { --h-scene-image: var(--h-scene-night); --h-scene-opacity: .15; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --h-scene-image: var(--h-scene-night); --h-scene-opacity: .15; }
+}
+@media (max-width:767px) {
+  :root {
+    --h-scene-day: url('/assets/backgrounds/6193c67b-e0ba-41c9-b6c6-65377af3497b.png');
+    --h-scene-night: url('/assets/backgrounds/f5da8a9c-7d5a-4217-8f5c-f04172790e9d.png');
+  }
+}
+.horizon-atmosphere { background: var(--h-scene-image) center bottom / cover no-repeat; opacity: var(--h-scene-opacity); }
+.horizon-atmosphere::before,.horizon-atmosphere::after { display: none; }
+.hero-canvas { background: var(--h-scene-image) center bottom / cover no-repeat; }
+.hero-canvas__scrim { background: linear-gradient(90deg,rgba(10,30,31,.63),rgba(10,30,31,.12) 75%),linear-gradient(0deg,rgba(10,30,31,.23),transparent 70%); }
+.horizon-cover__title > span { white-space: nowrap; }
+.field-atlas-flow .h-media,.field-atlas-flow .h-spatial { max-width: calc(var(--width-media) + 2 * var(--gutter)); }
+.report-single { max-width: none; }
+.tool-heading-rule { display: none; }
+.mobile-dock {
+  position: fixed; z-index: var(--z-drawer);
+  bottom: calc(.75rem + env(safe-area-inset-bottom));
+  left: 50%; transform: translateX(-50%);
+  width: min(calc(100% - 2.5rem),420px);
+  border: 1px solid var(--h-border); border-radius: 999px;
+  background: color-mix(in srgb,var(--h-surface) 94%,transparent);
+  box-shadow: 0 6px 22px rgba(19,29,27,.13);
+  backdrop-filter: blur(16px);
+  padding: .3rem;
+}
+.mobile-dock ul { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .2rem; }
+.mobile-dock li { min-width: 0; }
+.mobile-dock__link { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 54px; gap: .3rem; border-radius: 999px; font-size: 10px; color: var(--h-foreground-muted); }
+.mobile-dock__link svg { width: 20px; height: 20px; }
+.mobile-dock__link--active { color: var(--h-brand-blue); background: color-mix(in srgb,var(--h-brand-blue) 9%,var(--h-surface)); }
+.observatory-source-line { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .4rem 1rem; font: .65rem/1.6 var(--font-data); color: var(--h-foreground-muted); margin-top: 1rem; }
+.box-signal--live { width: 14px; height: 14px; }
+.box-signal--live::before,.box-signal--live::after { display: none; }
+.box-signal--live > span { width: 6px; height: 6px; background: #bc352c; animation: telemetry-blink 2.4s ease-in-out infinite; }
+@keyframes telemetry-blink { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+.login-submission-status { margin-top: 1.5rem; border: 1px solid var(--h-danger); border-left-width: 3px; border-radius: 10px; background: var(--h-surface); padding: 1rem; }
+.report-single .report-station-choice:has(input:checked) { background: color-mix(in srgb,var(--h-brand-blue) 8%,var(--h-surface)); box-shadow: inset 3px 0 var(--h-brand-blue); }
+.report-single .report-station-choice > svg:last-child { justify-self: end; }
+@media (max-width:767px) {
+  .public-main, .admin-console-layout, .admin-login-page { padding-bottom: calc(6rem + env(safe-area-inset-bottom)); }
+  .chapter-heading__title { white-space: normal; text-wrap: balance; }
+  .chapter-heading { align-items: baseline; }
+  .field-atlas-flow { --chapter-space: clamp(5rem,18vw,7rem); }
+  .atlas-node-grid { gap: 2rem; }
+  .atlas-node-card h3 { margin-top: 1rem; }
+  .tool-page-heading { padding-bottom: 1.5rem; }
+  .tool-page-heading p { text-wrap: pretty; }
+  .report-field-opening { margin-bottom: 2.75rem; }
+  .report-single .report-observation-choices label { padding: .65rem; min-height: 64px; }
+  .report-single .report-station-choice { grid-template-columns: 20px minmax(0,1fr) 20px; gap: .65rem; }
+  .report-single .report-station-choice > span:nth-of-type(1) { column-gap: .4rem; }
+  .admin-console-workspace > section,.admin-console-workspace > div { min-width: 0; }
+  .admin-console-workspace .p-6 { padding: 1rem; }
+  .admin-console-workspace form .grid { gap: .75rem; }
+  .admin-console-workspace input,.admin-console-workspace select { min-width: 0; }
+  .admin-console-workspace dd { text-align: right; }
+  .report-evidence-actions { grid-template-columns: repeat(2,minmax(0,1fr)); gap: .65rem; }
+  .report-evidence-actions > :last-child { grid-column: 1/-1; }
+  .report-single .evidence-choice { padding: .75rem; }
+  .evidence-previews { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (prefers-reduced-motion:reduce) { .box-signal--live > span { animation: none; } }
+
+.ingestion-health__row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.2fr) auto; gap: .5rem 1rem; align-items: baseline; padding-block: .8rem; }
+.ingestion-health__row time { white-space: nowrap; }
+@media (max-width:767px) { .ingestion-health__row { grid-template-columns: minmax(0,1fr) auto; } .ingestion-health__row time { grid-column: 1/-1; } }
+
+.admin-console-workspace { --h-status-normal: #f6e5e1; --h-status-warning: #edc3b9; --h-status-critical: #da9588; }
+:root[data-theme="dark"] .admin-console-workspace { --h-status-normal: #352a2b; --h-status-warning: #553236; --h-status-critical: #763b40; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .admin-console-workspace { --h-status-normal: #352a2b; --h-status-warning: #553236; --h-status-critical: #763b40; } }
+.box-signal--live > span { box-shadow: none; }
+.report-station-choice:focus-within { outline: 2px solid var(--h-brand-blue); outline-offset: 3px; }
+.mobile-dock__link:focus-visible { outline: 2px solid var(--h-brand-blue); outline-offset: -2px; }
+
+.box-signal--live > span { box-shadow: none; }
+@media (max-width:767px) {
+  .runtime-settings { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .75rem; }
+  .runtime-settings > * { margin-top: 0; }
+  .runtime-settings > :nth-child(3),.runtime-settings > button { grid-column: 1/-1; }
+  .runtime-settings label { font-size: .75rem; white-space: nowrap; }
+}
+
+/* Pair every editorial highlight and field surface with its theme's ink. */
+:root { --h-highlight-surface: #cbd7bb; --h-highlight-ink: #142924; --h-field-surface: #e9efdf; --h-evidence-surface: #eef1e6; --h-field-hover: #edf0e6; }
+:root[data-theme="dark"] { --h-highlight-surface: #35574a; --h-highlight-ink: #f5f1e6; --h-field-surface: #3a5045; --h-evidence-surface: #405348; --h-field-hover: #30463b; }
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) { --h-highlight-surface: #35574a; --h-highlight-ink: #f5f1e6; --h-field-surface: #3a5045; --h-evidence-surface: #405348; --h-field-hover: #30463b; }
+}
+.editorial-keyword,.report-field-invitation mark { background: var(--h-highlight-surface); color: var(--h-highlight-ink); }
+.report-field-opening,.atlas-status-list { background: var(--h-field-surface); color: var(--h-foreground); }
+.report-single .report-evidence { background: var(--h-evidence-surface); color: var(--h-foreground); }
+.report-observation-layout { background: var(--h-field-surface); color: var(--h-foreground); }
+.report-single .report-station-choice:hover { background: var(--h-field-hover); }
+.field-place-label,.admin-login-place > div { color: #142924; }
+.hero-name-highlight { background: #cbd7bb; color: #142924; padding: 0 .1em .025em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.floating-contacts { position: fixed; z-index: var(--z-drawer); left: 1rem; top: 50%; transform: translateY(-50%); }
+.floating-contacts__links { display: flex; flex-direction: column; gap: .45rem; }
+.floating-contacts a,.floating-contacts__toggle { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--h-surface); color: var(--h-foreground); box-shadow: 0 3px 12px rgba(0,0,0,.16); transition: background 180ms,color 180ms; }
+.floating-contacts svg { width: 19px; height: 19px; }
+.floating-contacts a:hover,.floating-contacts__toggle:hover { background: var(--h-selection-surface); color: var(--h-brand-blue); }
+.floating-contacts a:focus-visible,.floating-contacts__toggle:focus-visible { outline: 2px solid var(--h-brand-blue); outline-offset: 3px; }
+.floating-contacts a { position: relative; }
+.floating-contacts a span { position: absolute; left: calc(100% + .6rem); background: var(--h-surface); color: var(--h-foreground); padding: .45rem .65rem; border-radius: 7px; font-size: .75rem; white-space: nowrap; opacity: 0; visibility: hidden; pointer-events: none; }
+.floating-contacts a:hover span,.floating-contacts a:focus-visible span { opacity: 1; visibility: visible; }
+.floating-contacts__toggle { display: none; }
+@media (max-width:1279px) {
+  .floating-contacts { left: .5rem; }
+  .floating-contacts__toggle { display: grid; }
+  .floating-contacts__links { display: none; position: absolute; left: 0; top: calc(100% + .5rem); }
+  .floating-contacts[data-open="true"] { transform: translateY(-50%); }
+  .floating-contacts[data-open="true"] .floating-contacts__links { display: flex; }
+  .floating-contacts[data-open="true"] { top: max(6rem,calc(50% - 150px)); }
+}
+@media (prefers-reduced-motion:reduce) { .floating-contacts a,.floating-contacts__toggle { transition: none; } }
+
+/* Keep fields distinct from the page without darkening their content. */
+.report-field-opening,.atlas-status-list,.report-single .report-evidence { border: 1px solid var(--h-border); }
+:root[data-theme="dark"] .observatory-bento,:root[data-theme="dark"] .admin-console-workspace { --h-status-normal: #493b40; --h-status-warning: #6b474b; --h-status-critical: #8d535a; }
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) .observatory-bento,:root:not([data-theme="light"]) .admin-console-workspace { --h-status-normal: #493b40; --h-status-warning: #6b474b; --h-status-critical: #8d535a; }
+}
+@media (max-width:767px) { .floating-contacts { display: none; } }
+
+/* Leaflet labels retain their light fill in either theme. */
+.leaflet-tooltip { color: #142924; }

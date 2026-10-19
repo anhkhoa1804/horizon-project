@@ -1,0 +1,14 @@
+{
+  // Typechecks the test suite, which tsconfig.json deliberately excludes so
+  // that `next build` does not compile test files into the app.
+  //
+  // Without this, a rename in lib/i18n (or any other contract the tests
+  // assert against) only failed at RUNTIME — `tests/i18n.test.ts` was
+  // comparing `en.home.lead1` to `vi.home.lead1` long after both had been
+  // renamed, and `notEqual(undefined, undefined)` is not a passing test by
+  // accident, it is a test that stopped checking anything.
+  //
+  // Run as the second half of `npm run check`.
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules"]
+}
