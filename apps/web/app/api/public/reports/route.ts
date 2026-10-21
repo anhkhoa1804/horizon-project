@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { addDemoReport } from "@/lib/reports/demoReportStore";
 import { clientIdentifier, consumeReportQuota } from "@/lib/reports/rateLimit";
 import { logger } from "@/lib/observability/logger";
-import { REPORT_MEDIA_BUCKET, REPORT_MEDIA_MAX_FILES, validateReportMedia } from "@/lib/reports/media";
+import { REPORT_MEDIA_BUCKET, REPORT_MEDIA_MAX_FILES, reportMediaPath, validateReportMedia } from "@/lib/reports/media";
+import { parseMediaManifest, prepareDirectUploads } from "@/lib/reports/evidence";
 import { createServiceClient } from "@/lib/supabase/service";
 import { CON_HO } from "@/lib/geo";
 
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
   const demoPersistence = allowsDemoPersistence(request);
   let body: Record<string, unknown>;
   let files: File[] = [];
+  let manifestRaw: unknown = undefined;
 
   try {
     const contentType = request.headers.get("content-type") ?? "";
@@ -51,6 +53,7 @@ export async function POST(request: Request) {
       const json = await request.json();
       if (!json || typeof json !== "object") throw new Error("invalid payload");
       body = json as Record<string, unknown>;
+      manifestRaw = (json as Record<string, unknown>).media;
     }
   } catch {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
@@ -78,6 +81,21 @@ export async function POST(request: Request) {
   }
   if (files.some((file) => !validateReportMedia(file))) {
     return NextResponse.json({ error: "invalid_media" }, { status: 400 });
+  }
+
+  // JSON submissions declare their evidence instead of carrying it. The
+  // declaration is validated here, BEFORE the report row is written, so a
+  // reporter whose file can never be accepted is told so while they can
+  // still fix it — not after the report has been stored without it.
+  const manifest = parseMediaManifest(manifestRaw);
+  if (!manifest) {
+    return NextResponse.json({ error: "invalid_payload" }, { status: 400 });
+  }
+  if (manifest.problems.some((problem) => problem.reason === "too_many")) {
+    return NextResponse.json({ error: "too_many_media" }, { status: 400 });
+  }
+  if (manifest.problems.length > 0) {
+    return NextResponse.json({ error: "invalid_media", problems: manifest.problems }, { status: 400 });
   }
 
   // Created before the throttle check so the durable limiter (which shares
@@ -163,6 +181,10 @@ export async function POST(request: Request) {
       ok: true,
       demo: true,
       id: report.id,
+      uploads: [],
+      media: [],
+      mediaFailures: [],
+      mediaSkipped: manifest.entries.map((entry) => entry.name),
     });
   }
 
@@ -193,6 +215,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "insert_failed" }, { status: 502 });
   }
 
+  // Direct-upload path (the one the report form uses). The row exists; hand
+  // back one signed upload URL per declared file. Nothing is recorded as
+  // evidence until /api/public/reports/[id]/media has seen the object in
+  // Storage, so a URL the browser never uses leaves no false trace.
+  if (manifest.entries.length > 0) {
+    const prepared = await prepareDirectUploads(supabase, data.id as string, manifest.entries);
+    return NextResponse.json({
+      ok: true,
+      id: data.id,
+      uploads: prepared.uploads,
+      uploadTicket: prepared.ticket,
+      media: [],
+      mediaFailures: prepared.failures,
+    });
+  }
+
   // A report is already useful without its evidence. Upload each attachment
   // after the durable row exists; a failed object never rolls the report back
   // and each failure is named so the client can offer a retry instead of
@@ -205,11 +243,11 @@ export async function POST(request: Request) {
       mediaFailures.push(file.name || "attachment");
       continue;
     }
-    const storagePath = `reports/${data.id}/${crypto.randomUUID()}.${rule.extension}`;
+    const storagePath = reportMediaPath(data.id as string, crypto.randomUUID(), rule.extension);
     const bytes = await file.arrayBuffer();
     const { error: uploadError } = await supabase.storage
       .from(REPORT_MEDIA_BUCKET)
-      .upload(storagePath, bytes, { contentType: file.type, upsert: false });
+      .upload(storagePath, bytes, { contentType: rule.mimeType, upsert: false });
     if (uploadError) {
       mediaFailures.push(file.name || "attachment");
       continue;
@@ -220,7 +258,7 @@ export async function POST(request: Request) {
         report_id: data.id,
         storage_path: storagePath,
         media_type: rule.type,
-        mime_type: file.type,
+        mime_type: rule.mimeType,
         file_size: file.size,
       })
       .select("id, media_type")
