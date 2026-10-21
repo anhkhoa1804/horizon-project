@@ -1,0 +1,5 @@
+# Vietnamese YAI 2026 deck: asset inventory
+Used: aerial of Cồn Hô (cover); owner-supplied day and night illustrations with people beside a station (purpose, numbers, close; labelled "tranh minh họa, không phải ảnh chụp"); owner-supplied island illustration (gap); bench photos of hardware (field slide, limits slide); dusk river photo (sustainability); HORIZON and Frogsleap logos.
+Photo slots (empty on purpose, labelled in the deck): visit1.jpg, visit2.jpg, visit3.jpg (three return visits) and community.jpg (Service-Learning). No real fieldwork or community photograph exists in the repository or in D:\horizon-project, so none appears. The deck was designed around these slots; drop real photos into assets/slots and rebuild.
+Facts the team must supply (shown as bracketed placeholders, not invented): team name, personal origin story, dates and content of the three visits, practical challenges, Service-Learning activities and participation numbers, who takes over operation, any thank-you.
+Not used: watermarked press photos; unverified quotes or stories.
