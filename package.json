@@ -34,6 +34,8 @@
     "dashboard": "npm run dev -w @eco-sense/web",
     "qa:vertical-slice": "npm run check && npm run lint && npm run test && npm run test:web && npm run build:edge && npm run build -w @eco-sense/web && npm run simulator && npm run mock:ingest",
     "test:remote-config": "node scripts/generate-remote-config.mjs --check && node scripts/build-remote-config-host.mjs && npm exec --workspace apps/web -- tsx --conditions=react-server --test tests/remoteConfiguration.test.ts",
-    "test:remote-config:browser": "node scripts/build-remote-config-host.mjs && npm run build -w @eco-sense/web && node scripts/remote-config-browser-qa.cjs"
+    "qa:public-browser": "node scripts/public-flows-browser-qa.cjs",
+    "test:remote-config:browser": "node scripts/build-remote-config-host.mjs && npm run build -w @eco-sense/web && node scripts/remote-config-browser-qa.cjs",
+    "test:firmware-host": "node --test firmware/esp32-node/tests/*.test.mjs"
   }
 }

@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "shared/station_config_arduino.h"
+#include "shared/water_salinity.h"
 static horizon::StationRuntime remoteRuntime;
 void readLoRaCommandsSimple();
 
@@ -1115,16 +1116,16 @@ WaterEcReading readWaterEc() {
 
 
   /*
-    If salinity register is unavailable,
-    estimate ppt from EC.
-
-    This is only an approximation.
+    Salinity is the probe's own register value only.
+    If the register could not be read it is reported as
+    missing (NaN -> "x"); it is never estimated from EC.
   */
 
   const float salinityPpt =
-    isfinite(salinityPpm)
-      ? salinityPpm / 1000.0f
-      : ecMsCm * 0.64f;
+    horizon::salinityPptFromRegister(
+      salinity.ok,
+      salinityPpm
+    );
 
 
   return {
@@ -1164,62 +1165,8 @@ float filteredAverage(
   float *values,
   uint8_t count
 ) {
-
-  if (count == 0) {
-    return NAN;
-  }
-
-
-  if (count < 4) {
-
-    float sum = 0.0f;
-
-    for (
-      uint8_t i = 0;
-      i < count;
-      i++
-    ) {
-
-      sum += values[i];
-    }
-
-    return sum / count;
-  }
-
-
-  float minValue = values[0];
-  float maxValue = values[0];
-
-  float sum = 0.0f;
-
-
-  for (
-    uint8_t i = 0;
-    i < count;
-    i++
-  ) {
-
-    minValue =
-      min(
-        minValue,
-        values[i]
-      );
-
-    maxValue =
-      max(
-        maxValue,
-        values[i]
-      );
-
-    sum += values[i];
-  }
-
-
-  return (
-    sum -
-    minValue -
-    maxValue
-  ) / (count - 2);
+  // Missing (non-finite) samples are ignored; see shared/water_salinity.h.
+  return horizon::filteredAverageFinite(values, count);
 }
 
 
