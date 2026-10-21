@@ -1,6 +1,8 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { isAdminEmailAllowed, normalizeEmail } from "@/lib/auth/adminAllowlist";
-import { clearLoginRateLimit, isLoginRateLimited, recordFailedLoginAttempt } from "@/lib/auth/loginRateLimit";
+import { clearSignInFailures, isSignInThrottled, recordSignInFailure } from "@/lib/auth/loginRateLimit";
+import { clientIdentifier } from "@/lib/reports/rateLimit";
 import { safeRedirect } from "@/lib/auth/safeRedirect";
 import {
   createLocalAdminSession,
@@ -39,20 +41,26 @@ async function loginAdmin(formData: FormData) {
     redirect(`/admin/login?error=not-configured${emailQuery}`);
   }
 
-  if (!email || !(await isAdminEmailAllowed(email))) {
-    redirect(`/admin/login?error=unauthorized${emailQuery}`);
-  }
+  const client = clientIdentifier(new Request("http://localhost", { headers: await headers() }));
 
-  if (isLoginRateLimited(email)) {
+  // Throttle first, and keyed on caller + email (see lib/auth/loginRateLimit):
+  // a stranger's failures lock only the stranger out.
+  if (isSignInThrottled(email, client)) {
     redirect(`/admin/login?error=rate-limited${emailQuery}`);
   }
 
-  if (!isLocalAdminPasswordValid(password)) {
-    recordFailedLoginAttempt(email);
+  // The password is checked for EVERY attempt, and an address that is not on
+  // the allowlist gets exactly the same answer and the same cost as a wrong
+  // password. Answering "this email is not allowed" separately would let
+  // anyone test which addresses administer the console (audit I-11).
+  const allowed = email ? await isAdminEmailAllowed(email) : false;
+  const passwordOk = isLocalAdminPasswordValid(password);
+  if (!allowed || !passwordOk) {
+    recordSignInFailure(email, client);
     redirect(`/admin/login?error=bad-password${emailQuery}`);
   }
 
-  clearLoginRateLimit(email);
+  clearSignInFailures(email, client);
   await createLocalAdminSession(email);
   redirect(redirectTo);
 }

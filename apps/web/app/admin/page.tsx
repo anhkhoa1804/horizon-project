@@ -38,7 +38,7 @@ import { Bell, ShieldCheck, Trash2, UserPlus, ArrowUpRight } from "lucide-react"
 import { AdminShell } from "@/components/layout/admin-shell";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { loadAdminAllowedEmailEntries } from "@/lib/auth/adminAllowlist";
-import { loadAdminCommunityReportRows } from "@/lib/admin/reports";
+import { ADMIN_REPORT_PAGE_SIZE, loadAdminCommunityReportPage, parseReportQuery, type AdminReportStatusFilter } from "@/lib/admin/reports";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -195,14 +195,21 @@ async function loadAdminMetrics(
   }
 }
 
-async function loadCommunityReports(): Promise<CommunityReport[]> {
+interface CommunityReportPage {
+  reports: CommunityReport[];
+  total: number | null;
+  ok: boolean;
+}
+
+async function loadCommunityReports(query: { status: AdminReportStatusFilter; page: number }): Promise<CommunityReportPage> {
   const supabase = createServiceClient();
   if (!supabase) {
-    return [];
+    return { reports: [], total: null, ok: false };
   }
 
-  const reports = (await loadAdminCommunityReportRows()).map((row) => ({ ...row, media: [] as ReportMedia[] }));
-  if (reports.length === 0) return reports;
+  const pageResult = await loadAdminCommunityReportPage(query);
+  const reports = pageResult.rows.map((row) => ({ ...row, media: [] as ReportMedia[] }));
+  if (reports.length === 0) return { reports, total: pageResult.total, ok: pageResult.ok };
 
   const { data: mediaRows } = await supabase
     .from("report_media")
@@ -223,7 +230,7 @@ async function loadCommunityReports(): Promise<CommunityReport[]> {
     list.push(item);
     mediaByReport.set(row.report_id as string, list);
   }
-  return reports.map((report) => ({ ...report, media: mediaByReport.get(report.id) ?? [] }));
+  return { reports: reports.map((report) => ({ ...report, media: mediaByReport.get(report.id) ?? [] })), total: pageResult.total, ok: true };
 }
 
 async function updateRuntimeConfig(_previous: SaveResult | null, formData: FormData): Promise<SaveResult> {
@@ -302,6 +309,10 @@ function modeLabel(mode: string): string {
   }
 }
 
+function formatFileSize(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
+}
+
 function formatReportTime(value: string): string {
   return new Intl.DateTimeFormat("vi-VN", {
     dateStyle: "short",
@@ -374,6 +385,10 @@ function adminErrorMessage(error?: string): string | null {
       return "Bối cảnh mực nước chưa hợp lệ. Các giá trị phải là số hữu hạn.";
     case "invalid-site-model":
       return "Mô hình đất chưa hợp lệ: PWP phải nhỏ hơn FC và mọi giá trị phải là số.";
+    case "export-invalid-range":
+      return "Khoảng ngày xuất dữ liệu chưa hợp lệ. Chọn lại ngày bắt đầu và ngày kết thúc.";
+    case "export-failed":
+      return "Không xuất được dữ liệu. Chưa có tệp nào được tạo; thử lại hoặc kiểm tra kết nối cơ sở dữ liệu.";
     default:
       return null;
   }
@@ -382,19 +397,20 @@ function adminErrorMessage(error?: string): string | null {
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ error?: string; status?: string }>;
+  searchParams?: Promise<{ error?: string; status?: string; report_status?: string; report_page?: string }>;
 }) {
   const params = searchParams ? await searchParams : {};
   const { profile, scope } = await requireAdmin();
+  const reportQuery = parseReportQuery(params.report_status, params.report_page);
   const { dict } = await getI18n();
 
   const supabase = createServiceClient();
   const repos = supabase ? createRepositories(supabase) : null;
-  const [{ stations, demo: stationsAreDemo, unavailable: stationsUnavailable }, metrics, runtimeConfigs, reports, allowedEmailEntries] = await Promise.all([
+  const [{ stations, demo: stationsAreDemo, unavailable: stationsUnavailable }, metrics, runtimeConfigs, reportPage, allowedEmailEntries] = await Promise.all([
     loadAdminStations(repos, scope),
     loadAdminMetrics(repos, scope),
     loadRuntimeConfigs(),
-    loadCommunityReports(),
+    loadCommunityReports(reportQuery),
     loadAdminAllowedEmailEntries(),
   ]);
   const snapshots = await loadAdminSnapshots(repos, scope, stations);
@@ -419,7 +435,10 @@ export default async function AdminPage({
         .catch(() => null)
     : null;
   const ingestionHealth = await loadIngestionHealth();
-  const unreadReports = reports.filter((report) => !report.viewed_at).length;
+  const reports = reportPage.reports;
+  const totalReportPages = reportPage.total === null ? null : Math.max(1, Math.ceil(reportPage.total / ADMIN_REPORT_PAGE_SIZE));
+  const reportHref = (status: AdminReportStatusFilter, page: number) => `/admin?${new URLSearchParams({ ...(status !== "all" ? { report_status: status } : {}), ...(page > 1 ? { report_page: String(page) } : {}) }).toString()}#reports`.replace("?#", "#");
+  const unreadReports = reports.filter((report) => !report.viewed_at && report.status === "new").length;
   const errorMessage = adminErrorMessage(params.error);
   const isDemoMode = stationsAreDemo || metrics.demo;
   const operationalDataUnavailable = stationsUnavailable || metrics.unavailable;
@@ -428,15 +447,30 @@ export default async function AdminPage({
       <div className="admin-report-queue">
         <div className="mb-3 flex items-center justify-between gap-3">
           <p className="font-semibold">Báo cáo hiện trường</p>
-          <p className="text-xs text-muted">{unreadReports} chưa xem</p>
+          <p className="text-xs text-muted">{unreadReports} chưa xem trên trang này</p>
         </div>
+        <nav aria-label="Lọc báo cáo theo trạng thái" className="mb-3 flex flex-wrap gap-2 text-sm">
+          {(["all", "new", "reviewing", "resolved"] as const).map((status) => (
+            <a
+              key={status}
+              href={reportHref(status, 1)}
+              aria-current={reportQuery.status === status ? "page" : undefined}
+              className={`inline-flex min-h-11 items-center border px-3 ${reportQuery.status === status ? "border-foreground font-semibold" : "border-border text-muted"}`}
+            >
+              {status === "all" ? "Tất cả" : status === "new" ? "Mới" : status === "reviewing" ? "Đã xem" : "Đã xử lý"}
+            </a>
+          ))}
+        </nav>
         <div className="space-y-3">
-          {reports.length === 0 ? (
-            <p className="p-4 text-sm text-muted">Chưa có báo cáo nào.</p>
+          {!reportPage.ok ? (
+            <p role="alert" className="p-4 text-sm text-critical">Không đọc được danh sách báo cáo từ cơ sở dữ liệu. Đây không có nghĩa là chưa có báo cáo; tải lại trang hoặc kiểm tra kết nối.</p>
+          ) : reports.length === 0 ? (
+            <p className="p-4 text-sm text-muted">{reportQuery.status === "all" ? "Chưa có báo cáo nào." : "Không có báo cáo nào ở trạng thái này."}</p>
           ) : (
             <div className="border-t border-border/60">
               {reports.map((report) => {
-                const unread = !report.viewed_at;
+                const unread = !report.viewed_at && report.status === "new";
+                const resolved = report.status === "resolved";
                 return (
                   <div
                     key={report.id}
@@ -449,7 +483,7 @@ export default async function AdminPage({
                         </div>
                         <p className="mt-1 text-xs text-muted">{formatReportTime(report.timestamp)}</p>
                       </div>
-                      {unread ? <Badge variant="risk">Mới</Badge> : <Badge>Đã xem</Badge>}
+                      {resolved ? <Badge>Đã xử lý</Badge> : unread ? <Badge variant="risk">Mới</Badge> : <Badge>Đã xem</Badge>}
                     </div>
                     <p className="text-sm leading-relaxed text-muted">{cleanReportDescription(report.description)}</p>
                     <p className="text-xs text-muted">
@@ -463,22 +497,40 @@ export default async function AdminPage({
                               // eslint-disable-next-line @next/next/no-img-element -- expiring private Storage URL
                               <img src={media.signed_url} alt="Bằng chứng ảnh của báo cáo" className="aspect-video w-full object-cover" />
                             ) : null}
-                            {media.signed_url && media.media_type === "video" ? <video src={media.signed_url} controls className="aspect-video w-full" /> : null}
-                            {media.signed_url && media.media_type === "audio" ? <audio src={media.signed_url} controls className="w-full pt-4" /> : null}
+                            {media.signed_url && media.media_type === "video" ? <video src={media.signed_url} controls playsInline preload="metadata" className="aspect-video w-full" /> : null}
+                            {media.signed_url && media.media_type === "audio" ? <audio src={media.signed_url} controls preload="metadata" className="w-full pt-4" /> : null}
+                            {!media.signed_url ? <p role="alert" className="text-xs text-critical">Không tạo được liên kết xem tệp này. Tải lại trang để thử lại.</p> : null}
                             <p className="mt-2 text-[10px] uppercase tracking-[0.1em] text-muted">
-                              {media.media_type} · {Math.ceil(media.file_size / 1024)} KB
+                              {media.media_type} · {formatFileSize(media.file_size)}
                             </p>
+                            {/* MOV from iPhones only plays in Safari; the download link is the
+                                fallback that always works. The signed URL expires in 30 minutes. */}
+                            {media.signed_url ? (
+                              <a href={media.signed_url} download target="_blank" rel="noreferrer" className="mt-1 inline-flex min-h-11 items-center text-xs text-accent underline-offset-4 hover:underline">
+                                Mở / tải tệp gốc ({media.mime_type})
+                              </a>
+                            ) : null}
                           </div>
                         ))}
                       </div>
                     ) : null}
-                    {unread ? (
-                      <form action={markReportViewed}>
-                        <input type="hidden" name="report_id" value={report.id} />
-                        <Button type="submit" size="sm" variant="outline">
-                          Đánh dấu đã xem
-                        </Button>
-                      </form>
+                    {!resolved ? (
+                      <div className="flex flex-wrap gap-2">
+                        {unread ? (
+                          <form action={markReportViewed}>
+                            <input type="hidden" name="report_id" value={report.id} />
+                            <Button type="submit" size="sm" variant="outline">
+                              Đánh dấu đã xem
+                            </Button>
+                          </form>
+                        ) : null}
+                        <form action={resolveReport}>
+                          <input type="hidden" name="report_id" value={report.id} />
+                          <Button type="submit" size="sm" variant="outline">
+                            Đánh dấu đã xử lý
+                          </Button>
+                        </form>
+                      </div>
                     ) : null}
                   </div>
                 );
@@ -486,6 +538,13 @@ export default async function AdminPage({
             </div>
           )}
         </div>
+        {reportPage.ok && (reportQuery.page > 1 || (totalReportPages ?? 1) > reportQuery.page) ? (
+          <nav aria-label="Phân trang báo cáo" className="mt-3 flex items-center justify-between gap-3 text-sm">
+            {reportQuery.page > 1 ? <a href={reportHref(reportQuery.status, reportQuery.page - 1)} rel="prev" className="inline-flex min-h-11 items-center border border-border px-3">← Mới hơn</a> : <span />}
+            <span className="text-xs text-muted">Trang {reportQuery.page}{totalReportPages ? ` / ${totalReportPages}` : ""}{reportPage.total !== null ? ` · ${reportPage.total} báo cáo` : ""}</span>
+            {(totalReportPages ?? reportQuery.page + (reports.length === ADMIN_REPORT_PAGE_SIZE ? 1 : 0)) > reportQuery.page ? <a href={reportHref(reportQuery.status, reportQuery.page + 1)} rel="next" className="inline-flex min-h-11 items-center border border-border px-3">Cũ hơn →</a> : <span />}
+          </nav>
+        ) : null}
       </div>
   );
   const reportBell = <a href="#reports" className="inline-flex min-h-11 items-center gap-2 border border-border px-3 text-sm"><Bell className="h-4 w-4" aria-hidden />{dict.admin.navigation.reports}{unreadReports ? <span>{unreadReports}</span> : null}</a>;
@@ -518,7 +577,7 @@ export default async function AdminPage({
         </div>
         <div className="admin-board-links">
           <a href="#network"><span className="admin-keyword">{dict.admin.navigation.devices}</span><strong>{stations.length}</strong><ArrowUpRight aria-hidden /></a>
-          <a href="#reports"><span className="admin-keyword">{dict.admin.navigation.reports}</span><strong>{reports.length}</strong><ArrowUpRight aria-hidden /></a>
+          <a href="#reports"><span className="admin-keyword">{dict.admin.navigation.reports}</span><strong>{reportPage.ok ? (reportPage.total ?? reports.length) : "—"}</strong><ArrowUpRight aria-hidden /></a>
           <a href="#thresholds"><span className="admin-keyword">{dict.admin.navigation.thresholds}</span><strong>{thresholds.length}</strong><ArrowUpRight aria-hidden /></a>
         </div>
       </section>

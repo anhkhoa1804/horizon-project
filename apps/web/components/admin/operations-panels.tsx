@@ -309,8 +309,8 @@ export function DataExportPanel() {
             name="dataset"
             className="h-11 w-full rounded-md border border-border bg-background px-3 text-sm"
           >
-            <option value="environmental">Nước &amp; không khí</option>
-            <option value="soil">Đất</option>
+            <option value="environmental">Nước · STATION_01</option>
+            <option value="soil">Đất &amp; không khí · STATION_02</option>
           </select>
         </div>
         <div className="space-y-1.5">

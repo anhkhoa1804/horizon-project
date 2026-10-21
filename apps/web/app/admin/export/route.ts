@@ -22,6 +22,45 @@ export const dynamic = "force-dynamic";
 
 const MAX_ROWS = 5000;
 
+/**
+ * Column lists are the REAL schema (migrations 006 / 019 / 024 / 031). The
+ * previous lists named `soil_ec` (the column is `soil_ec_ms_cm`) and put air
+ * temperature / humidity on environmental_readings (they live on
+ * soil_readings), so PostgREST rejected the select and both exports failed.
+ */
+const WATER_COLUMNS =
+  "station_id, timestamp, water_level, water_ec_ms_cm, water_temp_c, salinity, fault_flags, ec_probe_status, ultrasonic_status";
+const SOIL_COLUMNS =
+  "station_id, timestamp, soil_moisture_pct, soil_ec_ms_cm, soil_ph, soil_temp_c, air_temp_c, air_humidity_pct, fault_flags";
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** `YYYY-MM-DD` or a full ISO timestamp that Date can parse. */
+function isIsoDate(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:?\d{2})?)?$/.test(value) && !Number.isNaN(new Date(value).getTime());
+}
+
+function nextDay(date: string): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + 1);
+  return value.toISOString().slice(0, 10);
+}
+
+/**
+ * The export form is a plain GET navigation, so a JSON error body would
+ * replace the console with raw JSON. A browser navigation goes back to the
+ * console with a readable message; scripted callers still get JSON.
+ */
+function failure(request: Request, code: "invalid_range" | "export_failed", status: number) {
+  if ((request.headers.get("accept") ?? "").includes("text/html")) {
+    const url = new URL("/admin", request.url);
+    url.searchParams.set("error", code === "invalid_range" ? "export-invalid-range" : "export-failed");
+    url.hash = "export";
+    return NextResponse.redirect(url, 303);
+  }
+  return NextResponse.json({ error: code }, { status });
+}
+
 /** RFC 4180 quoting: wrap in quotes and double any embedded quote. */
 function csvCell(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -49,11 +88,13 @@ export async function GET(request: Request) {
   const to = url.searchParams.get("to");
   const dataset = url.searchParams.get("dataset") === "soil" ? "soil" : "environmental";
 
+  // Reject a malformed range instead of forwarding it to PostgREST.
+  if ((from && !isIsoDate(from)) || (to && !isIsoDate(to))) {
+    return failure(request, "invalid_range", 400);
+  }
+
   const table = dataset === "soil" ? "soil_readings" : "environmental_readings";
-  const columns =
-    dataset === "soil"
-      ? "station_id, timestamp, soil_moisture_pct, soil_ec, soil_ph, soil_temp_c"
-      : "station_id, timestamp, salinity, water_level, air_temp_c, air_humidity_pct";
+  const columns = dataset === "soil" ? SOIL_COLUMNS : WATER_COLUMNS;
 
   let query = supabase
     .from(table)
@@ -62,12 +103,15 @@ export async function GET(request: Request) {
     .limit(MAX_ROWS);
 
   if (stationId) query = query.eq("station_id", stationId);
-  if (from) query = query.gte("timestamp", from);
-  if (to) query = query.lte("timestamp", to);
+  // The form sends calendar dates (Vietnam days) and "to" is inclusive:
+  // a bare `lte 2026-10-19` meant midnight UTC and silently dropped that
+  // day's readings.
+  if (from) query = query.gte("timestamp", DATE_ONLY.test(from) ? `${from}T00:00:00+07:00` : from);
+  if (to) query = DATE_ONLY.test(to) ? query.lt("timestamp", `${nextDay(to)}T00:00:00+07:00`) : query.lte("timestamp", to);
 
   const { data, error } = await query;
   if (error) {
-    return NextResponse.json({ error: "export_failed" }, { status: 502 });
+    return failure(request, "export_failed", 502);
   }
 
   const rows = (data ?? []) as Record<string, unknown>[];
