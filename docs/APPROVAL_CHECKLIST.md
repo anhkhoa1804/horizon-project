@@ -7,7 +7,7 @@ Reply with the item ids you approve (e.g. "approve M1, M2, D1"). Items are liste
 | Id | Action | Why | How |
 |---|---|---|---|
 | R1 | Run the read-only SQL for I-23 and 035 preflight in the Supabase SQL editor (`begin read only; ... rollback;`) | Explains the salinity-zero runs; gives the 035 baseline. I cannot read production data. | `docs/READONLY_PRODUCTION_QUERIES.sql` Q1-Q5, P1-P3, S1-S4. Paste results back (they contain no secrets). |
-| R2 | Compile-only firmware build on your machine | The ESP32 toolchain could not be downloaded in my sandbox | `npm run firmware:build:station1`, then `firmware:build:gateway` and `firmware:build:station2`; send the last 20 lines of each. Flashes nothing. |
+| R2 | (Optional) repeat the compile-only firmware build on your machine | I already compiled station1/station2/gateway successfully in an isolated environment; this only confirms it on your toolchain | `npm run firmware:build:station1`, then `firmware:build:gateway` and `firmware:build:station2`; send the last 20 lines of each. Flashes nothing. |
 
 ## B. Production database (needs explicit approval)
 | Id | Action | Preconditions | Rollback |

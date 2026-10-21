@@ -1,6 +1,6 @@
 # Firmware readiness — I-22 (remove the EC×0.64 salinity fallback)
 
-**Status:** patched at source, host-tested, **not compiled for ESP32 here, not flashed anywhere.**
+**Status:** patched at source, host-tested, **compiled for ESP32 (compile-only, 21 Oct, see below), not flashed anywhere.**
 Flashing a physical device is on the "needs your explicit approval" list (`docs/APPROVAL_CHECKLIST.md`, items F1-F3).
 
 ## The defect
@@ -29,7 +29,7 @@ That is a derived guess presented as a measurement (and EC is not salinity). Dow
 | Local stack: a packet with missing salinity ingested through the real Edge Function + Postgres | stored as NULL — `edge-ingest.e2e.mjs` 12/12, see `docs/QA_FLOW_MATRIX.md` |
 
 ## NOT yet evidenced (why flashing is not requested casually)
-1. **ESP32 compile.** PlatformIO and its toolchain could not be downloaded in the build sandbox. Please run, on your machine:
+1. **ESP32 compile — DONE (compile-only).** `pio run -e station1|station2|gateway` (PlatformIO 6.2.0, espressif32@6.12.0, framework-arduinoespressif32 3.20017.0, xtensa 8.4.0) on an isolated scratch copy of this repository; nothing was flashed and no device was contacted. Results: **station1 SUCCESS** (RAM 7.2 %, flash 26.1 %), **station2 SUCCESS** (7.2 % / 26.2 %), **gateway SUCCESS** (15.1 % / 66.8 %). This proves the patched sources build; it does not prove runtime behaviour. To reproduce on your machine:
    ```
    npm run firmware:build:station1      # compile only — flashes nothing
    npm run firmware:build:gateway && npm run firmware:build:station2    # regression: other targets still build

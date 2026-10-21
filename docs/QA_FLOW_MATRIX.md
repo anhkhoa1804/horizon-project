@@ -93,5 +93,6 @@ Then, against **staging or a throwaway report in production**: confirm migration
 | Dev soil fixture isolation | `tests/devSoilFixture.test.ts` | 8/8 (off by default; never under production/Vercel; STATION_02 only; real data wins) |
 | Soil EC / soil temperature cards use the shared metric cell; md layout contract | `tests/observatoryComposition.test.ts` | pass |
 | Unit tests / tsc / lint | `npm test`, `npm run check`, `next lint` | 368/368, clean |
-| ESP32 compile, hardware behaviour, production smoke test | - | NOT verified here |
+| ESP32 compile-only (station1, station2, gateway) | PlatformIO on an isolated scratch copy | SUCCESS x3 (nothing flashed) |
+| Hardware behaviour, production smoke test | - | NOT verified here |
 

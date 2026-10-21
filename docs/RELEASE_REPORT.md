@@ -20,13 +20,13 @@ A local Supabase-equivalent staging environment **was possible** (Docker; the Su
 - Theme control Light/Dark/System (default System, explicit choice remembered); language: explicit > Accept-Language > Vietnamese; place names untranslated.
 - Hero "Đây là HORIZON": white text on a dark plate, checked light/dark, VI/EN, mobile.
 - Evidence: `npm test` 368/368, `tsc`/lint clean, theme-lang e2e 21/21, offline e2e 9/9, axe 0 on the dashboard. These are **local-staging results; they are not proof of production-cloud behaviour.**
-- ESP32 compile: see `docs/FIRMWARE_I22_READINESS.md` (result recorded there).
+- ESP32 compile-only: station1, station2 and gateway all build (PlatformIO, scratch copy; nothing flashed). Runtime/bench behaviour is still unverified.
 
 ## BLOCKED (needs you; see `docs/APPROVAL_CHECKLIST.md`)
 Apply 035 and 036 to production, deploy, one disposable production report, firmware compile/bench/flash, read-only production SQL for I-23, Storage headroom decision.
 
 ## NOT verified here
-ESP32 compile and all hardware behaviour; I-23 root cause; Supabase cloud specifics (Free-plan limits, hosted Auth/CDN, PostgREST version); Vercel body limits; real phone-network upload; production smoke test; Realtime (not in the local stack: public-flows QA 18/19, the only failure is that WebSocket).
+ESP32 runtime and all hardware behaviour (compile-only passed); I-23 root cause; Supabase cloud specifics (Free-plan limits, hosted Auth/CDN, PostgREST version); Vercel body limits; real phone-network upload; production smoke test; Realtime (not in the local stack: public-flows QA 18/19, the only failure is that WebSocket).
 
 ## REMAINING known gaps
 - I-29: EN home still shows place names and two Vietnamese-only editorial posts (content decision).
