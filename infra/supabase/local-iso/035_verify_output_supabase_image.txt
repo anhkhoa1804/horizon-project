@@ -1,0 +1,21 @@
+== PREFLIGHT
+rows|93|needs_ec|91|needs_temp|90
+salinity checksum before: 1dfd692507b452ebe510167afb49cf57
+public_view_before||0.061
+== APPLY 035 (single transaction)
+== POSTFLIGHT
+remaining_needs_ec|0|remaining_needs_temp|0
+salinity checksum after:  1dfd692507b452ebe510167afb49cf57
+SALINITY UNCHANGED: yes
+c1 (already mirrored, must keep 1.111/22.2)|1.111|22.2
+d1 all-null stays null|t|t
+e1 ec copied, temp stays null|0.200|t
+public_view_after|0.123|29.0|0.061
+== NEW OLD-STYLE INSERT (trigger must mirror)
+new_row|0.500|30.1
+INSERT 0 1
+== IDEMPOTENCY
+re-apply OK
+== ROLLBACK
+trigger_after_rollback|0
+(scratch database dropped)
