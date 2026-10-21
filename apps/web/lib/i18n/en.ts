@@ -39,6 +39,10 @@ export const en: Dictionary = {
 
   controls: {
     toDark: "Switch to dark theme",
+    themeLight: "Light theme",
+    themeDark: "Dark theme",
+    themeSystem: "Follow system",
+    themeLabel: "Theme",
     toLight: "Switch to light theme",
     languageLabel: "Language",
     switchToVietnamese: "Switch to Vietnamese",
@@ -124,6 +128,7 @@ export const en: Dictionary = {
     sendReport: "Submit a field report",
 
     demoBannerTitle: "DEMO DATA",
+    devFixtureBanner: "DEV PREVIEW · STATION 02 SOIL VALUES ARE SYNTHETIC",
     demoBannerBody:
       "the station figures on this page are synthetic, shown to demonstrate the interface — they are not real observations from Cồn Hô. Values marked * are real data from an external source.",
     demoBannerLink: "View real data →",

@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { FlaskConical } from "lucide-react";
 import { getObservatoryViewModel } from "@/lib/monitoring/buildObservatory";
 import { getExternalWeather } from "@/lib/external/weather";
+import { applyDevSoilFixture } from "@/lib/dev/soilFixture";
 import { getI18n } from "@/lib/i18n/server";
 import { ObservatoryCanvas } from "@/components/monitoring/observatory-canvas";
 import { loadThresholdRegistry, loadSoilWaterModels } from "@/lib/monitoring/thresholds";
@@ -39,7 +40,8 @@ async function MonitoringContent({ mode }: { mode: "real" | "demo" }) {
     getExternalWeather(),
     mode === "real" ? getPublicLiveSnapshot() : Promise.resolve([]),
   ]);
-  const model = latest.reduce(applyLiveReading, snapshot);
+  // Development-only STATION_02 soil fixture (flag OFF by default, impossible in production, real data wins).
+  const { model, active: devFixtureActive } = applyDevSoilFixture(latest.reduce(applyLiveReading, snapshot));
   // The registry is public: the basis for every interpretation is part of what
   // this page publishes, not operator-only configuration.
   const [thresholds, soilModels] = await Promise.all([
@@ -48,6 +50,16 @@ async function MonitoringContent({ mode }: { mode: "real" | "demo" }) {
   ]);
 
   return (
+    <>
+    {devFixtureActive ? (
+      <p
+        role="status"
+        data-dev-fixture-banner
+        className="mb-3 inline-flex min-h-11 items-center gap-1.5 border-b-2 border-watch px-1 text-xs font-semibold text-watch"
+      >
+        <FlaskConical className="h-4 w-4" aria-hidden />{dict.monitoring.devFixtureBanner}
+      </p>
+    ) : null}
     <ObservatoryCanvas
       model={model}
       realtime={mode === "real" ? getPublicRealtimeConfig() : null}
@@ -55,6 +67,7 @@ async function MonitoringContent({ mode }: { mode: "real" | "demo" }) {
       thresholds={thresholds}
       soilModels={soilModels}
     />
+    </>
   );
 }
 

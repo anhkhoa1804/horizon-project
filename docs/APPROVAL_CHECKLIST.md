@@ -13,7 +13,7 @@ Reply with the item ids you approve (e.g. "approve M1, M2, D1"). Items are liste
 | Id | Action | Preconditions | Rollback |
 |---|---|---|---|
 | M1 | Apply migration **035** (mirror EC/temperature to public water columns) | R1 done and P3 = false; optional table export first | `local-iso/035_rollback.sql` (trigger+function; copied values stay, they are correct). Runbook: `docs/MIGRATION_035_RUNBOOK.md`, with a rolled-back dry run first. |
-| M2 | Apply migration **036** (stale-revision conflict code P0409; fixes the config-write stall) | `034` is already applied in production (check `select to_regproc('public.store_remote_config')`) | Re-create the two functions from migration 034 (restores 40001). Safe to apply on any PostgREST version. |
+| M2 | Apply migration **036** - runbook `docs/MIGRATION_036_RUNBOOK.md` (stale-revision conflict code P0409; fixes the config-write stall) | `034` is already applied in production (check `select to_regproc('public.store_remote_config')`) | Re-create the two functions from migration 034 (restores 40001). Safe to apply on any PostgREST version. |
 
 ## C. Production deployment
 | Id | Action | Contains |

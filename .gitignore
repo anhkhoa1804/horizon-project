@@ -42,3 +42,5 @@ firmware/esp32-node/build_entries/generated/
 
 infra/supabase/local-stack/.env.local-stack
 infra/supabase/local-stack/.functions-local/
+.next-prod/
+.next-off/

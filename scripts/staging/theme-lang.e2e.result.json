@@ -1,0 +1,111 @@
+{
+  "at": "2026-10-21T15:51:04.741Z",
+  "base": "http://127.0.0.1:3100",
+  "results": [
+    {
+      "name": "new visitor, OS=dark: no explicit choice, follows the OS",
+      "ok": true,
+      "detail": "{\"attr\":null,\"stored\":null,\"checked\":[\"Follow system\",\"Switch to English\"],\"canvas\":\"#242e38\"}"
+    },
+    {
+      "name": "new visitor, OS=dark: System is the selected option",
+      "ok": true,
+      "detail": "Follow system|Switch to English"
+    },
+    {
+      "name": "OS=dark: canvas colour matches the OS",
+      "ok": true,
+      "detail": "#242e38 lum=0.17"
+    },
+    {
+      "name": "OS=dark: no hydration errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "new visitor, OS=light: no explicit choice, follows the OS",
+      "ok": true,
+      "detail": "{\"attr\":null,\"stored\":null,\"checked\":[\"Follow system\",\"Switch to English\"],\"canvas\":\"#fbfaf6\"}"
+    },
+    {
+      "name": "new visitor, OS=light: System is the selected option",
+      "ok": true,
+      "detail": "Follow system|Switch to English"
+    },
+    {
+      "name": "OS=light: canvas colour matches the OS",
+      "ok": true,
+      "detail": "#fbfaf6 lum=0.98"
+    },
+    {
+      "name": "OS=light: no hydration errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "explicit Dark beats a light OS and is stored",
+      "ok": true,
+      "detail": "{\"attr\":\"dark\",\"stored\":\"dark\",\"checked\":[\"Dark theme\",\"Switch to English\"],\"canvas\":\"#242e38\"}"
+    },
+    {
+      "name": "after reload the theme is applied before first paint (attribute present at DOMContentLoaded)",
+      "ok": true,
+      "detail": "dark"
+    },
+    {
+      "name": "explicit Light is stored",
+      "ok": true,
+      "detail": "{\"attr\":\"light\",\"stored\":\"light\",\"checked\":[\"Light theme\",\"Switch to English\"],\"canvas\":\"#fbfaf6\"}"
+    },
+    {
+      "name": "System clears the stored choice and the attribute",
+      "ok": true,
+      "detail": "{\"attr\":null,\"stored\":null,\"checked\":[\"Follow system\",\"Switch to English\"],\"canvas\":\"#fbfaf6\"}"
+    },
+    {
+      "name": "on System the page follows a live OS scheme change",
+      "ok": true,
+      "detail": "#fbfaf6 -> #242e38"
+    },
+    {
+      "name": "theme interactions raise no page errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no cookie + browser English -> English",
+      "ok": true,
+      "detail": "en"
+    },
+    {
+      "name": "no cookie + browser Vietnamese -> Vietnamese",
+      "ok": true,
+      "detail": "vi"
+    },
+    {
+      "name": "no cookie + unsupported language -> documented fallback (Vietnamese)",
+      "ok": true,
+      "detail": "vi"
+    },
+    {
+      "name": "explicit cookie (vi) beats a browser that prefers English",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "switching language keeps the current route",
+      "ok": true,
+      "detail": "http://127.0.0.1:3100/dashboard"
+    },
+    {
+      "name": "switching language sets <html lang> and remembers the choice",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Cồn Hô is never translated",
+      "ok": true,
+      "detail": "This is Cồn Hô. This is HORIZON."
+    }
+  ]
+}

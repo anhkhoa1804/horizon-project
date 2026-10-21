@@ -56,6 +56,13 @@ export function resolveTheme(): ResolvedTheme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
+/** The stored choice: an explicit "light"/"dark", otherwise "system". */
+export function getThemePreference(): ThemePreference {
+  if (typeof document === "undefined") return "system";
+  const explicit = document.documentElement.getAttribute(THEME_ATTRIBUTE);
+  return explicit === "dark" || explicit === "light" ? explicit : "system";
+}
+
 /** Writes an explicit preference. "system" clears the attribute and the key. */
 export function applyTheme(preference: ThemePreference): void {
   const root = document.documentElement;

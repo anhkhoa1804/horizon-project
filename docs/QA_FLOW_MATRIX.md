@@ -85,9 +85,13 @@ Then, against **staging or a throwaway report in production**: confirm migration
 | Migration 035 preflight/apply/idempotency/rollback | `local-stack/verify-035.sh` on schema clone | pass |
 | Migration 036 / config-write stall | stale save over HTTP + Admin suite | fixed, 32/32 |
 | Accessibility (axe, VI/EN, desktop/mobile, 7 pages) | `scripts/a11y-i18n-pwa-qa.cjs` | 0 violations |
-| PWA install + offline | same script | SW active, offline pages render |
+| PWA install + offline (CORRECTED) | `scripts/staging/offline-sw.e2e.cjs` (kills a real `next start`) | 9/9: SW controls; visited pages render; unvisited routes show `/offline` (HTTP 200); no `/admin` or `/api` in any cache. The earlier "offline verified" rows used Playwright `setOffline`, which does NOT affect service-worker fetches, and are withdrawn. |
 | Public flows in browser | `scripts/public-flows-browser-qa.cjs` | 18/19 (Realtime WebSocket absent locally) |
 | Observatory integrity with fixtures: no rows, 6 h-old partial row, empty projection | ad-hoc fixture run | missing shown as "—/Chưa có dữ liệu", never 0; "n/3 sending" falls with stale data; weather cells carry the external marker |
-| Unit tests / tsc / lint / production build | `npm test`, `npm run check`, `next lint`, `next build` | 356/356, clean |
+| Theme (Light/Dark/System) + language (explicit > browser > vi) in a real browser | `scripts/staging/theme-lang.e2e.cjs` (dev server) | 21/21 |
+| Dashboard axe (VI/EN, 390 and 1440 px) after the soil-card/hero/theme changes | `a11y-i18n-pwa-qa.cjs` + targeted run | 0 violations (Leaflet attribution links now underlined) |
+| Dev soil fixture isolation | `tests/devSoilFixture.test.ts` | 8/8 (off by default; never under production/Vercel; STATION_02 only; real data wins) |
+| Soil EC / soil temperature cards use the shared metric cell; md layout contract | `tests/observatoryComposition.test.ts` | pass |
+| Unit tests / tsc / lint | `npm test`, `npm run check`, `next lint` | 368/368, clean |
 | ESP32 compile, hardware behaviour, production smoke test | - | NOT verified here |
 

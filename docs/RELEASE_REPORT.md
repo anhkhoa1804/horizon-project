@@ -13,6 +13,15 @@ A local Supabase-equivalent staging environment **was possible** (Docker; the Su
 - `npm test` 356/356, `tsc` clean, `next lint` clean, production build succeeds.
 - Observatory integrity with fixtures: no rows / stale partial row / empty projection show "—" and "no data", never 0 and never healthy; the sending count drops with stale data.
 
+## Update 21 Oct (UI refinement + closure pass)
+- **Corrected claim:** earlier "offline verified" statements were produced with Playwright `setOffline`, which does not reach service-worker fetches. A real test (server killed) showed unvisited routes failing with `ERR_FAILED`. Fixed with a custom worker (`apps/web/worker/index.js`); `offline-sw.e2e.cjs` 9/9 (I-30).
+- Soil EC and soil temperature cards share one `MetricCell` with the four weather cards; no thresholds invented (neutral without a registry status; status always word + glyph, never colour alone). Status palette softened (green / neutral / amber / red, light and dark).
+- Dev-only STATION_02 soil fixture behind `HORIZON_DEV_SOIL_FIXTURE=1` (default off, hard-disabled in production/Vercel, banner on the page, labelled synthetic). Never written to a database or sent through ingestion.
+- Theme control Light/Dark/System (default System, explicit choice remembered); language: explicit > Accept-Language > Vietnamese; place names untranslated.
+- Hero "Đây là HORIZON": white text on a dark plate, checked light/dark, VI/EN, mobile.
+- Evidence: `npm test` 368/368, `tsc`/lint clean, theme-lang e2e 21/21, offline e2e 9/9, axe 0 on the dashboard. These are **local-staging results; they are not proof of production-cloud behaviour.**
+- ESP32 compile: see `docs/FIRMWARE_I22_READINESS.md` (result recorded there).
+
 ## BLOCKED (needs you; see `docs/APPROVAL_CHECKLIST.md`)
 Apply 035 and 036 to production, deploy, one disposable production report, firmware compile/bench/flash, read-only production SQL for I-23, Storage headroom decision.
 
@@ -21,7 +30,7 @@ ESP32 compile and all hardware behaviour; I-23 root cause; Supabase cloud specif
 
 ## REMAINING known gaps
 - I-29: EN home still shows place names and two Vietnamese-only editorial posts (content decision).
-- Unvisited route opened offline shows 404 instead of `/offline`.
+- (closed) Unvisited route opened offline now shows `/offline` (I-30).
 - Soil panel age gating not examined in depth.
 - Operator/researcher roles unimplemented (documented in `docs/AUTHORIZATION_MODEL.md`).
 

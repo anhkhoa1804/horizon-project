@@ -1,0 +1,50 @@
+{
+  "at": "2026-10-21T16:07:44.591Z",
+  "results": [
+    {
+      "name": "service worker registered and controlling",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no /admin or /api response is stored in any browser cache",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "server is really down",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "visited /dashboard renders offline from cache",
+      "ok": true,
+      "detail": "200 Home Monitoring Report Admin VI EN Observatory Wat"
+    },
+    {
+      "name": "visited /report renders offline from cache",
+      "ok": true,
+      "detail": "200 Home Monitoring Report Admin VI EN Field report. P"
+    },
+    {
+      "name": "visited / renders offline from cache",
+      "ok": true,
+      "detail": "200 Home Monitoring Report Admin VI EN CỒN HÔ · VĨNH L"
+    },
+    {
+      "name": "/offline shows the offline page (200), not a 404 or a browser error",
+      "ok": true,
+      "detail": "200 Bạn đang ngoại tuyến Các trang đã tải trước vẫn có"
+    },
+    {
+      "name": "/never-visited shows the offline page (200), not a 404 or a browser error",
+      "ok": true,
+      "detail": "200 Bạn đang ngoại tuyến Các trang đã tải trước vẫn có"
+    },
+    {
+      "name": "/posts/never-visited-slug shows the offline page (200), not a 404 or a browser error",
+      "ok": true,
+      "detail": "200 Bạn đang ngoại tuyến Các trang đã tải trước vẫn có"
+    }
+  ]
+}

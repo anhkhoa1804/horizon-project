@@ -408,6 +408,7 @@
   /* Region-scale status surfaces (bg-status-normal / -warning / -critical /
      -none). Whole-region tints, not chips — see the note in :root. */
   --color-status-normal: var(--h-status-normal);
+  --color-status-watch: var(--h-status-watch);
   --color-status-warning: var(--h-status-warning);
   --color-status-critical: var(--h-status-critical);
   --color-status-none: var(--h-status-none);
@@ -2264,7 +2265,11 @@ main {
 .report-observation-layout { background: var(--h-field-surface); color: var(--h-foreground); }
 .report-single .report-station-choice:hover { background: var(--h-field-hover); }
 .field-place-label,.admin-login-place > div { color: #142924; }
-.hero-name-highlight { background: #cbd7bb; color: #142924; padding: 0 .1em .025em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.hero-name-highlight { background: rgba(12,38,34,.68); color: #fff; padding: 0 .1em .025em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+/* Hero title: white in both themes — it always sits on the photographic scene plus its scrim, never on the page canvas.
+   The name is a white word on a deep-green plate (previously dark text on a pale plate, which read as black). */
+.horizon-cover__title { color: #fff; text-shadow: 0 1px 22px rgba(8,24,22,.32); }
+.horizon-cover__title .hero-name-highlight { color: #fff; text-shadow: none; }
 .floating-contacts { position: fixed; z-index: var(--z-drawer); left: 1rem; top: 50%; transform: translateY(-50%); }
 .floating-contacts__links { display: flex; flex-direction: column; gap: .45rem; }
 .floating-contacts a,.floating-contacts__toggle { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--h-surface); color: var(--h-foreground); box-shadow: 0 3px 12px rgba(0,0,0,.16); transition: background 180ms,color 180ms; }
@@ -2295,3 +2300,16 @@ main {
 
 /* Leaflet labels retain their light fill in either theme. */
 .leaflet-tooltip { color: #142924; }
+
+/* STATUS SURFACES — final scale: restrained green -> neutral white -> red, four distinct severities.
+   normal = soft green, watch = warm neutral (between safe and elevated), warning = light red, critical = stronger red.
+   Colour is never the only carrier: every status surface also prints the status word and a per-severity glyph, and a
+   metric with no registry threshold (or no data) keeps its plain domain surface and prints no status at all. */
+.observatory-bento,.admin-console-workspace { --h-status-normal: #d8ecde; --h-status-watch: #f4eedd; --h-status-warning: #efc7be; --h-status-critical: #e2998d; --h-status-none: var(--h-surface); }
+:root[data-theme="dark"] .observatory-bento,:root[data-theme="dark"] .admin-console-workspace { --h-status-normal: #17392b; --h-status-watch: #38352a; --h-status-warning: #4f302d; --h-status-critical: #6e3436; }
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) .observatory-bento,:root:not([data-theme="light"]) .admin-console-workspace { --h-status-normal: #17392b; --h-status-watch: #38352a; --h-status-warning: #4f302d; --h-status-critical: #6e3436; }
+}
+
+/* a11y: Leaflet attribution links must not rely on colour alone (axe link-in-text-block). */
+.leaflet-container .leaflet-control-attribution a { text-decoration: underline !important; text-underline-offset: 2px; }

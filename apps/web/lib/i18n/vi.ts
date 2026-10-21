@@ -38,6 +38,10 @@ export const vi = {
 
   controls: {
     toDark: "Chuyển sang giao diện tối",
+    themeLight: "Giao diện sáng",
+    themeDark: "Giao diện tối",
+    themeSystem: "Theo hệ thống",
+    themeLabel: "Giao diện",
     toLight: "Chuyển sang giao diện sáng",
     languageLabel: "Ngôn ngữ",
     switchToVietnamese: "Chuyển sang tiếng Việt",
@@ -125,6 +129,7 @@ export const vi = {
     sendReport: "Gửi báo cáo hiện trường",
 
     demoBannerTitle: "DỮ LIỆU MINH HỌA",
+    devFixtureBanner: "BẢN XEM TRƯỚC DEV · ĐẤT TRẠM 02 LÀ DỮ LIỆU GIẢ LẬP",
     demoBannerBody:
       "số liệu trạm trên trang này là tổng hợp để trình bày giao diện, không phải quan trắc thật từ Cồn Hô. Các giá trị đánh dấu * là dữ liệu thật từ nguồn ngoài.",
     demoBannerLink: "Xem dữ liệu thật →",

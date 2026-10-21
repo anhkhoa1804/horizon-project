@@ -5,7 +5,7 @@ import { useLiveObservatory } from "./use-live-observatory";
 import { LiveSignalIndicator, LiveSignalContext } from "./live-signal-indicator";
 import { DangerHeatmap } from "./danger-heatmap";
 import type { PublicRealtimeConfig } from "@/lib/monitoring/publicRealtime";
-import { CloudRain, Droplets, Sprout, Thermometer, Waves, Wind } from "lucide-react";
+import { Check, CloudRain, Droplets, Eye, OctagonAlert, Sprout, Thermometer, TriangleAlert, Waves, Wind, Zap } from "lucide-react";
 import { MapStation, StationNetworkMap } from "@/components/dashboard/station-network-map";
 import { ObservationLog } from "@/components/monitoring/observation-log";
 import type { ExternalWeather } from "@/lib/external/weather";
@@ -121,6 +121,14 @@ const STATUS_LABEL: Record<MetricStatus["level"], keyof Dictionary["alerts"]> = 
   watch: "warning",
   warn: "warning",
   critical: "critical",
+};
+
+/** One glyph per severity so status never rests on colour alone (word + glyph + tint). */
+const STATUS_ICON: Record<MetricStatus["level"], typeof Check> = {
+  ok: Check,
+  watch: Eye,
+  warn: TriangleAlert,
+  critical: OctagonAlert,
 };
 
 const WEATHER_REFRESH_MS = 15 * 60 * 1000;
@@ -306,11 +314,58 @@ function RegionHeader({
           <span aria-hidden className="shrink-0 text-[11px] opacity-50">
             ·
           </span>
+          {(() => { const StatusIcon = STATUS_ICON[status.level]; return <StatusIcon className="h-3 w-3 shrink-0" aria-hidden />; })()}
           <span title={`${dict.alerts[STATUS_LABEL[status.level]]} · ${dict.monitoring.statusBasis[status.basis]}`} aria-label={`${dict.alerts[STATUS_LABEL[status.level]]} · ${dict.monitoring.statusBasis[status.basis]}`} className="region-heading-status text-[10px] font-medium text-foreground">
             {dict.alerts[STATUS_LABEL[status.level]]}
           </span>
         </>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * ONE component for every single-figure card — the four regional weather readings AND the two soil
+ * signals (bulk EC, soil temperature). Same header grammar (icon, label, status word + glyph when a
+ * registry status exists), same value block, same padding and surface rules, so the six can never
+ * drift apart. Status tints the surface only when the threshold registry gives one; otherwise the card
+ * keeps its domain tint and shows no status word.
+ */
+function MetricCell({
+  icon: Icon,
+  label,
+  metric,
+  dict,
+  status = null,
+  external = false,
+  tone,
+  placement,
+  note,
+}: {
+  icon: typeof Waves;
+  label: string;
+  metric: ObservatoryMetric | null | undefined;
+  dict: Dictionary;
+  status?: MetricStatus | null;
+  external?: boolean;
+  tone: string;
+  placement: string;
+  note?: string | null;
+}) {
+  return (
+    <div className={cn("rounded-xl border border-border", "flex flex-col justify-between p-[var(--bento-pad)]", "gap-1", status ? regionSurface(status) : tone, placement)}>
+      <div className="flex min-w-0 items-start gap-1.5 text-foreground-subtle">
+        <Icon className="h-3.5 w-3.5 shrink-0 translate-y-px" aria-hidden />
+        <span className="min-w-0 text-[11px] font-semibold uppercase leading-[1.3] tracking-[0.1em]">{label}</span>
+        <LiveSignalIndicator external={external} />
+      </div>
+      {status ? (
+        <p className="flex items-center gap-1 text-[10px] font-medium text-foreground">
+          {(() => { const StatusIcon = STATUS_ICON[status.level]; return <StatusIcon className="h-3 w-3 shrink-0" aria-hidden />; })()}
+          <span title={dict.monitoring.statusBasis[status.basis]}>{dict.alerts[STATUS_LABEL[status.level]]}</span>
+        </p>
+      ) : null}
+      <ContextValue metric={metric} dict={dict} note={note} />
     </div>
   );
 }
@@ -323,7 +378,6 @@ function ObservatoryBento({
   thresholds,
   series,
   mapStations,
-  network,
 }: {
   groups: SignalGroup[];
   dict: Dictionary;
@@ -332,7 +386,6 @@ function ObservatoryBento({
   thresholds: ThresholdRow[];
   series: ObservatoryViewModel["series"];
   mapStations: MapStation[];
-  network: ObservatoryViewModel["network"];
 }) {
   const water = groups.find((g) => g.domain === "water");
   const soil = groups.find((g) => g.domain === "soil");
@@ -378,12 +431,6 @@ function ObservatoryBento({
   // SCIENTIFIC_REFERENCES.md: bulk EC is not ECe; no sourced single-variable
   // alarm for probe-depth temperature), so until someone configures one these
   // stay neutral and say so, rather than borrowing a band that does not apply.
-  const soilSignalsStatus = isDemo ? null : worstStatus([advisoryStatus(soilEc, "soil_ec_bulk"), advisoryStatus(soilTemp, "soil_temp")]);
-  const soilSignalNote = (metric: ObservatoryMetric | undefined, quantity: string): string | null => {
-    if (!metric || metric.value === null) return null;
-    const resolved = isDemo ? null : advisoryStatus(metric, quantity);
-    return resolved ? dict.alerts[STATUS_LABEL[resolved.level]] : dict.monitoring.noThreshold;
-  };
   const soilStatus = worstStatus([advisoryStatus(soilPh, "soil_ph"), advisoryStatus(soilMoisture, "soil_moisture")]);
 
   // Every cell, without exception: same corner, same hairline, same inset.
@@ -397,7 +444,7 @@ function ObservatoryBento({
       className={cn(
         "observatory-bento grid gap-[var(--bento-gap)]",
         "aspect-[4/19] grid-cols-4 grid-rows-[repeat(19,minmax(0,1fr))]",
-        "md:aspect-[1/2] md:grid-rows-[repeat(8,minmax(0,1fr))]",
+        "md:aspect-[4/9] md:grid-rows-[repeat(9,minmax(0,1fr))]",
         "lg:aspect-[3/2] lg:grid-cols-6 lg:grid-rows-4",
       )}
     >
@@ -452,30 +499,29 @@ function ObservatoryBento({
         <ObservationLog series={series} />
       </div>
 
-      {/* BOX 3 — the two soil signals that are not in the Soil box below
-          (bulk EC and soil temperature). It replaced the gateway signal /
-          battery pair: no current firmware reports either, so that box was
-          permanently empty. One surface, one status — worstStatus of the two,
-          from the threshold registry only. */}
-      <div
-        className={cn(
-          cell,
-          padded,
-          soilSignalsStatus ? regionSurface(soilSignalsStatus) : "bg-[var(--h-domain-soil)]",
-          "col-start-1 col-end-5 row-start-7 row-end-9",
-          "md:col-start-1 md:col-end-5 md:row-start-4 md:row-end-5",
-          "lg:col-start-5 lg:col-end-7 lg:row-start-3 lg:row-end-4",
-        )}
-      >
-        <RegionHeader icon={Sprout} title={dict.monitoring.soilSignals} status={soilSignalsStatus} dict={dict} />
-        <p className="text-[11px] text-foreground-subtle">
-          {network.live > 0 ? `${network.live}/${network.total} ${dict.monitoring.sendingData}` : dict.monitoring.noneSending}
-        </p>
-        <div className="mt-auto grid grid-cols-2 items-baseline gap-x-4 gap-y-2 pt-[var(--bento-header-gap)]">
-          <Value label={dict.metricLabels.soilEc} metric={soilEc} dict={dict} size="secondary" note={soilSignalNote(soilEc, "soil_ec_bulk")} />
-          <Value label={dict.metricLabels.soilTemp} metric={soilTemp} dict={dict} size="secondary" note={soilSignalNote(soilTemp, "soil_temp")} />
-        </div>
-      </div>
+      {/* BOX 3a / 3b — bulk soil EC and soil temperature (ES-SM-THEC-01), each one base cell and
+          built by the SAME MetricCell as the four weather readings. They replaced the gateway signal /
+          battery pair, which no current firmware reports. Colour comes ONLY from the threshold registry:
+          none is seeded for bulk EC or probe-depth temperature (docs/SCIENTIFIC_REFERENCES.md), so these
+          stay neutral until someone configures one. Nothing is invented here. */}
+      <MetricCell
+        icon={Zap}
+        label={dict.metricLabels.soilEc}
+        metric={soilEc}
+        dict={dict}
+        status={isDemo ? null : advisoryStatus(soilEc, "soil_ec_bulk")}
+        tone="bg-[var(--h-domain-soil)]"
+        placement="col-start-1 col-end-3 row-start-7 row-end-9 md:col-start-1 md:col-end-2 md:row-start-4 md:row-end-5 lg:col-start-5 lg:col-end-6 lg:row-start-3 lg:row-end-4"
+      />
+      <MetricCell
+        icon={Thermometer}
+        label={dict.metricLabels.soilTemp}
+        metric={soilTemp}
+        dict={dict}
+        status={isDemo ? null : advisoryStatus(soilTemp, "soil_temp")}
+        tone="bg-[var(--h-domain-soil)]"
+        placement="col-start-3 col-end-5 row-start-7 row-end-9 md:col-start-2 md:col-end-3 md:row-start-4 md:row-end-5 lg:col-start-6 lg:col-end-7 lg:row-start-3 lg:row-end-4"
+      />
 
       {/* BOX 4-7 — the four regional figures, each one base cell, each a
           secondary context layer.
@@ -499,28 +545,18 @@ function ObservatoryBento({
           { icon: Wind, label: dict.metricLabels.wind, key: "wind", cell: "col-start-1 col-end-3 row-start-11 row-end-13 md:col-start-3 md:col-end-4 md:row-start-5 md:row-end-6 lg:col-start-3 lg:col-end-4 lg:row-start-3 lg:row-end-4" },
           { icon: CloudRain, label: dict.metricLabels.precipitation, key: "precipitation", cell: "col-start-3 col-end-5 row-start-11 row-end-13 md:col-start-4 md:col-end-5 md:row-start-5 md:row-end-6 lg:col-start-4 lg:col-end-5 lg:row-start-3 lg:row-end-4" },
         ] as const
-      ).map(({ icon: Icon, label, key, cell: placement }) => (
-        <div
+      ).map(({ icon, label, key, cell: placement }) => (
+        <MetricCell
           key={key}
-          className={cn(
-            cell,
-            padded,
-            "gap-1 bg-[var(--h-domain-weather)]",
-            placement,
-          )}
-        >
-          <div className="flex min-w-0 items-start gap-1.5 text-foreground-subtle">
-            <Icon className="h-3.5 w-3.5 shrink-0 translate-y-px" aria-hidden />
-            <span className="min-w-0 text-[11px] font-semibold uppercase leading-[1.3] tracking-[0.1em]">
-              {label}
-            </span><LiveSignalIndicator external />
-          </div>
-          <ContextValue
-            metric={contextMetric(key)}
-            dict={dict}
-            note={contextLine(key as ContextMetricKey, contextMetric(key)?.value ?? null, dict)}
-          />
-        </div>
+          icon={icon}
+          label={label}
+          metric={contextMetric(key)}
+          dict={dict}
+          external
+          tone="bg-[var(--h-domain-weather)]"
+          placement={placement}
+          note={contextLine(key as ContextMetricKey, contextMetric(key)?.value ?? null, dict)}
+        />
       ))}
 
       {/* ROW 4 — two observation domains, each a single parent surface. */}
@@ -530,7 +566,7 @@ function ObservatoryBento({
           padded,
           soilStatus ? regionSurface(soilStatus) : "bg-[var(--h-domain-soil)]",
           "col-start-1 col-end-5 row-start-13 row-end-15",
-          "md:col-start-1 md:col-end-3 md:row-start-6 md:row-end-7",
+          "md:col-start-3 md:col-end-5 md:row-start-4 md:row-end-5",
           "lg:col-start-1 lg:col-end-3 lg:row-start-4 lg:row-end-5",
         )}
       >
@@ -546,7 +582,7 @@ function ObservatoryBento({
           cell,
           "bg-surface risk-calendar-box",
           "col-start-1 col-end-5 row-start-15 row-end-17 flex flex-col p-[var(--bento-pad)]",
-          "md:col-start-3 md:col-end-5 md:row-start-6 md:row-end-7",
+          "md:col-start-1 md:col-end-5 md:row-start-6 md:row-end-8",
           "lg:col-start-3 lg:col-end-7 lg:row-start-4 lg:row-end-5",
         )}
       >
@@ -568,7 +604,7 @@ function ObservatoryBento({
           cell,
           "relative overflow-hidden bg-surface",
           "col-start-1 col-end-5 row-start-17 row-end-20",
-          "md:col-start-1 md:col-end-5 md:row-start-7 md:row-end-9",
+          "md:col-start-1 md:col-end-5 md:row-start-8 md:row-end-10",
           "lg:col-start-1 lg:col-end-3 lg:row-start-2 lg:row-end-4",
         )}
       >
@@ -728,7 +764,6 @@ export function ObservatoryCanvas({
           thresholds={thresholds}
           series={series}
           mapStations={mapStations}
-          network={model.network}
         />
         <p className="observatory-source-line">STATION_01 · STATION_02 <span>Open-Meteo · {dict.monitoring.regionalContextLabel}</span></p>
       </section>

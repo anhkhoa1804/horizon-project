@@ -119,7 +119,7 @@ Environment: real Postgres 15 / PostgREST / Storage / Edge Runtime from reposito
 - **I-28 (FIXED, E) · Accessibility.** axe (28 page/locale/viewport combinations): 0 violations of any impact after fixing nested-interactive, aria-prohibited-attr, scrollable-region-focusable, `meta-viewport` (zoom was disabled via `maximumScale=1`, WCAG 1.4.4) and the `/offline` landmark.
 - **I-29 (PARTLY FIXED) · EN home still showed Vietnamese.** Chapter text, workflow, application profiles and the Field Notes reading-time label now translate. Remaining Vietnamese on the EN home is place names (Cồn Hô, Vĩnh Long), the two Vietnamese-only field-note articles and their hero labels (disclosed editorial drafts) - a content decision, not code.
 - **I-18 (FIXED in repo, E; NOT applied to production)** migration 035 verified on two isolated Postgres builds. **I-23 (OPEN)** root cause needs the read-only production SQL in `docs/READONLY_PRODUCTION_QUERIES.sql` (Q1-Q5): I cannot see production data from here.
-- **Observed, not changed:** an unvisited route opened offline shows the 404 page instead of `/offline`; the local stack has no Realtime service, so the public flows browser QA records a failed WebSocket (18/19; every functional check passes).
+- **Offline fallback (see I-30, now FIXED):** an unvisited route opened offline showed a failed load instead of `/offline`; the local stack has no Realtime service, so the public flows browser QA records a failed WebSocket (18/19; every functional check passes).
 
 ## Not audited (still)
 
@@ -131,3 +131,12 @@ Observatory rendering, map interaction, chart rendering, units and labels, time-
 - **Migration 035 reviewed against the real schema** (types match, copy only into NULL, projection trigger only moves forward in time so a backfill cannot overwrite newer public rows). Not applied; needs approval.
 - **Native checks after the latest changes:** `npm test` 356/356 pass (352 + 4 new), `tsc --noEmit` clean, `next lint` clean. Production build not re-run in this pass.
 - **Repository reconciliation (cloud vs D:\horizon-project):** text files differ from the device only by CRLF line endings except 7 text files and 12 screenshots the cloud changed after the last sync and 3 files not yet delivered; no newer local work found on the device. Screenshot PNGs are compared by decoded pixels, not file bytes (the app re-encodes images on write).
+
+
+## Update 21 Oct (third pass: UI refinement and closure)
+- **I-30 (FIXED, E) · Offline fallback for unvisited routes; earlier offline evidence withdrawn.** Playwright `setOffline` does not affect service-worker fetches, so previous "offline verified" and "404 for unvisited routes" observations were artifacts. With the server really stopped, unvisited routes failed outright (`ERR_FAILED`). Fix: `apps/web/worker/index.js` (network-first navigations, cache `horizon-pages-v1`, only 200 non-redirected `text/html`, falls back to a cached copy then the precached `/offline`; excludes `/admin`, `/api`, non-GET). `scripts/staging/offline-sw.e2e.cjs` 9/9, including no `/admin`/`/api` entries in any cache.
+- **I-31 (CHANGED, E) · Soil EC / soil temperature cards.** Now the same component as the weather cards (`MetricCell`); the long explanatory "soil signals" box is removed. No soil EC/temperature thresholds were invented; a metric without a registry status stays neutral and never reads as safe.
+- **I-32 (ADDED, E) · Dev-only soil fixture.** `HORIZON_DEV_SOIL_FIXTURE=1`, default off, disabled when `NODE_ENV=production` or `VERCEL`/`VERCEL_ENV` is set, STATION_02 only, never overrides real values, banner `data-dev-fixture-banner`, provenance "demo". Tests: `devSoilFixture.test.ts` 8/8. Real data takes over automatically when it arrives.
+- **I-33 (ADDED, E) · Theme and language preference.** Light/Dark/System radiogroup; language negotiation (cookie > Accept-Language > `vi`). `theme-lang.e2e.cjs` 21/21.
+- **I-34 (FIXED, E) · Hero text colour** and **a11y:** Leaflet attribution links relied on colour alone (axe `link-in-text-block`, intermittent); now underlined. Dashboard axe 0.
+- **I-23 remains OPEN** pending the read-only production SQL (`docs/READONLY_PRODUCTION_QUERIES.sql`); no historical salinity is rewritten. Migrations 035/036 remain unapplied.

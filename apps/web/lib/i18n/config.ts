@@ -64,3 +64,31 @@ export const LOCALE_FULL_LABEL: Record<Locale, string> = {
   vi: "Tiếng Việt",
   en: "English",
 };
+
+/**
+ * Language preference order: (1) the explicit choice stored in the LOCALE_COOKIE,
+ * (2) the browser's Accept-Language, (3) DEFAULT_LOCALE (Vietnamese — the project's
+ * first language and the documented fallback). Time of day plays no part.
+ *
+ * Accept-Language is parsed with q-weights; the highest-weighted tag whose primary
+ * subtag is supported wins ("en-GB" -> en, "vi-VN" -> vi). Wildcards, malformed
+ * entries and unsupported languages are skipped. Never throws.
+ */
+export function negotiateLocale(acceptLanguage: string | null | undefined): Locale {
+  if (!acceptLanguage) return DEFAULT_LOCALE;
+  const ranked = acceptLanguage
+    .split(",")
+    .map((part, index) => {
+      const [tag, ...params] = part.trim().split(";");
+      const q = params.map((p) => p.trim()).find((p) => p.startsWith("q="));
+      const weight = q ? Number(q.slice(2)) : 1;
+      return { tag: tag.trim().toLowerCase(), weight: Number.isFinite(weight) ? weight : 0, index };
+    })
+    .filter((entry) => entry.tag && entry.tag !== "*" && entry.weight > 0)
+    .sort((a, b) => b.weight - a.weight || a.index - b.index);
+  for (const { tag } of ranked) {
+    const primary = tag.split("-")[0];
+    if (isLocale(primary)) return primary;
+  }
+  return DEFAULT_LOCALE;
+}
