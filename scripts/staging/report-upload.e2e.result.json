@@ -1,0 +1,94 @@
+{
+  "at": "2026-10-21T15:17:46.341Z",
+  "target": {
+    "web": "http://127.0.0.1:3100",
+    "api": "http://127.0.0.1:54321"
+  },
+  "fixtureBytes": 1547796,
+  "results": [
+    {
+      "name": "report POST with video manifest returns a signed upload + ticket",
+      "ok": true
+    },
+    {
+      "name": "finalize BEFORE the object exists records nothing",
+      "ok": true
+    },
+    {
+      "name": "PUT real MP4 to the signed URL succeeds",
+      "ok": true
+    },
+    {
+      "name": "object is in private Storage with the exact byte size",
+      "ok": true
+    },
+    {
+      "name": "finalize records exactly one report_media row (video, correct size/mime)",
+      "ok": true
+    },
+    {
+      "name": "finalize is idempotent (no duplicate row)",
+      "ok": true
+    },
+    {
+      "name": "resign refuses a path that is already recorded evidence",
+      "ok": true
+    },
+    {
+      "name": "stored object bytes are identical to the uploaded file (service-role download)",
+      "ok": true
+    },
+    {
+      "name": "service-role signed READ url works (admin evidence viewing path)",
+      "ok": true
+    },
+    {
+      "name": "anonymous cannot read the private object (no URL, public path, or anon key)",
+      "ok": true
+    },
+    {
+      "name": "anonymous cannot read report_media or damage_logs via REST",
+      "ok": true
+    },
+    {
+      "name": "anon key cannot upload without a signed token",
+      "ok": true
+    },
+    {
+      "name": "a ticket for report A cannot finalize report B",
+      "ok": true
+    },
+    {
+      "name": "tampered ticket and invented path are rejected",
+      "ok": true
+    },
+    {
+      "name": "signed upload token is bound to ONE path (cannot write elsewhere)",
+      "ok": true
+    },
+    {
+      "name": "wrong MIME type is refused by bucket policy even with a valid token",
+      "ok": true
+    },
+    {
+      "name": "manifest validation: unsupported type / oversize / too many are rejected before any row is written",
+      "ok": true
+    },
+    {
+      "name": "declared size lies: finalize records the REAL stored size, never the declared one",
+      "ok": true
+    },
+    {
+      "name": "rate limiter engages for one client (HTTP 429 after the quota)",
+      "ok": true
+    },
+    {
+      "name": "a real ~18-20 MB video (just under the 20 MB limit) uploads, finalizes and round-trips",
+      "ok": true
+    },
+    {
+      "name": "an over-limit (21 MB) body is rejected by Storage itself even though the declared manifest was small",
+      "ok": true
+    }
+  ]
+}

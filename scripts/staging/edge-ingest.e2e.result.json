@@ -1,0 +1,54 @@
+{
+  "at": "2026-10-21T15:17:46.918Z",
+  "target": "http://127.0.0.1:54321",
+  "results": [
+    {
+      "name": "valid full water reading is stored; 035 trigger mirrors EC/temperature to the public columns",
+      "ok": true
+    },
+    {
+      "name": "MISSING salinity (failed probe read) is stored as NULL — never 0, never derived from EC (I-22 ingest side)",
+      "ok": true
+    },
+    {
+      "name": "a genuine zero salinity is preserved as 0 (zero is not missing)",
+      "ok": true
+    },
+    {
+      "name": "all-EC-missing partial reading (ultrasonic only) accepted with NULL EC/temperature",
+      "ok": true
+    },
+    {
+      "name": "duplicate message_id is idempotent (one row)",
+      "ok": true
+    },
+    {
+      "name": "wrong gateway token is refused (401/403) and nothing is stored",
+      "ok": true
+    },
+    {
+      "name": "unknown / unregistered device is refused",
+      "ok": true
+    },
+    {
+      "name": "timestamp outside the drift window is refused",
+      "ok": true
+    },
+    {
+      "name": "out-of-range salinity (60) is refused, not clamped",
+      "ok": true
+    },
+    {
+      "name": "contract version mismatch (header v2) is refused",
+      "ok": true
+    },
+    {
+      "name": "soil reading for STATION_02 stored in soil_readings; air/soil NULLs stay NULL",
+      "ok": true
+    },
+    {
+      "name": "public Observatory projection shows the newest reading only and exposes only public columns to anon",
+      "ok": true
+    }
+  ]
+}

@@ -1,0 +1,436 @@
+{
+  "base": "http://127.0.0.1:3100",
+  "axe": [
+    {
+      "locale": "vi",
+      "view": "desktop",
+      "page": "/",
+      "violations": []
+    },
+    {
+      "locale": "vi",
+      "view": "desktop",
+      "page": "/dashboard",
+      "violations": []
+    },
+    {
+      "locale": "vi",
+      "view": "desktop",
+      "page": "/report",
+      "violations": []
+    },
+    {
+      "locale": "vi",
+      "view": "desktop",
+      "page": "/observe",
+      "violations": []
+    },
+    {
+      "locale": "vi",
+      "view": "desktop",
+      "page": "/offline",
+      "violations": []
+    },
+    {
+      "locale": "vi",
+      "view": "desktop",
+      "page": "/posts/phan-cung-cua-mot-tram-do",
+      "violations": []
+    },
+    {
+      "locale": "vi",
+      "view": "desktop",
+      "page": "/posts/vi-sao-bat-dau-tu-do-man",
+      "violations": []
+    },
+    {
+      "locale": "vi",
+      "view": "mobile",
+      "page": "/",
+      "violations": []
+    },
+    {
+      "locale": "vi",
+      "view": "mobile",
+      "page": "/dashboard",
+      "violations": []
+    },
+    {
+      "locale": "vi",
+      "view": "mobile",
+      "page": "/report",
+      "violations": []
+    },
+    {
+      "locale": "vi",
+      "view": "mobile",
+      "page": "/observe",
+      "violations": []
+    },
+    {
+      "locale": "vi",
+      "view": "mobile",
+      "page": "/offline",
+      "violations": []
+    },
+    {
+      "locale": "vi",
+      "view": "mobile",
+      "page": "/posts/phan-cung-cua-mot-tram-do",
+      "violations": []
+    },
+    {
+      "locale": "vi",
+      "view": "mobile",
+      "page": "/posts/vi-sao-bat-dau-tu-do-man",
+      "violations": []
+    },
+    {
+      "locale": "en",
+      "view": "desktop",
+      "page": "/",
+      "violations": []
+    },
+    {
+      "locale": "en",
+      "view": "desktop",
+      "page": "/dashboard",
+      "violations": []
+    },
+    {
+      "locale": "en",
+      "view": "desktop",
+      "page": "/report",
+      "violations": []
+    },
+    {
+      "locale": "en",
+      "view": "desktop",
+      "page": "/observe",
+      "violations": []
+    },
+    {
+      "locale": "en",
+      "view": "desktop",
+      "page": "/offline",
+      "violations": []
+    },
+    {
+      "locale": "en",
+      "view": "desktop",
+      "page": "/posts/phan-cung-cua-mot-tram-do",
+      "violations": []
+    },
+    {
+      "locale": "en",
+      "view": "desktop",
+      "page": "/posts/vi-sao-bat-dau-tu-do-man",
+      "violations": []
+    },
+    {
+      "locale": "en",
+      "view": "mobile",
+      "page": "/",
+      "violations": []
+    },
+    {
+      "locale": "en",
+      "view": "mobile",
+      "page": "/dashboard",
+      "violations": []
+    },
+    {
+      "locale": "en",
+      "view": "mobile",
+      "page": "/report",
+      "violations": []
+    },
+    {
+      "locale": "en",
+      "view": "mobile",
+      "page": "/observe",
+      "violations": []
+    },
+    {
+      "locale": "en",
+      "view": "mobile",
+      "page": "/offline",
+      "violations": []
+    },
+    {
+      "locale": "en",
+      "view": "mobile",
+      "page": "/posts/phan-cung-cua-mot-tram-do",
+      "violations": []
+    },
+    {
+      "locale": "en",
+      "view": "mobile",
+      "page": "/posts/vi-sao-bat-dau-tu-do-man",
+      "violations": []
+    }
+  ],
+  "i18n": [
+    {
+      "locale": "vi",
+      "page": "/",
+      "htmlLang": "vi",
+      "vietnameseLines": [
+        "Trang chủ",
+        "Quan trắc",
+        "Báo cáo",
+        "Quản trị",
+        "CỒN HÔ · VĨNH LONG",
+        "Đây là Cồn Hô.",
+        "Đây là HORIZON.",
+        "Xem mạng lưới quan trắc",
+        "Ở một cù lao, thay đổi không luôn đến cùng lúc. Nước ngoài vườn, vùng rễ và đường truyền dữ liệu có những nhịp riêng — và đó là lý do phép đo cần ở gần nơi sản xuất.",
+        "Chiều dài ~1.000 m",
+        "Chiều ngang ~300 m",
+        "Diện tích ~18–20 ha"
+      ]
+    },
+    {
+      "locale": "vi",
+      "page": "/dashboard",
+      "htmlLang": "vi",
+      "vietnameseLines": [
+        "Trang chủ",
+        "Quan trắc",
+        "Báo cáo",
+        "Quản trị",
+        "Đài quan trắc",
+        "Nước, đất và dữ liệu tại Cồn Hô.",
+        "ĐỘ MẶN",
+        "MỰC NƯỚC",
+        "EC nước",
+        "Nhiệt độ nước",
+        "Độ mặn",
+        "Mực nước"
+      ]
+    },
+    {
+      "locale": "vi",
+      "page": "/report",
+      "htmlLang": "vi",
+      "vietnameseLines": [
+        "Trang chủ",
+        "Quan trắc",
+        "Báo cáo",
+        "Quản trị",
+        "Ghi nhận hiện trường.",
+        "Chọn trạm gần bạn nhất, mô tả điều bạn thấy, rồi gửi.",
+        "Nhìn thấy.",
+        "Ghi lại.",
+        "Gửi đi.",
+        "Bắt đầu ghi nhận",
+        "Trạm",
+        "Chọn trạm gần nhất"
+      ]
+    },
+    {
+      "locale": "vi",
+      "page": "/observe",
+      "htmlLang": "vi",
+      "vietnameseLines": [
+        "Trang chủ",
+        "Quan trắc",
+        "Báo cáo",
+        "Quản trị",
+        "Đài quan trắc",
+        "Nước, đất và dữ liệu tại Cồn Hô.",
+        "ĐỘ MẶN",
+        "MỰC NƯỚC",
+        "EC nước",
+        "Nhiệt độ nước",
+        "Độ mặn",
+        "Mực nước"
+      ]
+    },
+    {
+      "locale": "vi",
+      "page": "/offline",
+      "htmlLang": "vi",
+      "vietnameseLines": [
+        "Bạn đang ngoại tuyến",
+        "Các trang đã tải trước vẫn có thể xem. Hãy kết nối lại để nhận dữ liệu mới."
+      ]
+    },
+    {
+      "locale": "vi",
+      "page": "/posts/phan-cung-cua-mot-tram-do",
+      "htmlLang": "vi",
+      "vietnameseLines": [
+        "Trang chủ",
+        "Quan trắc",
+        "Báo cáo",
+        "Quản trị",
+        "Ghi chép",
+        "Phần cứng của một trạm đo, và vì sao chọn từng món",
+        "02 tháng 4, 2026 · 6 phút đọc",
+        "Bản nháp — ghi chép trong quá trình phát triển dự án, chưa phải tài liệu công bố.",
+        "Trang chủ nói HORIZON đo nước, đất và không khí. Bài này nói bằng thiết bị gì, và vì sao lại là những thiết bị đó.",
+        "Nội dung dưới đây mô tả phần cứng và đường dữ liệu hiện tại. Ảnh thiết bị là ảnh dự án; bản đồ minh họa trên trang chủ vẫn là sơ đồ, không phải ảnh vệ tinh hay bằng chứng cho một lần kiểm định vật lý cụ thể.",
+        "Nhóm 1 — Nước (Trạm Nước)",
+        "A02YYUW. Cảm biến siêu âm đo khoảng cách tới mặt nước, từ đó suy ra mực nước. Chọn siêu âm vì đầu đo không cần chạm nước: không có bộ phận ngâm lâu ngày trong nước lợ, nên ít hỏng và ít phải bảo trì hơn phao cơ khí."
+      ]
+    },
+    {
+      "locale": "vi",
+      "page": "/posts/vi-sao-bat-dau-tu-do-man",
+      "htmlLang": "vi",
+      "vietnameseLines": [
+        "Trang chủ",
+        "Quan trắc",
+        "Báo cáo",
+        "Quản trị",
+        "Ghi chép",
+        "Vì sao HORIZON bắt đầu từ dữ liệu độ mặn",
+        "18 tháng 3, 2026 · 5 phút đọc",
+        "Bản nháp — ghi chép trong quá trình phát triển dự án, chưa phải tài liệu công bố.",
+        "Khi bắt đầu phác thảo một mạng quan trắc nhỏ, câu hỏi đầu tiên không phải là \"đo được bao nhiêu thứ\" mà là \"đo thứ gì thì có ích ngay\".",
+        "Ở một cù lao nằm giữa hai nhánh sông, nước mặn không đến theo mùa một cách đều đặn. Nó đi theo con nước, theo đợt triều, và đôi khi theo những thay đổi ở thượng nguồn mà người tại chỗ không nhìn thấy. Một người trồng cây có thể biết hôm nay nước \"hơi mặn\", nhưng khó biết mặn hơn hôm qua bao nhiêu, hay xu hướng mấy ngày tới ra sao.",
+        "Đó là lý do độ mặn được chọn làm điểm khởi đầu: nó là một con số thay đổi nhanh, đo được bằng thiết bị đặt tại chỗ, và gắn trực tiếp với một quyết định cụ thể — có lấy nước vào vườn lúc này hay không.",
+        "Một chỉ số không đứng một mình"
+      ]
+    },
+    {
+      "locale": "en",
+      "page": "/",
+      "htmlLang": "en",
+      "vietnameseLines": [
+        "CỒN HÔ · VĨNH LONG",
+        "This is Cồn Hô.",
+        "[HORIZON] HÀNH TRÌNH ĐẾN CỒN HÔ 2026",
+        "Mapping Cồn Hô.",
+        "Seven stages from the probes at Cồn Hô to the Observatory, preserving the evidence needed to read the data.",
+        "[HORIZON] NGÀY DỰ ÁN KHỞI ĐẦU",
+        "Phần cứng của một trạm đo, và vì sao chọn từng món",
+        "Ba nhóm thiết bị, mỗi nhóm trả lời một câu hỏi khác nhau — kèm phần đang còn dang dở mà hệ thống chưa che giấu.",
+        "Vì sao HORIZON bắt đầu từ dữ liệu độ mặn",
+        "Trong nhiều chỉ số môi trường có thể đo, độ mặn là thứ ảnh hưởng trực tiếp và sớm nhất đến quyết định tưới tiêu ở một cù lao giữa sông.",
+        "PHƯƠNG PHÁP",
+        "Một mạng quan trắc nhỏ cần nhìn thấy những gì"
+      ]
+    },
+    {
+      "locale": "en",
+      "page": "/dashboard",
+      "htmlLang": "en",
+      "vietnameseLines": [
+        "Water, soil and data at Cồn Hô."
+      ]
+    },
+    {
+      "locale": "en",
+      "page": "/report",
+      "htmlLang": "en",
+      "vietnameseLines": [
+        "Riverbank area, Cồn Hô"
+      ]
+    },
+    {
+      "locale": "en",
+      "page": "/observe",
+      "htmlLang": "en",
+      "vietnameseLines": [
+        "Water, soil and data at Cồn Hô."
+      ]
+    },
+    {
+      "locale": "en",
+      "page": "/offline",
+      "htmlLang": "vi",
+      "vietnameseLines": [
+        "Bạn đang ngoại tuyến",
+        "Các trang đã tải trước vẫn có thể xem. Hãy kết nối lại để nhận dữ liệu mới."
+      ]
+    },
+    {
+      "locale": "en",
+      "page": "/posts/phan-cung-cua-mot-tram-do",
+      "htmlLang": "en",
+      "vietnameseLines": [
+        "Phần cứng của một trạm đo, và vì sao chọn từng món",
+        "02 tháng 4, 2026 · 6 phút đọc",
+        "Trang chủ nói HORIZON đo nước, đất và không khí. Bài này nói bằng thiết bị gì, và vì sao lại là những thiết bị đó.",
+        "Nội dung dưới đây mô tả phần cứng và đường dữ liệu hiện tại. Ảnh thiết bị là ảnh dự án; bản đồ minh họa trên trang chủ vẫn là sơ đồ, không phải ảnh vệ tinh hay bằng chứng cho một lần kiểm định vật lý cụ thể.",
+        "Nhóm 1 — Nước (Trạm Nước)",
+        "A02YYUW. Cảm biến siêu âm đo khoảng cách tới mặt nước, từ đó suy ra mực nước. Chọn siêu âm vì đầu đo không cần chạm nước: không có bộ phận ngâm lâu ngày trong nước lợ, nên ít hỏng và ít phải bảo trì hơn phao cơ khí.",
+        "ES-EC-WT-01. Đầu dò độ dẫn điện trong nước, dùng để suy ra độ mặn.",
+        "Firmware hiện đọc và truyền riêng EC (mS/cm và µS/cm), nhiệt độ nước, TDS và độ mặn. Việc có đủ các trường không biến chúng thành những đại lượng tương đương: HORIZON không quy đổi giữa ‰ và dS/m bằng một hằng số tùy ý, vì quan hệ đó phụ thuộc thành phần ion và nhiệt độ của chính nguồn nước.",
+        "Nhóm 2 — Đất và không khí (Trạm Đất)",
+        "ES-SM-THEC-01. Đầu dò cắm trong đất, đo cùng lúc độ ẩm, độ dẫn điện và nhiệt độ của đất. Một đầu dò cho ba chỉ số nghĩa là ba giá trị luôn đến từ cùng một điểm và cùng một thời điểm — quan trọng khi muốn so sánh chúng với nhau.",
+        "ES-PH-SOIL-01. Đầu dò đo độ pH của đất.",
+        "SHT30. Cảm biến nhiệt độ và độ ẩm không khí ngay tại vườn. Đây là lý do trang Quan trắc phân biệt rõ \"nhiệt độ không khí tại trạm\" với \"nhiệt độ khu vực\" lấy từ nguồn ngoài: một cái là phép đo tại chỗ, một cái là dự báo theo ô lưới."
+      ]
+    },
+    {
+      "locale": "en",
+      "page": "/posts/vi-sao-bat-dau-tu-do-man",
+      "htmlLang": "en",
+      "vietnameseLines": [
+        "Vì sao HORIZON bắt đầu từ dữ liệu độ mặn",
+        "18 tháng 3, 2026 · 5 phút đọc",
+        "Khi bắt đầu phác thảo một mạng quan trắc nhỏ, câu hỏi đầu tiên không phải là \"đo được bao nhiêu thứ\" mà là \"đo thứ gì thì có ích ngay\".",
+        "Ở một cù lao nằm giữa hai nhánh sông, nước mặn không đến theo mùa một cách đều đặn. Nó đi theo con nước, theo đợt triều, và đôi khi theo những thay đổi ở thượng nguồn mà người tại chỗ không nhìn thấy. Một người trồng cây có thể biết hôm nay nước \"hơi mặn\", nhưng khó biết mặn hơn hôm qua bao nhiêu, hay xu hướng mấy ngày tới ra sao.",
+        "Đó là lý do độ mặn được chọn làm điểm khởi đầu: nó là một con số thay đổi nhanh, đo được bằng thiết bị đặt tại chỗ, và gắn trực tiếp với một quyết định cụ thể — có lấy nước vào vườn lúc này hay không.",
+        "Một chỉ số không đứng một mình",
+        "Độ mặn chỉ có nghĩa khi đi kèm ngữ cảnh. Cùng một giá trị có thể là bình thường với cây này và rủi ro với cây khác. Vì vậy thiết kế ban đầu của HORIZON không dừng ở một cảm biến, mà đặt độ mặn cạnh mực nước, tình trạng đất và thời điểm quan trắc.",
+        "Đây là ghi chép trong quá trình phát triển dự án. Các ngưỡng tham chiếu cụ thể vẫn đang được đối chiếu với tài liệu kỹ thuật trước khi công bố như một khuyến nghị chính thức.",
+        "Phần cứng của một trạm đo, và vì sao chọn từng món",
+        "PHƯƠNG PHÁP",
+        "Một mạng quan trắc nhỏ cần nhìn thấy những gì",
+        "Từ cảm biến đến một quyết định ngoài hiện trường"
+      ]
+    }
+  ],
+  "pwa": {
+    "manifest": {
+      "status": 200,
+      "name": "HORIZON",
+      "display": "standalone",
+      "icons": [
+        {
+          "src": "/assets/brand/icon-192.png",
+          "status": 200
+        },
+        {
+          "src": "/assets/brand/icon-512.png",
+          "status": 200
+        },
+        {
+          "src": "/assets/brand/icon-maskable-512.png",
+          "status": 200
+        }
+      ]
+    },
+    "serviceWorker": {
+      "registered": true,
+      "scope": "http://127.0.0.1:3100/",
+      "controlled": true
+    },
+    "offline": [
+      {
+        "page": "/",
+        "rendered": true,
+        "text": "VI EN CỒN HÔ · VĨNH LONG Đây là Cồn Hô. Đây là HORIZON. Xem mạng lưới quan trắc 01 Cồn Hô giữa dòng sông. Cồn Hô ở Vĩnh Long là một môi trườ"
+      },
+      {
+        "page": "/dashboard",
+        "rendered": true,
+        "text": "VI EN Đài quan trắc Nước, đất và dữ liệu tại Cồn Hô. QUAN TRẮC ĐỘ MẶN 0.77‰ MỰC NƯỚC 279cm NHẬT KÝ EC nước Nhiệt độ nước Độ mặn Mực nước Độ "
+      },
+      {
+        "page": "/report",
+        "rendered": true,
+        "text": "VI EN Ghi nhận hiện trường. Chọn trạm gần bạn nhất, mô tả điều bạn thấy, rồi gửi. Cồn Hô HORIZON Nhìn thấy. Ghi lại. Gửi đi. Bắt đầu ghi nhậ"
+      },
+      {
+        "page": "/nonexistent-offline-page",
+        "rendered": true,
+        "text": "VI EN • Không tìm thấy trang này Đường dẫn không tồn tại hoặc trạm quan trắc đã được đổi mã. Quay lại bảng quan trắc để xem danh sách trạm h"
+      }
+    ]
+  }
+}

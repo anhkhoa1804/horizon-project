@@ -39,3 +39,6 @@ firmware/**/gateway_secrets.h
 firmware/**/station_01_config_secrets.h
 firmware/**/station_02_config_secrets.h
 firmware/esp32-node/build_entries/generated/
+
+infra/supabase/local-stack/.env.local-stack
+infra/supabase/local-stack/.functions-local/
