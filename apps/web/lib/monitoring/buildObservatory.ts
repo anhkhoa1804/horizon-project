@@ -10,6 +10,7 @@ import {
   DEMO_STATION_SNAPSHOTS,
   DEMO_WATER_TREND,
 } from "@/lib/demo/observatoryDemoData";
+import { STATION_COORDS } from "@/lib/geo";
 import { getExternalWeatherHistory24h } from "@/lib/external/weather";
 import type { DemoStationSnapshot } from "@/lib/demo/types";
 import { getPublicRepositories } from "@/lib/publicRead";
@@ -312,8 +313,11 @@ function buildRealStation(
     id,
     name: stationText(profile.id, dict).name,
     location: stationText(profile.id, dict).location,
-    lat: snapshot?.station.lat ?? 0,
-    lng: snapshot?.station.lng ?? 0,
+    // Surveyed authority (lib/geo.ts), not the station row: a row can be
+    // seeded or defaulted to 0,0, and a missing snapshot must not become a
+    // marker in the Gulf of Guinea.
+    lat: STATION_COORDS[id]?.lat ?? null,
+    lng: STATION_COORDS[id]?.lng ?? null,
     freshness,
     needsAttention: hasAlert,
     timestamp,
@@ -508,8 +512,8 @@ function buildDemoStation(snapshot: DemoStationSnapshot, dict: Dictionary): Obse
     location: dict.demo.unplacedLocation,
     // Demo stations carry no coordinates on purpose: the map refuses to
     // plot them rather than showing a plausible-looking pin near Cồn Hô.
-    lat: 0,
-    lng: 0,
+    lat: null,
+    lng: null,
     freshness,
     needsAttention: false,
     timestamp: snapshot.observedAt,

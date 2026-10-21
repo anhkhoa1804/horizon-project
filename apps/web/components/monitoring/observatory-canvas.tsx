@@ -5,14 +5,14 @@ import { useLiveObservatory } from "./use-live-observatory";
 import { LiveSignalIndicator, LiveSignalContext } from "./live-signal-indicator";
 import { DangerHeatmap } from "./danger-heatmap";
 import type { PublicRealtimeConfig } from "@/lib/monitoring/publicRealtime";
-import { CloudRain, Droplets, Send, Sprout, Thermometer, Waves, Wind } from "lucide-react";
+import { CloudRain, Droplets, Sprout, Thermometer, Waves, Wind } from "lucide-react";
 import { MapStation, StationNetworkMap } from "@/components/dashboard/station-network-map";
 import { ObservationLog } from "@/components/monitoring/observation-log";
 import type { ExternalWeather } from "@/lib/external/weather";
 import { useDict } from "@/lib/i18n/client";
 import type { Dictionary } from "@/lib/i18n/vi";
 import { buildSignalGroups, type SignalGroup } from "@/lib/monitoring/signals";
-import { contextLine, deviceContext, type ContextMetricKey } from "@/lib/monitoring/context";
+import { contextLine, type ContextMetricKey } from "@/lib/monitoring/context";
 import { mergeWeather24hSeries, weatherHistoryToObservationSeries } from "@/lib/monitoring/weatherSeries";
 import { ThresholdTable } from "@/components/monitoring/threshold-table";
 import { resolveSeverity, type ThresholdRow, type SoilWaterModel } from "@/lib/monitoring/thresholdTypes";
@@ -259,9 +259,11 @@ function ContextValue({
         "—"
       )}
     </p>
-    {note && hasValue ? (
-      <p className="mt-1.5 truncate text-[11px] text-foreground-subtle">{note}</p>
-    ) : null}
+    {hasValue ? (
+      note ? <p className="mt-1.5 truncate text-[11px] text-foreground-subtle">{note}</p> : null
+    ) : (
+      <p className="mt-1.5 truncate text-[11px] text-foreground-subtle">{dict.common.noData}</p>
+    )}
     </div>
   );
 }
@@ -334,7 +336,6 @@ function ObservatoryBento({
 }) {
   const water = groups.find((g) => g.domain === "water");
   const soil = groups.find((g) => g.domain === "soil");
-  const infra = groups.find((g) => g.domain === "infrastructure");
   const context = groups.find((g) => g.domain === "context");
 
   const status = (metric: ObservatoryMetric | null | undefined) =>
@@ -363,14 +364,26 @@ function ObservatoryBento({
   const soilMoisture = soil?.primary;
   const soilPh = soil?.secondary.find((m) => m.labelKey === "ph");
   const contextMetric = (key: string) => context?.secondary.find((m) => m.labelKey === key);
-  const infraMetric = (key: string) => infra?.secondary.find((m) => m.labelKey === key);
-
-  const signal = infraMetric("signal");
-  const battery = infraMetric("battery");
+  // The two soil signals not already in the Soil box (moisture + pH): bulk
+  // EC and soil temperature, both from the ES-SM-THEC-01 probe. `secondary`
+  // of the soil group holds soil-domain metrics only; air temperature lives
+  // in its own group, so "temperature" here cannot be the SHT30.
+  const soilEc = soil?.secondary.find((m) => m.labelKey === "ec");
+  const soilTemp = soil?.secondary.find((m) => m.labelKey === "temperature");
 
   // One status per region — see the note above ObservatoryBento.
   const primaryStatus = isDemo ? worstStatus([status(salinity), status(waterLevel)]) : worstStatus([advisoryStatus(salinity, "water_salinity"), advisoryStatus(waterLevel, "water_level")]);
-  const infraStatus = worstStatus([status(signal), status(battery)]);
+  // Colour comes ONLY from the threshold registry (OPERATIONAL / SITE_VALIDATED
+  // rows). No band is seeded for bulk EC or soil temperature (docs/
+  // SCIENTIFIC_REFERENCES.md: bulk EC is not ECe; no sourced single-variable
+  // alarm for probe-depth temperature), so until someone configures one these
+  // stay neutral and say so, rather than borrowing a band that does not apply.
+  const soilSignalsStatus = isDemo ? null : worstStatus([advisoryStatus(soilEc, "soil_ec_bulk"), advisoryStatus(soilTemp, "soil_temp")]);
+  const soilSignalNote = (metric: ObservatoryMetric | undefined, quantity: string): string | null => {
+    if (!metric || metric.value === null) return null;
+    const resolved = isDemo ? null : advisoryStatus(metric, quantity);
+    return resolved ? dict.alerts[STATUS_LABEL[resolved.level]] : dict.monitoring.noThreshold;
+  };
   const soilStatus = worstStatus([advisoryStatus(soilPh, "soil_ph"), advisoryStatus(soilMoisture, "soil_moisture")]);
 
   // Every cell, without exception: same corner, same hairline, same inset.
@@ -439,63 +452,28 @@ function ObservatoryBento({
         <ObservationLog series={series} />
       </div>
 
-      {/* BOX 3 — infrastructure. Same region-level treatment as BOX 0: signal
-          and battery share one surface and one status, at one tier down in
-          the type ladder because device health is not what the page is for. */}
+      {/* BOX 3 — the two soil signals that are not in the Soil box below
+          (bulk EC and soil temperature). It replaced the gateway signal /
+          battery pair: no current firmware reports either, so that box was
+          permanently empty. One surface, one status — worstStatus of the two,
+          from the threshold registry only. */}
       <div
         className={cn(
           cell,
           padded,
-          infraStatus ? regionSurface(infraStatus) : "bg-[var(--h-domain-infrastructure)]",
+          soilSignalsStatus ? regionSurface(soilSignalsStatus) : "bg-[var(--h-domain-soil)]",
           "col-start-1 col-end-5 row-start-7 row-end-9",
           "md:col-start-1 md:col-end-5 md:row-start-4 md:row-end-5",
           "lg:col-start-5 lg:col-end-7 lg:row-start-3 lg:row-end-4",
         )}
       >
-        {/* The infrastructure box is titled by WHAT THE NETWORK IS DOING,
-            not by the word "Hạ tầng". "1/3 ĐANG GỬI DỮ LIỆU · BÌNH THƯỜNG"
-            says everything the label said and everything the separate
-            network line above the Bento used to say, in the box that already
-            holds signal and battery — which is where a reader goes to ask
-            the question anyway. The standalone "MẠNG LƯỚI · …" line is gone
-            with it. */}
-        <RegionHeader
-          icon={Send}
-          title={
-            network.live > 0
-              ? `${network.live}/${network.total} ${dict.monitoring.sendingData}`
-              : dict.monitoring.noneSending
-          }
-          status={infraStatus}
-          dict={dict}
-        />
-        {/* TWO EQUAL HALVES, matching the two square cells this 1x2 region is
-            made of. Each value sits at the start of its own half, so the pair
-            lines up with the grid the box is built on.
-            `grid-cols-2`, not `1fr auto`: that variant pushed the second value
-            to the far right edge, which detached it from its own square and
-            made the box read as two things flung apart rather than two
-            readings side by side. */}
+        <RegionHeader icon={Sprout} title={dict.monitoring.soilSignals} status={soilSignalsStatus} dict={dict} />
+        <p className="text-[11px] text-foreground-subtle">
+          {network.live > 0 ? `${network.live}/${network.total} ${dict.monitoring.sendingData}` : dict.monitoring.noneSending}
+        </p>
         <div className="mt-auto grid grid-cols-2 items-baseline gap-x-4 gap-y-2 pt-[var(--bento-header-gap)]">
-          {/* The contextual word comes from the SAME resolved status the box
-              is tinted by, not from a second read of the raw value — so
-              "Pin thấp" can never appear on a green surface. Both bands are
-              real (BATTERY_V / SIGNAL_DBM in lib/monitoring/status.ts); no
-              threshold is invented here. */}
-          <Value
-            label={dict.metricLabels.signal}
-            metric={signal}
-            dict={dict}
-            size="secondary"
-            note={deviceContext("signal", status(signal)?.level ?? null, dict)}
-          />
-          <Value
-            label={dict.metricLabels.battery}
-            metric={battery}
-            dict={dict}
-            size="secondary"
-            note={deviceContext("battery", status(battery)?.level ?? null, dict)}
-          />
+          <Value label={dict.metricLabels.soilEc} metric={soilEc} dict={dict} size="secondary" note={soilSignalNote(soilEc, "soil_ec_bulk")} />
+          <Value label={dict.metricLabels.soilTemp} metric={soilTemp} dict={dict} size="secondary" note={soilSignalNote(soilTemp, "soil_temp")} />
         </div>
       </div>
 

@@ -575,7 +575,9 @@ export function StationNetworkMap({
         variant === "grid" ? "rounded-none" : "rounded-lg border border-border",
         !interactive && "pointer-events-none",
       )}
-      role="img"
+      // "group", not "img": the Leaflet container holds focusable markers and zoom
+      // controls, and an img role may not have focusable descendants (axe: nested-interactive).
+      role="group"
       // With no stations the count-based label would read "0 stations",
       // which describes the markers rather than what is on screen. The
       // basemap-only view is the island, and says so.

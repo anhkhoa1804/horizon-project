@@ -24,7 +24,7 @@ export const dynamic = "force-static";
 
 export default function OfflinePage() {
   return (
-    <div className="flex min-h-dvh items-center justify-center px-4">
+    <main className="flex min-h-dvh items-center justify-center px-4">
       <Card className="max-w-md space-y-6 text-center">
         <div lang="vi">
           <h1 className="text-h1 font-semibold tracking-tight">{vi.errors.offlineTitle}</h1>
@@ -35,6 +35,6 @@ export default function OfflinePage() {
           <p className="mt-2 text-muted">{en.errors.offlineBody}</p>
         </div>
       </Card>
-    </div>
+    </main>
   );
 }

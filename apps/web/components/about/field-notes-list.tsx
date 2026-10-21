@@ -10,12 +10,9 @@ import type { PostMeta, PostStatus } from "@/lib/content/posts";
  * card backgrounds.
  */
 
-const STATUS_LABEL: Record<PostStatus, string | null> = {
-  draft: "draft",
-  demo: "demo",
-  placeholder: "placeholder",
-  verified: null,
-};
+function statusLabel(status: PostStatus, notes: { draft: string; demo: string; placeholder: string }): string | null {
+  return status === "verified" ? null : notes[status];
+}
 
 function formatDate(iso: string): string {
   if (!iso) return "";
@@ -33,7 +30,7 @@ export async function FieldNotesList({ posts }: { posts: PostMeta[] }) {
   return (
     <div className="divide-y divide-border/60 border-y border-border/60">
       {posts.map((post) => {
-        const status = STATUS_LABEL[post.status];
+        const status = statusLabel(post.status, dict.notes);
         return (
           <Link
             key={post.slug}

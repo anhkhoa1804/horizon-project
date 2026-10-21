@@ -4,7 +4,7 @@ excerpt: Khoảng cách khó nhất trong một hệ quan trắc không nằm �
 category: Thiết kế sản phẩm
 date: 2026-02-19
 readingTime: 5 phút đọc
-cover: /assets/gallery/gallery-placeholder-03.svg
+cover: /assets/hardware/sensor-water-ec.jpg
 status: draft
 ---
 

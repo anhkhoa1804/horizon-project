@@ -21,12 +21,10 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return { title: post.title, description: post.excerpt };
 }
 
-const STATUS_NOTE: Record<PostStatus, string | null> = {
-  draft: "draft",
-  demo: "demo",
-  placeholder: "placeholder",
-  verified: null,
-};
+/** Localised disclosure for anything that is not verified field reporting. */
+function statusNote(status: PostStatus, posts: { draft: string; demo: string; placeholder: string }): string | null {
+  return status === "verified" ? null : posts[status];
+}
 
 function formatDate(iso: string): string {
   if (!iso) return "";
@@ -42,7 +40,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
   if (!post) notFound();
 
   const related = getRelatedPosts(slug, 3);
-  const statusNote = STATUS_NOTE[post.status];
+  const note = statusNote(post.status, dict.posts);
 
   return (
     <PublicShell activePath="/">
@@ -65,8 +63,8 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
             </p>
           </header>
 
-          {statusNote ? (
-            <p className="mt-8 border-l-2 border-watch/50 bg-watch-bg/50 px-4 py-3 text-sm text-watch">{statusNote}</p>
+          {note ? (
+            <p role="note" className="mt-8 border-l-2 border-watch/50 bg-watch-bg/50 px-4 py-3 text-sm text-watch">{note}</p>
           ) : null}
         </div>
 

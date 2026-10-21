@@ -84,10 +84,10 @@ describe("station-detail soil wiring", () => {
     assert.equal(summary.soilEc, null);
   });
 
-  it("quality is 'valid' for a soil station even with per-field nulls — per-field null is the fault signal, not a combined status", () => {
+  it("qualityFor asserts nothing without a reading, and never applies the water fault model to soil", () => {
     // Matches ingest.ts's isFaulty(): soil readings never use the water
-    // whole-row fault model, so qualityFor must not flag a soil reading as
-    // an "error" just because some individual sensors are null.
-    assert.equal(qualityFor(soilProfile, null), "valid");
+    // whole-row fault model. With no reading there is no evidence, so the
+    // answer is null — not "valid" (see tests/dataIntegrity.test.ts).
+    assert.equal(qualityFor(soilProfile, null), null);
   });
 });

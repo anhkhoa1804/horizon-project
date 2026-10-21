@@ -19,10 +19,10 @@ import { parseFrontmatter } from "./frontmatter";
  * gray-matter; nothing else in this module depends on how the block is
  * parsed.
  *
- * Post *bodies* are intentionally not rendered anywhere yet — the homepage
- * carousel is a metadata surface. There is no Markdown renderer in this
- * project and adding one is a later decision, so `body` is exposed raw for
- * whoever needs it first.
+ * Post bodies are rendered by lib/content/markdown.ts on /posts/[slug]. The
+ * homepage carousel is the index of every note and each card links there.
+ * `body` is exposed raw so the renderer stays the only place that turns
+ * Markdown into HTML.
  */
 
 /**

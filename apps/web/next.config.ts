@@ -5,7 +5,28 @@ import withPWAInit from "@ducanh2912/next-pwa";
 const withPWA = withPWAInit({
   dest: "public",
   disable: process.env.NODE_ENV === "development",
-  register: true,
+  // Registration is done by components/pwa/service-worker-register.tsx: the plugin's injected snippet never runs under the
+  // App Router on Next 15.5, so the worker was generated but never registered.
+  register: false,
+  // Precache the app shell only. By default the plugin precaches EVERY file under public/ (38 MB here, including raw
+  // source photos); a single failing entry (an extensionless file whose name contains a comma returned 404) rejects the
+  // worker's install, so the worker — and with it the /offline fallback — never became active. Images are still cached
+  // at runtime by the plugin's default image strategy.
+  publicExcludes: ["!assets/**/*", "!noprecache/**/*"],
+  // The default runtime rules cache every same-origin page (NetworkFirst, 24 h), /admin included. That put
+  // authenticated operator HTML and RSC payloads into the browser cache — readable after sign-out — and let a stale
+  // cached document hydrate against a fresh RSC payload (React error #418, seen in the Admin E2E on /admin).
+  // Admin and auth-sensitive routes are therefore NetworkOnly; this rule is matched before the defaults.
+  extendDefaultRuntimeCaching: true,
+  workboxOptions: {
+    runtimeCaching: [
+      {
+        urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
+          sameOrigin && (url.pathname === "/admin" || url.pathname.startsWith("/admin/") || url.pathname.startsWith("/api/")),
+        handler: "NetworkOnly",
+      },
+    ],
+  },
   fallbacks: {
     document: "/offline",
   },

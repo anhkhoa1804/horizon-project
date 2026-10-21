@@ -132,6 +132,8 @@ export const vi = {
     networkEyebrow: "Mạng lưới",
     stationsCounted: "điểm trong mạng lưới quan trắc",
     sendingData: "đang gửi dữ liệu",
+    soilSignals: "Đất · EC và nhiệt độ",
+    noThreshold: "chưa có ngưỡng",
     noneSending: "chưa trạm nào gửi dữ liệu",
     streamConnected: "Đã kết nối luồng quan trắc",
     noTelemetry: "Chưa có phép đo",
@@ -374,12 +376,33 @@ export const vi = {
       addAudio: "Thêm âm thanh",
       recordAudio: "Ghi âm",
       stopAudio: "Dừng",
+      recordingNow: "Đang ghi âm… nhấn Dừng để lưu đoạn ghi.",
       removeEvidence: "Xóa tệp đính kèm",
 
       savedToDb: "Báo cáo đã được lưu vào cơ sở dữ liệu quan trắc.",
       savedLocally:
         "Hệ thống chưa kết nối được tới cơ sở dữ liệu chính, nên báo cáo đang được giữ trên máy chủ này. Nội dung bạn gửi là thật, nhưng có thể không được giữ lâu dài.",
-      mediaPartial: "Bản ghi đã được lưu, nhưng một số tệp bằng chứng chưa tải lên: {files}. Hãy giữ lại các tệp này để gửi lại trong một bản ghi mới.",
+      mediaPartial: "Báo cáo đã được lưu, nhưng {failed} tệp bằng chứng chưa tải lên: {files}. Bạn có thể thử tải lại ngay trên trang này — không cần gửi báo cáo mới.",
+      mediaAllSaved: "Đã lưu {n} tệp bằng chứng cùng báo cáo.",
+      mediaNone: "Báo cáo không kèm tệp bằng chứng.",
+      mediaDemoSkipped: "Chế độ minh họa không lưu tệp bằng chứng: {files}.",
+      mediaRetry: "Thử tải lại tệp chưa gửi",
+      mediaRetrying: "Đang tải lại…",
+      mediaRetryExpired: "Liên kết tải lên đã hết hạn hoặc không còn hợp lệ. Báo cáo vẫn được lưu; hãy gửi tệp cho nhóm dự án qua kênh liên hệ.",
+      mediaKeepPage: "Giữ trang này mở cho tới khi tải xong.",
+      evidenceCount: "Bằng chứng",
+      uploadingFile: "Đang tải {name} · {pct}%",
+      creatingReport: "Đang lưu báo cáo…",
+      finalizing: "Đang xác nhận tệp đã tải lên…",
+      errMediaType: "{name}: định dạng chưa được hỗ trợ. Dùng ảnh JPG/PNG/WebP/HEIC, video MP4/WebM/MOV hoặc âm thanh MP3/M4A/WAV/WebM/OGG.",
+      errMediaTooLarge: "{name}: tệp {size} vượt giới hạn {max}.",
+      errMediaEmpty: "{name}: tệp trống.",
+      errMediaDuplicate: "{name} đã được đính kèm.",
+      errPersistence: "Hệ thống lưu trữ báo cáo đang tạm ngưng nên báo cáo chưa được gửi. Nội dung vẫn còn trên trang; vui lòng thử lại sau.",
+      errPayloadTooLarge: "Yêu cầu quá lớn để máy chủ nhận. Hãy bớt hoặc thu nhỏ tệp đính kèm rồi thử lại.",
+      removeEvidenceNamed: "Xóa tệp {name}",
+      mediaStateUploaded: "Đã lưu",
+      mediaStateFailed: "Chưa tải lên",
 
       errRateLimit: "Bạn đã gửi khá nhiều báo cáo trong một giờ qua. Vui lòng thử lại sau.",
       errTooShort: "Mô tả cần ít nhất {min} ký tự.",
@@ -458,7 +481,7 @@ export const vi = {
     signOut: "Đăng xuất",
     noRecentData: "Chưa có dữ liệu gần nhất.",
     loginNotAllowed: "Email này chưa nằm trong danh sách được phép quản trị.",
-    loginBadPassword: "Mật khẩu quản trị chưa đúng.",
+    loginBadPassword: "Email hoặc mật khẩu quản trị chưa đúng.",
     loginRateLimited: "Đã thử sai quá nhiều lần. Vui lòng chờ ít phút rồi thử lại.",
     /* Deliberately says nothing about WHY.
        This message renders on a public page to anyone who visits
@@ -472,6 +495,7 @@ export const vi = {
   },
 
   gallery: {
+    trackLabel: "Thư viện hình ảnh",
     empty: "Chưa có hình ảnh nào trong thư viện.",
     prev: "Xem hình trước",
     next: "Xem hình tiếp theo",
@@ -479,7 +503,14 @@ export const vi = {
     illustrative: "Hình minh họa",
   },
 
+  video: {
+    play: "Phát video",
+    openOnYoutube: "Xem trên YouTube ↗",
+  },
+
   notes: {
+    trackLabel: "Danh sách ghi chép",
+    minRead: "{count} phút đọc",
     empty: "Chưa có ghi chép nào được đăng.",
     emptyLong: "Chưa có ghi chép nào được đăng. Các bài viết sẽ xuất hiện ở đây khi được thêm vào.",
     prev: "Xem ghi chép trước",
@@ -724,6 +755,8 @@ export const vi = {
     moisture: "Độ ẩm",
     ec: "EC",
     ph: "Độ pH",
+    soilEc: "EC đất",
+    soilTemp: "Nhiệt độ đất",
     temperature: "Nhiệt độ",
     humidity: "Độ ẩm",
     signal: "Tín hiệu",
