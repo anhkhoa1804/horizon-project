@@ -1035,7 +1035,11 @@
   background: currentColor;
 }
 .site-header--cover nav a:not(.nav-link-active),
-.site-header--cover > div > div > button {
+.site-header--cover .site-control {
+  /* A plain descendant selector on the control's own class, not a `>` chain tied to the
+     header's current div nesting — the nesting has already changed once (the theme/language
+     controls gained a wrapping flex div) and silently broke a depth-specific selector here,
+     which is why they rendered in the wrong (non-cover) color over the hero photo. */
   color: var(--h-cover-ink);
 }
 .site-header--cover .nav-link-active { color: var(--h-cover-ink); }
@@ -2179,7 +2183,7 @@ main {
 }
 .horizon-atmosphere { background: var(--h-scene-image) center bottom / cover no-repeat; opacity: var(--h-scene-opacity); }
 .horizon-atmosphere::before,.horizon-atmosphere::after { display: none; }
-.hero-canvas { background: var(--h-scene-image) center bottom / cover no-repeat; }
+.hero-canvas__photo { position: absolute; inset: 0; height: 100svh; background: var(--h-scene-image) center bottom / cover no-repeat; }
 .hero-canvas__scrim { background: linear-gradient(90deg,rgba(10,30,31,.63),rgba(10,30,31,.12) 75%),linear-gradient(0deg,rgba(10,30,31,.23),transparent 70%); }
 .horizon-cover__title > span { white-space: nowrap; }
 .field-atlas-flow .h-media,.field-atlas-flow .h-spatial { max-width: calc(var(--width-media) + 2 * var(--gutter)); }
@@ -2365,35 +2369,47 @@ main {
 body:has(.hero-canvas) .horizon-atmosphere { display: none; }
 @media (prefers-reduced-motion: reduce) { .hero-canvas, .hero-canvas * { transition: none !important; animation: none !important; } }
 
-/* 22 Oct r4 — hero fade, revealed by scrolling, with the ORIGINAL framing preserved.
-   r3 grew the box to 120svh and let `cover` rescale to fill it — that re-zoomed the whole photograph
-   (bottom-anchored), which pushed the island further down the frame and cropped its lowest strip.
-   Here the image is explicitly locked to exactly 100svh tall (background-size, not `cover`) and
-   anchored to the TOP of the box, so the visible viewport reproduces the original, unzoomed framing
-   pixel for pixel. The box itself is taller than the viewport by one rhythm unit (the same gap the
-   page already leaves below the hero), so that extra strip is blank page-colour, reachable only by
-   scrolling — and the mask dissolves the image's own bottom edge into that blank strip, rather than
-   re-cropping the photo. Nothing fades before the reader scrolls; nothing is zoomed. */
+/* 22 Oct r5 — hero fade, revealed by scrolling, with the ORIGINAL framing AND full-width
+   coverage both preserved. r3 grew `.hero-canvas` to 120svh and let `cover` rescale to fill it —
+   that re-zoomed the photograph and pushed the island down the frame. r4 fixed the zoom by locking
+   `.hero-canvas` itself to `background-size: auto 100svh`, but that sizing mode only guarantees the
+   image fills the requested HEIGHT, not the box's width — at aspect ratios where `cover` would have
+   been width-constrained instead, it left a blank strip down one side.
+   r5 splits the two jobs across two elements instead of fighting over one. The actual photograph
+   lives on `.hero-canvas__photo` (see above): a child pinned to exactly 100svh using true `cover`,
+   which mathematically guarantees it fills BOTH dimensions of its own 100svh box at any aspect
+   ratio — the same guarantee `cover` always gave, now evaluated against a box that never grows.
+   `.hero-canvas` itself paints nothing; it is only the taller (+1 rhythm unit) mask-bearing frame
+   that the photo sits at the top of, so the blank strip below the photo's own bottom edge is what
+   the mask dissolves into, reachable only by scrolling. Nothing fades before the reader scrolls;
+   nothing is zoomed; nothing is width-starved. */
 .hero-canvas,
 :root[data-theme="dark"] .hero-canvas,
 :root:not([data-theme="light"]) .hero-canvas {
   height: calc(100svh + var(--rhythm-large));
-  background-position: center top;
-  background-size: auto 100svh;
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 84%, rgba(0,0,0,.7) 90%, rgba(0,0,0,.35) 95%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 0%, #000 84%, rgba(0,0,0,.7) 90%, rgba(0,0,0,.35) 95%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 93%, rgba(0,0,0,.6) 97%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 93%, rgba(0,0,0,.6) 97%, transparent 100%);
 }
 
 /* Header controls (theme icon, VI/EN). Plain, borderless — same grammar as the nav links beside them,
    not a framed chip. The text control inherits the header's own font (not a mono/data face), so "VI"/
-   "EN" reads like the rest of the nav, just bold. */
+   "EN" reads like the rest of the nav, just bold.
+
+   The "dimmed" look matches the inactive nav links by reusing their own muted-foreground COLOR token,
+   not by applying `opacity` to the full foreground color. Opacity thins the glyph itself (fading its
+   anti-aliased edges toward whatever sits behind it), which reads as a different, washed-out hue next
+   to text colored with the token directly — that mismatch is what made the two controls look off
+   against the rest of the header. Using the same token at full opacity keeps them one visual family. */
 .site-control {
   display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
-  background: transparent; color: inherit; cursor: pointer; border: 0; border-radius: .375rem;
-  opacity: .72;
-  transition: opacity var(--motion-base, 200ms), background-color var(--motion-base, 200ms);
+  background: transparent; color: var(--h-foreground-muted); cursor: pointer; border: 0; border-radius: .375rem;
+  transition: color var(--motion-base, 200ms), background-color var(--motion-base, 200ms);
 }
-.site-control:hover { opacity: 1; background: color-mix(in srgb, currentColor 8%, transparent); }
-.site-control:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; opacity: 1; }
+.site-control:hover { color: var(--h-foreground); background: color-mix(in srgb, currentColor 8%, transparent); }
+.site-control:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; color: var(--h-foreground); }
 .site-control--icon { width: 2.25rem; height: 2.75rem; }
 .site-control--text { height: 2.75rem; padding-inline: .375rem; font: inherit; font-weight: 600; font-size: 13px; letter-spacing: .02em; }
+/* Over the hero photo the controls stay on the cover-ink color at every state — hover/focus
+   must not fall back to the plain (dark-on-light) foreground token used on a solid header. */
+.site-header--cover .site-control:hover,
+.site-header--cover .site-control:focus-visible { color: var(--h-cover-ink); }
