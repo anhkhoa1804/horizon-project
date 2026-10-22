@@ -2383,3 +2383,17 @@ body:has(.hero-canvas) .horizon-atmosphere { display: none; }
   -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 84%, rgba(0,0,0,.7) 90%, rgba(0,0,0,.35) 95%, transparent 100%);
   mask-image: linear-gradient(to bottom, #000 0%, #000 84%, rgba(0,0,0,.7) 90%, rgba(0,0,0,.35) 95%, transparent 100%);
 }
+
+/* Header controls (theme icon, VI/EN). Plain, borderless — same grammar as the nav links beside them,
+   not a framed chip. The text control inherits the header's own font (not a mono/data face), so "VI"/
+   "EN" reads like the rest of the nav, just bold. */
+.site-control {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  background: transparent; color: inherit; cursor: pointer; border: 0; border-radius: .375rem;
+  opacity: .72;
+  transition: opacity var(--motion-base, 200ms), background-color var(--motion-base, 200ms);
+}
+.site-control:hover { opacity: 1; background: color-mix(in srgb, currentColor 8%, transparent); }
+.site-control:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; opacity: 1; }
+.site-control--icon { width: 2.25rem; height: 2.75rem; }
+.site-control--text { height: 2.75rem; padding-inline: .375rem; font: inherit; font-weight: 600; font-size: 13px; letter-spacing: .02em; }
