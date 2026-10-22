@@ -773,21 +773,10 @@
  * The mask fades the dots toward the edges so it reads as a sheet of graph-paper
  * dots laid on the page rather than wallpaper running under it.
  */
+/* The dot grid is switched off (22 Oct r7). The layer itself is kept in place rather than
+   deleted so the tokens and scroll-free structure remain if it is wanted back. */
 .horizon-atmosphere::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image:
-    radial-gradient(circle, var(--h-grid-line) 1.4px, transparent 1.4px),
-    radial-gradient(circle, var(--h-grid-line-major) 2.2px, transparent 2.2px);
-  background-size:
-    64px 64px,
-    256px 256px;
-  background-position:
-    center,
-    center;
-  -webkit-mask-image: radial-gradient(ellipse 96% 80% at 50% 42%, #000 42%, transparent 100%);
-  mask-image: radial-gradient(ellipse 96% 80% at 50% 42%, #000 42%, transparent 100%);
+  content: none;
 }
 
 /* Layer 3 — two soft atmospheric pools. The warm one sits high-left where
@@ -2151,7 +2140,9 @@ main {
    nothing on every OTHER page. Removed; `--h-scene-day/night/image/opacity` stay
    defined above because `.hero-canvas__photo` still uses them for the actual hero. */
 .hero-canvas__photo { position: absolute; inset: 0; height: 100svh; background: var(--h-scene-image) center bottom / cover no-repeat; }
-.hero-canvas__scrim { background: linear-gradient(90deg,rgba(10,30,31,.63),rgba(10,30,31,.12) 75%),linear-gradient(0deg,rgba(10,30,31,.23),transparent 70%); }
+/* Horizontal scrim only. The bottom (0deg) darkening was removed: it peaked exactly at the
+   hero box's lower edge, so it ended in a visible hard stripe where the hero met the page. */
+.hero-canvas__scrim { background: linear-gradient(90deg,rgba(10,30,31,.63),rgba(10,30,31,.12) 75%); }
 .horizon-cover__title > span { white-space: nowrap; }
 .field-atlas-flow .h-media,.field-atlas-flow .h-spatial { max-width: calc(var(--width-media) + 2 * var(--gutter)); }
 .report-single { max-width: none; }
