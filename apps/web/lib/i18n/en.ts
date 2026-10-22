@@ -128,6 +128,9 @@ export const en: Dictionary = {
     sendReport: "Submit a field report",
 
     demoBannerTitle: "DEMO DATA",
+    soilConditions: "Soil conditions",
+    soilChemistry: "Soil chemistry",
+    bulkEc: "Bulk EC",
     devFixtureBanner: "DEV PREVIEW · STATION 02 SOIL VALUES ARE SYNTHETIC",
     demoBannerBody:
       "the station figures on this page are synthetic, shown to demonstrate the interface — they are not real observations from Cồn Hô. Values marked * are real data from an external source.",

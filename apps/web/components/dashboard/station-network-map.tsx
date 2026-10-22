@@ -194,9 +194,9 @@ export function StationNetworkMap({
 
         const map = L.map(containerRef.current, {
           scrollWheelZoom: false,
-          // Attribution must stay with the map surface. It is compact Leaflet
-          // chrome, but it is visible wherever Esri/OSM tiles are displayed.
-          attributionControl: true,
+          // Credits stay on the map surface but collapsed behind a compact (i) control (added below);
+          // the full Esri / OpenStreetMap / Leaflet credit is one tap away and is never removed.
+          attributionControl: false,
           zoomControl: interactive,
           dragging: interactive,
           doubleClickZoom: interactive,
@@ -215,6 +215,30 @@ export function StationNetworkMap({
           maxZoom: 19,
         }).addTo(map);
         tileLayerRef.current = tileLayer;
+
+        const en = document.documentElement.lang.toLowerCase().startsWith("en");
+        const Credits = L.Control.extend({
+          onAdd() {
+            const wrap = L.DomUtil.create("div", "horizon-map-credits leaflet-control");
+            const btn = L.DomUtil.create("button", "horizon-map-credits-btn", wrap) as HTMLButtonElement;
+            btn.type = "button";
+            btn.textContent = "i";
+            btn.setAttribute("aria-expanded", "false");
+            btn.setAttribute("aria-label", en ? "Map credits" : "Ghi công bản đồ");
+            const panel = L.DomUtil.create("div", "horizon-map-credits-panel", wrap);
+            panel.hidden = true;
+            panel.innerHTML = `<a href="https://leafletjs.com" rel="noopener">Leaflet</a> | ${TILE_ATTRIBUTION}`;
+            const set = (open: boolean) => {
+              panel.hidden = !open;
+              btn.setAttribute("aria-expanded", String(open));
+            };
+            L.DomEvent.disableClickPropagation(wrap);
+            L.DomEvent.on(btn, "click", () => set(panel.hidden));
+            L.DomEvent.on(wrap, "keydown", (e: Event) => { if ((e as KeyboardEvent).key === "Escape") { set(false); btn.focus(); } });
+            return wrap;
+          },
+        });
+        new Credits({ position: "bottomright" }).addTo(map);
 
         const records: MarkerRecord[] = [];
 

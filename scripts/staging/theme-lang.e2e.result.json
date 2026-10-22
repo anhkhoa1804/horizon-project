@@ -1,16 +1,21 @@
 {
-  "at": "2026-10-21T15:51:04.741Z",
+  "at": "2026-10-22T04:32:08.230Z",
   "base": "http://127.0.0.1:3100",
   "results": [
     {
       "name": "new visitor, OS=dark: no explicit choice, follows the OS",
       "ok": true,
-      "detail": "{\"attr\":null,\"stored\":null,\"checked\":[\"Follow system\",\"Switch to English\"],\"canvas\":\"#242e38\"}"
+      "detail": "{\"attr\":null,\"stored\":null,\"checked\":[\"Dark theme\",\"Switch to English\"],\"canvas\":\"#242e38\"}"
     },
     {
-      "name": "new visitor, OS=dark: System is the selected option",
+      "name": "new visitor, OS=dark: the matching Light/Dark option shows as selected",
       "ok": true,
-      "detail": "Follow system|Switch to English"
+      "detail": "Dark theme|Switch to English"
+    },
+    {
+      "name": "OS=dark: header offers no System option",
+      "ok": true,
+      "detail": ""
     },
     {
       "name": "OS=dark: canvas colour matches the OS",
@@ -25,12 +30,17 @@
     {
       "name": "new visitor, OS=light: no explicit choice, follows the OS",
       "ok": true,
-      "detail": "{\"attr\":null,\"stored\":null,\"checked\":[\"Follow system\",\"Switch to English\"],\"canvas\":\"#fbfaf6\"}"
+      "detail": "{\"attr\":null,\"stored\":null,\"checked\":[\"Light theme\",\"Switch to English\"],\"canvas\":\"#fbfaf6\"}"
     },
     {
-      "name": "new visitor, OS=light: System is the selected option",
+      "name": "new visitor, OS=light: the matching Light/Dark option shows as selected",
       "ok": true,
-      "detail": "Follow system|Switch to English"
+      "detail": "Light theme|Switch to English"
+    },
+    {
+      "name": "OS=light: header offers no System option",
+      "ok": true,
+      "detail": ""
     },
     {
       "name": "OS=light: canvas colour matches the OS",
@@ -58,19 +68,34 @@
       "detail": "{\"attr\":\"light\",\"stored\":\"light\",\"checked\":[\"Light theme\",\"Switch to English\"],\"canvas\":\"#fbfaf6\"}"
     },
     {
-      "name": "System clears the stored choice and the attribute",
+      "name": "explicit choice survives a reload and a later OS change",
       "ok": true,
-      "detail": "{\"attr\":null,\"stored\":null,\"checked\":[\"Follow system\",\"Switch to English\"],\"canvas\":\"#fbfaf6\"}"
-    },
-    {
-      "name": "on System the page follows a live OS scheme change",
-      "ok": true,
-      "detail": "#fbfaf6 -> #242e38"
+      "detail": "{\"attr\":\"light\",\"stored\":\"light\",\"checked\":[\"Light theme\",\"Switch to English\"],\"canvas\":\"#fbfaf6\"}"
     },
     {
       "name": "theme interactions raise no page errors",
       "ok": true,
       "detail": ""
+    },
+    {
+      "name": "no OS preference available, local hour 7: light",
+      "ok": true,
+      "detail": "light"
+    },
+    {
+      "name": "no OS preference available, local hour 17: light",
+      "ok": true,
+      "detail": "light"
+    },
+    {
+      "name": "no OS preference available, local hour 18: dark",
+      "ok": true,
+      "detail": "dark"
+    },
+    {
+      "name": "no OS preference available, local hour 3: dark",
+      "ok": true,
+      "detail": "dark"
     },
     {
       "name": "no cookie + browser English -> English",

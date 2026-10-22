@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Monitor, Moon, Sun } from "lucide-react";
+import { Moon, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDict } from "@/lib/i18n/client";
-import { applyTheme, getThemePreference, THEME_ATTRIBUTE, type ThemePreference } from "@/lib/theme";
+import { applyTheme, resolveTheme, THEME_ATTRIBUTE } from "@/lib/theme";
 
 /**
  * Light / Dark / System selector for the global shell.
@@ -18,31 +18,29 @@ import { applyTheme, getThemePreference, THEME_ATTRIBUTE, type ThemePreference }
  * rendering the active option on the server would mismatch on hydration. The placeholder
  * keeps the header from shifting when the real control appears.
  */
-const OPTIONS: { value: ThemePreference; Icon: typeof Sun }[] = [
+const OPTIONS: { value: "light" | "dark"; Icon: typeof Sun }[] = [
   { value: "light", Icon: Sun },
   { value: "dark", Icon: Moon },
-  { value: "system", Icon: Monitor },
 ];
 
 export function ThemeToggle({ className }: { className?: string }) {
   const dict = useDict();
-  const [pref, setPref] = useState<ThemePreference | null>(null);
+  const [pref, setPref] = useState<"light" | "dark" | null>(null);
 
   useEffect(() => {
-    setPref(getThemePreference());
+    setPref(resolveTheme());
   }, []);
 
   if (pref === null) {
-    return <div className={cn("h-11 w-[6.75rem]", className)} aria-hidden />;
+    return <div className={cn("h-11 w-[4.5rem]", className)} aria-hidden />;
   }
 
-  const labels: Record<ThemePreference, string> = {
+  const labels: Record<"light" | "dark", string> = {
     light: dict.controls.themeLight,
     dark: dict.controls.themeDark,
-    system: dict.controls.themeSystem,
   };
 
-  const select = (value: ThemePreference) => {
+  const select = (value: "light" | "dark") => {
     applyTheme(value);
     setPref(value);
   };

@@ -201,7 +201,7 @@
     --h-border-strong: rgba(255, 255, 255, 0.19);
     --h-border-accent: rgba(79, 176, 212, 0.45);
 
-    --h-safe: #4cb87a;
+    --h-safe: #62d08f;
     --h-safe-bg: rgba(76, 184, 122, 0.14);
     --h-warning: #d69a44;
     --h-warning-bg: rgba(214, 154, 68, 0.14);
@@ -287,7 +287,7 @@
   --h-border-strong: rgba(255, 255, 255, 0.19);
   --h-border-accent: rgba(79, 176, 212, 0.45);
 
-  --h-safe: #4cb87a;
+  --h-safe: #62d08f;
   --h-safe-bg: rgba(76, 184, 122, 0.14);
   --h-warning: #d69a44;
   --h-warning-bg: rgba(214, 154, 68, 0.14);
@@ -2313,3 +2313,60 @@ main {
 
 /* a11y: Leaflet attribution links must not rely on colour alone (axe link-in-text-block). */
 .leaflet-container .leaflet-control-attribution a { text-decoration: underline !important; text-underline-offset: 2px; }
+
+/* ===========================================================================
+ * STATUS TREATMENT (22 Oct revision). Colour reaches the card from the threshold registry only:
+ * the component sets data-status when a registry band exists, "none" otherwise. Each level pairs a
+ * hue with a glyph + word in the header (never colour alone). Unclassified/missing = plain surface.
+ * ======================================================================== */
+.observatory-bento {
+  --st-ok: #17803f; --st-watch: #a86800; --st-warn: #c24a0d; --st-critical: #c4202f;
+}
+:root[data-theme="dark"] .observatory-bento { --st-ok: #4fd98a; --st-watch: #f2b53a; --st-warn: #ff9150; --st-critical: #ff6b73; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .observatory-bento { --st-ok: #4fd98a; --st-watch: #f2b53a; --st-warn: #ff9150; --st-critical: #ff6b73; }
+}
+.observatory-bento .status-card[data-status="ok"] { --st: var(--st-ok); }
+.observatory-bento .status-card[data-status="watch"] { --st: var(--st-watch); }
+.observatory-bento .status-card[data-status="warn"] { --st: var(--st-warn); }
+.observatory-bento .status-card[data-status="critical"] { --st: var(--st-critical); }
+.observatory-bento .status-card:is([data-status="ok"],[data-status="watch"],[data-status="warn"],[data-status="critical"]) {
+  background: color-mix(in srgb, var(--st) 15%, var(--h-surface));
+  box-shadow: inset 5px 0 0 var(--st);
+  border-color: color-mix(in srgb, var(--st) 45%, var(--h-border, transparent));
+}
+.observatory-bento .status-card:is([data-status="ok"],[data-status="watch"],[data-status="warn"],[data-status="critical"]) .region-heading-status {
+  padding: 1px 7px; border-radius: 999px; font-weight: 600;
+  background: color-mix(in srgb, var(--st) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--st) 70%, transparent);
+}
+.observatory-bento .status-card:is([data-status="ok"],[data-status="watch"],[data-status="warn"],[data-status="critical"]) .region-heading svg:not(:first-child) { color: var(--st); }
+
+/* Collapsed map credits: a compact (i) button; the full legal credit opens in place and is never removed. */
+.horizon-map-credits { position: relative; margin: 0 8px 8px 0 !important; border: 0 !important; background: none !important; }
+.horizon-map-credits-btn {
+  width: 22px; height: 22px; border-radius: 999px; font: italic 600 12px/1 serif; cursor: pointer;
+  background: color-mix(in srgb, var(--h-surface) 82%, transparent); color: var(--h-foreground-muted);
+  border: 1px solid var(--h-border); backdrop-filter: blur(4px);
+}
+.horizon-map-credits-btn:focus-visible { outline: 2px solid var(--h-brand-blue); outline-offset: 2px; }
+.horizon-map-credits-panel {
+  position: absolute; right: 0; bottom: 28px; width: max-content; max-width: min(300px, 70vw); padding: 6px 9px;
+  border-radius: 8px; border: 1px solid var(--h-border); background: var(--h-surface-raised); color: var(--h-foreground-muted);
+  font: 400 11px/1.4 var(--font-sans, system-ui); box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+}
+.horizon-map-credits-panel[hidden] { display: none; }
+.horizon-map-credits-panel a { color: var(--h-brand-blue); text-decoration: underline; text-underline-offset: 2px; }
+
+/* HERO: one photograph, one scroll context. The home hero paints the day/night scene itself
+   (.hero-canvas, scrolls with the page, scrim + bottom dissolve live on the same element), so the
+   fixed page-level copy of that same scene is not rendered behind it: two copies of one photograph
+   moving independently was the misalignment. Other pages keep the quiet fixed atmosphere. */
+body:has(.hero-canvas) .horizon-atmosphere { display: none; }
+@media (prefers-reduced-motion: reduce) { .hero-canvas, .hero-canvas * { transition: none !important; animation: none !important; } }
+/* The hero is now the only copy of the photograph, so it dissolves into the page ground by itself
+   (alpha mask on the same element: no second image, no colour to match, moves with the scroll). */
+.hero-canvas {
+  -webkit-mask-image: linear-gradient(to bottom,#000 0%,#000 55%,rgba(0,0,0,.8) 68%,rgba(0,0,0,.5) 80%,rgba(0,0,0,.2) 91%,transparent 100%);
+  mask-image: linear-gradient(to bottom,#000 0%,#000 55%,rgba(0,0,0,.8) 68%,rgba(0,0,0,.5) 80%,rgba(0,0,0,.2) 91%,transparent 100%);
+}

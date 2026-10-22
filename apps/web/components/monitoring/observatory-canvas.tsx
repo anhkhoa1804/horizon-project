@@ -353,7 +353,7 @@ function MetricCell({
   note?: string | null;
 }) {
   return (
-    <div className={cn("rounded-xl border border-border", "flex flex-col justify-between p-[var(--bento-pad)]", "gap-1", status ? regionSurface(status) : tone, placement)}>
+    <div data-status={status?.level ?? "none"} className={cn("status-card rounded-xl border border-border", "flex flex-col justify-between p-[var(--bento-pad)]", "gap-1", status ? regionSurface(status) : tone, placement)}>
       <div className="flex min-w-0 items-start gap-1.5 text-foreground-subtle">
         <Icon className="h-3.5 w-3.5 shrink-0 translate-y-px" aria-hidden />
         <span className="min-w-0 text-[11px] font-semibold uppercase leading-[1.3] tracking-[0.1em]">{label}</span>
@@ -366,6 +366,62 @@ function MetricCell({
         </p>
       ) : null}
       <ContextValue metric={metric} dict={dict} note={note} />
+    </div>
+  );
+}
+
+/**
+ * A 2x1 soil card: two readings under one header, one status for the card.
+ * Status comes only from the threshold registry (worst of the two); a reading without a
+ * registry band stays neutral. Stale values keep their number but are labelled; a missing
+ * value shows an em dash and "no data", never zero.
+ */
+function SoilPairCard({
+  icon: Icon,
+  title,
+  readings,
+  status,
+  dict,
+  placement,
+  testId,
+}: {
+  icon: typeof Waves;
+  title: string;
+  readings: { label: string; metric: ObservatoryMetric | null | undefined; status: MetricStatus | null }[];
+  status: MetricStatus | null;
+  dict: Dictionary;
+  placement: string;
+  testId: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      data-status={status?.level ?? "none"}
+      className={cn("status-card rounded-xl border border-border", "flex flex-col justify-between gap-2 p-[var(--bento-pad)]", status ? regionSurface(status) : "bg-[var(--h-domain-soil)]", placement)}
+    >
+      <RegionHeader icon={Icon} title={title} status={status} dict={dict} />
+      <div className="grid grid-cols-2 divide-x divide-border">
+        {readings.map((r, i) => {
+          const has = !!r.metric && r.metric.value !== null;
+          const stale = has && r.metric!.provenance.origin === "historical";
+          return (
+            <div key={r.label} className={cn("min-w-0", i === 0 ? "pr-3" : "pl-3 sm:pl-4")} data-status={r.status?.level ?? "none"}>
+              <p className="truncate text-[11px] font-semibold uppercase leading-[1.3] tracking-[0.08em] text-foreground-subtle">{r.label}</p>
+              <p className={cn("status-value mt-1.5 font-medium tabular-nums leading-none tracking-tight [font-family:var(--font-data)] text-3xl md:text-4xl", has ? undefined : "text-foreground-subtle")}>
+                {has ? (
+                  <>
+                    {r.metric!.value}
+                    {r.metric!.unit ? <span className="ml-1 text-[0.4em] font-normal text-foreground-muted [font-family:inherit]">{r.metric!.unit}</span> : null}
+                  </>
+                ) : "—"}
+              </p>
+              <p className="mt-1.5 truncate text-[11px] text-foreground-subtle">
+                {!has ? dict.common.noData : stale ? dict.freshness.stale : null}
+              </p>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -431,7 +487,7 @@ function ObservatoryBento({
   // SCIENTIFIC_REFERENCES.md: bulk EC is not ECe; no sourced single-variable
   // alarm for probe-depth temperature), so until someone configures one these
   // stay neutral and say so, rather than borrowing a band that does not apply.
-  const soilStatus = worstStatus([advisoryStatus(soilPh, "soil_ph"), advisoryStatus(soilMoisture, "soil_moisture")]);
+  const soilStatus = isDemo ? null : worstStatus([advisoryStatus(soilMoisture, "soil_moisture"), advisoryStatus(soilTemp, "soil_temp")]);
 
   // Every cell, without exception: same corner, same hairline, same inset.
   // A box differs from its neighbours only in what it spans and what colour
@@ -451,8 +507,10 @@ function ObservatoryBento({
       {/* BOX 0 — primary. Salinity and water level side by side, no divider,
           no nested card: one region, one surface, one status. */}
       <div
+        data-status={primaryStatus?.level ?? "none"}
         className={cn(
           cell,
+          "status-card",
           padded,
           primaryStatus ? regionSurface(primaryStatus) : "bg-[var(--h-domain-water)]",
           "col-start-1 col-end-5 row-start-1 row-end-3",
@@ -504,23 +562,17 @@ function ObservatoryBento({
           battery pair, which no current firmware reports. Colour comes ONLY from the threshold registry:
           none is seeded for bulk EC or probe-depth temperature (docs/SCIENTIFIC_REFERENCES.md), so these
           stay neutral until someone configures one. Nothing is invented here. */}
-      <MetricCell
+      <SoilPairCard
+        testId="soil-card-chemistry"
         icon={Zap}
-        label={dict.metricLabels.soilEc}
-        metric={soilEc}
+        title={dict.monitoring.soilChemistry}
+        readings={[
+          { label: dict.monitoring.bulkEc, metric: soilEc, status: isDemo ? null : advisoryStatus(soilEc, "soil_ec_bulk") },
+          { label: dict.metricLabels.ph, metric: soilPh, status: isDemo ? null : advisoryStatus(soilPh, "soil_ph") },
+        ]}
+        status={isDemo ? null : worstStatus([advisoryStatus(soilEc, "soil_ec_bulk"), advisoryStatus(soilPh, "soil_ph")])}
         dict={dict}
-        status={isDemo ? null : advisoryStatus(soilEc, "soil_ec_bulk")}
-        tone="bg-[var(--h-domain-soil)]"
-        placement="col-start-1 col-end-3 row-start-7 row-end-9 md:col-start-1 md:col-end-2 md:row-start-4 md:row-end-5 lg:col-start-5 lg:col-end-6 lg:row-start-3 lg:row-end-4"
-      />
-      <MetricCell
-        icon={Thermometer}
-        label={dict.metricLabels.soilTemp}
-        metric={soilTemp}
-        dict={dict}
-        status={isDemo ? null : advisoryStatus(soilTemp, "soil_temp")}
-        tone="bg-[var(--h-domain-soil)]"
-        placement="col-start-3 col-end-5 row-start-7 row-end-9 md:col-start-2 md:col-end-3 md:row-start-4 md:row-end-5 lg:col-start-6 lg:col-end-7 lg:row-start-3 lg:row-end-4"
+        placement="col-start-1 col-end-5 row-start-9 row-end-11 md:col-start-3 md:col-end-5 md:row-start-4 md:row-end-5 lg:col-start-5 lg:col-end-7 lg:row-start-3 lg:row-end-4"
       />
 
       {/* BOX 4-7 — the four regional figures, each one base cell, each a
@@ -540,10 +592,10 @@ function ObservatoryBento({
           still share one baseline. */}
       {(
         [
-          { icon: Thermometer, label: dict.metricLabels.temperature, key: "temperature", cell: "col-start-1 col-end-3 row-start-9 row-end-11 md:col-start-1 md:col-end-2 md:row-start-5 md:row-end-6 lg:col-start-6 lg:col-end-7 lg:row-start-1 lg:row-end-2" },
-          { icon: Droplets, label: dict.metricLabels.humidity, key: "humidity", cell: "col-start-3 col-end-5 row-start-9 row-end-11 md:col-start-2 md:col-end-3 md:row-start-5 md:row-end-6 lg:col-start-6 lg:col-end-7 lg:row-start-2 lg:row-end-3" },
-          { icon: Wind, label: dict.metricLabels.wind, key: "wind", cell: "col-start-1 col-end-3 row-start-11 row-end-13 md:col-start-3 md:col-end-4 md:row-start-5 md:row-end-6 lg:col-start-3 lg:col-end-4 lg:row-start-3 lg:row-end-4" },
-          { icon: CloudRain, label: dict.metricLabels.precipitation, key: "precipitation", cell: "col-start-3 col-end-5 row-start-11 row-end-13 md:col-start-4 md:col-end-5 md:row-start-5 md:row-end-6 lg:col-start-4 lg:col-end-5 lg:row-start-3 lg:row-end-4" },
+          { icon: Thermometer, label: dict.metricLabels.temperature, key: "temperature", cell: "col-start-1 col-end-3 row-start-11 row-end-13 md:col-start-1 md:col-end-2 md:row-start-5 md:row-end-6 lg:col-start-6 lg:col-end-7 lg:row-start-1 lg:row-end-2" },
+          { icon: Droplets, label: dict.metricLabels.humidity, key: "humidity", cell: "col-start-3 col-end-5 row-start-11 row-end-13 md:col-start-2 md:col-end-3 md:row-start-5 md:row-end-6 lg:col-start-6 lg:col-end-7 lg:row-start-2 lg:row-end-3" },
+          { icon: Wind, label: dict.metricLabels.wind, key: "wind", cell: "col-start-1 col-end-3 row-start-13 row-end-15 md:col-start-3 md:col-end-4 md:row-start-5 md:row-end-6 lg:col-start-1 lg:col-end-2 lg:row-start-4 lg:row-end-5" },
+          { icon: CloudRain, label: dict.metricLabels.precipitation, key: "precipitation", cell: "col-start-3 col-end-5 row-start-13 row-end-15 md:col-start-4 md:col-end-5 md:row-start-5 md:row-end-6 lg:col-start-2 lg:col-end-3 lg:row-start-4 lg:row-end-5" },
         ] as const
       ).map(({ icon, label, key, cell: placement }) => (
         <MetricCell
@@ -560,22 +612,18 @@ function ObservatoryBento({
       ))}
 
       {/* ROW 4 — two observation domains, each a single parent surface. */}
-      <div
-        className={cn(
-          cell,
-          padded,
-          soilStatus ? regionSurface(soilStatus) : "bg-[var(--h-domain-soil)]",
-          "col-start-1 col-end-5 row-start-13 row-end-15",
-          "md:col-start-3 md:col-end-5 md:row-start-4 md:row-end-5",
-          "lg:col-start-1 lg:col-end-3 lg:row-start-4 lg:row-end-5",
-        )}
-      >
-        <RegionHeader icon={Sprout} title={dict.terms.soil} status={soilStatus} dict={dict} />
-        <div className="mt-auto grid grid-cols-2 gap-4 pt-2">
-          <Value label={dict.metricLabels.moisture} metric={soilMoisture} dict={dict} />
-          <Value label={dict.metricLabels.ph} metric={soilPh} dict={dict} />
-        </div>
-      </div>
+      <SoilPairCard
+        testId="soil-card-conditions"
+        icon={Sprout}
+        title={dict.monitoring.soilConditions}
+        readings={[
+          { label: dict.metricLabels.moisture, metric: soilMoisture, status: isDemo ? null : advisoryStatus(soilMoisture, "soil_moisture") },
+          { label: dict.metricLabels.soilTemp, metric: soilTemp, status: isDemo ? null : advisoryStatus(soilTemp, "soil_temp") },
+        ]}
+        status={soilStatus}
+        dict={dict}
+        placement="col-start-1 col-end-5 row-start-7 row-end-9 md:col-start-1 md:col-end-3 md:row-start-4 md:row-end-5 lg:col-start-3 lg:col-end-5 lg:row-start-3 lg:row-end-4"
+      />
 
       <div
         className={cn(

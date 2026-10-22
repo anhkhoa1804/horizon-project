@@ -59,7 +59,7 @@ function extractPlacements(src: string, prefix: "" | "md:" | "lg:"): Placement[]
  * on the same cell or a hole opens in the canvas.
  */
 function assertTiling(placements: Placement[], cols: number, rows: number, label: string) {
-  assert.equal(placements.length, 11, `${label}: expected exactly eleven explicitly-placed boxes`);
+  assert.equal(placements.length, 10, `${label}: expected exactly ten explicitly-placed boxes`);
 
   const covered = new Map<string, number>();
   for (const { colStart, colEnd, rowStart, rowEnd } of placements) {
@@ -79,7 +79,7 @@ function assertTiling(placements: Placement[], cols: number, rows: number, label
 }
 
 describe("observatory Bento grid", () => {
-  it("places eleven boxes (soil EC and soil temperature are single-figure cards) by explicit coordinates, not a computed algorithm", () => {
+  it("places ten boxes (two 2x1 soil cards: conditions, chemistry) by explicit coordinates, not a computed algorithm", () => {
     const src = source();
     assert.match(src, /function ObservatoryBento/, "the grid composition component is gone");
     assert.match(src, /lg:grid-cols-6/, "the 6-column track is missing");
@@ -144,7 +144,7 @@ describe("observatory Bento grid", () => {
     const src = source();
     assert.match(src, /function RegionHeader/, "the region header is gone");
     const renders = (src.match(/<RegionHeader\b/g) || []).length;
-    assert.equal(renders, 2, "expected the primary and soil region headers (single-figure cards use MetricCell)");
+    assert.equal(renders, 2, "expected the primary header and the shared soil-pair card header (single-figure cards use MetricCell)");
     assert.ok(!/<RegionStatus\b/.test(src), "the separate status line is back below the values");
   });
 
@@ -268,31 +268,41 @@ describe("observatory Bento grid", () => {
     }
   });
 
-  it("builds all six single-figure cards from ONE component, equal at every width", () => {
-    // Four weather readings + soil EC + soil temperature. One shared MetricCell means identical
-    // header grammar, padding, value block and status treatment; this test keeps the SIZES equal too:
-    // 2x2 units below md (171px at 390), 1x1 from md up. Cells sized by their text — what the old
-    // content-driven reflow did — is the failure this catches.
+  it("builds the four weather cards from ONE component and the two soil cards from ONE 2x1 component", () => {
     const src = source();
     assert.match(src, /function MetricCell/, "the shared single-figure card is gone");
+    assert.match(src, /function SoilPairCard/, "the shared soil pair card is gone");
     const weatherBoxes = (src.match(/\{ icon: \w+, label: dict\.metricLabels\.\w+, key: "\w+", cell:/g) || []).length;
     assert.equal(weatherBoxes, 4, "expected four regional readings (temperature, humidity, wind, precipitation)");
-    assert.equal((src.match(/<MetricCell\b/g) || []).length, 3, "weather map + soil EC + soil temperature must all render <MetricCell>");
-    assert.match(src, /label=\{dict\.metricLabels\.soilEc\}/, "soil EC card is gone");
-    assert.match(src, /label=\{dict\.metricLabels\.soilTemp\}/, "soil temperature card is gone");
+    assert.equal((src.match(/<MetricCell\b/g) || []).length, 1, "the weather map must render <MetricCell>");
+    assert.equal((src.match(/<SoilPairCard\b/g) || []).length, 2, "expected exactly two soil cards");
+    assert.match(src, /soil-card-conditions/);
+    assert.match(src, /soil-card-chemistry/);
+    // Soil EC is not a headline reading any more but is still never mislabelled as salinity.
+    assert.ok(!/label=\{dict\.metricLabels\.salinity\}[^]{0,80}soil/i.test(src), "soil must not borrow the water salinity label");
 
     for (const [label, prefix, unitSpan] of [
       ["<md", "", 2],
       ["md", "md:", 1],
       ["lg", "lg:", 1],
     ] as const) {
-      const cards = extractPlacements(src, prefix).slice(2, 8);
-      assert.equal(cards.length, 6, `${label}: expected six single-figure placements`);
-      for (const p of cards) {
+      const all = extractPlacements(src, prefix);
+      const pairs = [all[2], all[7]];
+      const weather = all.slice(3, 7);
+      for (const p of pairs) {
+        const w = label === "<md" ? 4 : 2;
+        assert.equal(p.colEnd - p.colStart, w, `${label}: a soil card has the wrong width`);
+        assert.equal(p.rowEnd - p.rowStart, label === "<md" ? 2 : 1, `${label}: a soil card has the wrong height`);
+      }
+      assert.deepEqual(
+        [pairs[0].colEnd - pairs[0].colStart, pairs[0].rowEnd - pairs[0].rowStart],
+        [pairs[1].colEnd - pairs[1].colStart, pairs[1].rowEnd - pairs[1].rowStart],
+        `${label}: the two soil cards differ in size`,
+      );
+      for (const p of weather) {
         assert.equal(p.colEnd - p.colStart, unitSpan, `${label}: a card is not ${unitSpan} unit(s) wide`);
         assert.equal(p.rowEnd - p.rowStart, unitSpan, `${label}: a card is not ${unitSpan} unit(s) tall`);
       }
-      assert.equal(new Set(cards.map((p) => `${p.rowStart},${p.colStart}`)).size, 6, `${label}: two cards share an origin`);
     }
   });
 

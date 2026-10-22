@@ -3,6 +3,9 @@
  * toggle component so the two can never disagree about the storage key or
  * the attribute name.
  *
+ * Precedence: stored explicit choice > operating-system preference > local time (06:00-17:59 light) only when the OS gives no preference.
+ * The header offers Light/Dark only; the "system" state remains the default when nothing is stored.
+ *
  * Three states, but only two are ever written to the DOM:
  *
  *   "system"  → no `data-theme` attribute at all; globals.css's
@@ -44,7 +47,7 @@ export type ResolvedTheme = "light" | "dark";
  * a normal <script src> or a React effect would both land too late and let a
  * light flash through on a dark-preferring device.
  */
-export const THEME_BOOT_SCRIPT = `(function(){try{var t=localStorage.getItem("${THEME_STORAGE_KEY}");if(t==="dark"||t==="light"){document.documentElement.setAttribute("${THEME_ATTRIBUTE}",t)}}catch(e){}})();`;
+export const THEME_BOOT_SCRIPT = `(function(){try{var d=document.documentElement,t=null;try{t=localStorage.getItem("${THEME_STORAGE_KEY}")}catch(e){}if(t==="dark"||t==="light"){d.setAttribute("${THEME_ATTRIBUTE}",t);return}var m=window.matchMedia;if(m&&(m("(prefers-color-scheme: dark)").matches||m("(prefers-color-scheme: light)").matches))return;var h=new Date().getHours();d.setAttribute("${THEME_ATTRIBUTE}",h>=6&&h<18?"light":"dark")}catch(e){}})();`;
 
 /** The theme actually being displayed right now, attribute first, OS second. */
 export function resolveTheme(): ResolvedTheme {
@@ -53,7 +56,11 @@ export function resolveTheme(): ResolvedTheme {
   const explicit = document.documentElement.getAttribute(THEME_ATTRIBUTE);
   if (explicit === "dark" || explicit === "light") return explicit;
 
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  if (window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark";
+  if (window.matchMedia("(prefers-color-scheme: light)").matches) return "light";
+  // Operating-system preference unavailable: local time is the last-resort fallback only.
+  const hour = new Date().getHours();
+  return hour >= 6 && hour < 18 ? "light" : "dark";
 }
 
 /** The stored choice: an explicit "light"/"dark", otherwise "system". */

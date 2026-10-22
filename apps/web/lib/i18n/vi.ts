@@ -129,6 +129,9 @@ export const vi = {
     sendReport: "Gửi báo cáo hiện trường",
 
     demoBannerTitle: "DỮ LIỆU MINH HỌA",
+    soilConditions: "Điều kiện đất",
+    soilChemistry: "Hoá học đất",
+    bulkEc: "EC khối",
     devFixtureBanner: "BẢN XEM TRƯỚC DEV · ĐẤT TRẠM 02 LÀ DỮ LIỆU GIẢ LẬP",
     demoBannerBody:
       "số liệu trạm trên trang này là tổng hợp để trình bày giao diện, không phải quan trắc thật từ Cồn Hô. Các giá trị đánh dấu * là dữ liệu thật từ nguồn ngoài.",

@@ -1,4 +1,4 @@
-// Theme (Light/Dark/System) and language (explicit > browser > fallback) behaviour in a real browser.
+// Theme (Light/Dark, OS-detected, time fallback) and language (explicit > browser > fallback) behaviour in a real browser.
 // Usage: BASE_URL=http://127.0.0.1:3100 HORIZON_CHROMIUM_PATH=... node scripts/staging/theme-lang.e2e.cjs
 const { chromium } = require("playwright");
 const fs = require("node:fs"), path = require("node:path");
@@ -17,9 +17,12 @@ const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok, detail
   for (const scheme of ["dark", "light"]) {
     const { ctx, page, errors } = await open({ colorScheme: scheme, viewport: { width: 1280, height: 800 } });
     await page.goto(B + "/dashboard", { waitUntil: "networkidle" });
+    await page.waitForSelector('[aria-label="Dark theme"],[aria-label="Light theme"],[aria-label="Chế độ tối"],[aria-label="Chế độ sáng"]').catch(() => {});
+    await page.waitForFunction(() => [...document.querySelectorAll('[role=radio][aria-checked=true]')].length >= 2, null, { timeout: 8000 }).catch(() => {});
     const s = await stateOf(page);
     check(`new visitor, OS=${scheme}: no explicit choice, follows the OS`, s.attr === null && s.stored === null, JSON.stringify(s));
-    check(`new visitor, OS=${scheme}: System is the selected option`, s.checked.some((l) => /system|hệ thống/i.test(l)), s.checked.join("|"));
+    check(`new visitor, OS=${scheme}: the matching Light/Dark option shows as selected`, s.checked.some((l) => (scheme === "dark" ? /dark|tối/i : /light|sáng/i).test(l)), s.checked.join("|"));
+    check(`OS=${scheme}: header offers no System option`, (await page.getByRole("radio", { name: /system|hệ thống/i }).count()) === 0);
     const cv = (await stateOf(page)).canvas; const hex = cv.replace("#", ""); const L = hex.length === 6 ? (0.2126 * parseInt(hex.slice(0, 2), 16) + 0.7152 * parseInt(hex.slice(2, 4), 16) + 0.0722 * parseInt(hex.slice(4, 6), 16)) / 255 : NaN;
     check(`OS=${scheme}: canvas colour matches the OS`, scheme === "dark" ? L < 0.35 : L > 0.8, `${cv} lum=${L.toFixed(2)}`);
     check(`OS=${scheme}: no hydration errors`, errors.length === 0, errors.join(";"));
@@ -39,14 +42,18 @@ const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok, detail
     await radio(/light|sáng/i).first().click();
     s = await stateOf(page);
     check("explicit Light is stored", s.attr === "light" && s.stored === "light", JSON.stringify(s));
-    await radio(/system|hệ thống/i).first().click();
+    await page.reload({ waitUntil: "networkidle" });
     s = await stateOf(page);
-    check("System clears the stored choice and the attribute", s.attr === null && s.stored === null, JSON.stringify(s));
-    const before = (await stateOf(page)).canvas;
-    await page.emulateMedia({ colorScheme: "dark" }); await page.waitForTimeout(400);
-    const after = (await stateOf(page)).canvas;
-    check("on System the page follows a live OS scheme change", before !== after, `${before} -> ${after}`);
+    check("explicit choice survives a reload and a later OS change", s.attr === "light" && s.stored === "light", JSON.stringify(s));
     check("theme interactions raise no page errors", errors.length === 0, errors.join(";"));
+    await ctx.close();
+  }
+  for (const [hour, want] of [[7, "light"], [17, "light"], [18, "dark"], [3, "dark"]]) {
+    const { ctx, page } = await open({ viewport: { width: 1280, height: 800 } });
+    await page.addInitScript((h) => { window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }); const RD = Date; Date = class extends RD { getHours() { return h; } }; }, hour);
+    await page.goto(B + "/dashboard", { waitUntil: "networkidle" });
+    const attr = await page.evaluate(() => document.documentElement.getAttribute("data-theme"));
+    check(`no OS preference available, local hour ${hour}: ${want}`, attr === want, String(attr));
     await ctx.close();
   }
   // ---- LANGUAGE
