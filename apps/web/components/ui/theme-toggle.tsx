@@ -33,7 +33,7 @@ export function ThemeToggle({ className }: { className?: string }) {
   }, []);
 
   if (current === null) {
-    return <div className={cn("h-11 w-11", className)} aria-hidden />;
+    return <div className={cn("site-control site-control--icon opacity-0", className)} aria-hidden />;
   }
 
   const next: ResolvedTheme = current === "dark" ? "light" : "dark";
@@ -50,7 +50,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       aria-label={label}
       title={label}
       className={cn(
-        "site-control",
+        "site-control site-control--icon",
         className,
       )}
     >

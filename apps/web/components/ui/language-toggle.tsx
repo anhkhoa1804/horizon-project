@@ -24,7 +24,7 @@ export function LanguageToggle({ className }: { className?: string }) {
       aria-label={label}
       title={LOCALE_FULL_LABEL[current]}
       className={cn(
-        "site-control",
+        "site-control site-control--text",
         className,
       )}
     >

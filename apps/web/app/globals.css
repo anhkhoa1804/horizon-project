@@ -2365,17 +2365,21 @@ main {
 body:has(.hero-canvas) .horizon-atmosphere { display: none; }
 @media (prefers-reduced-motion: reduce) { .hero-canvas, .hero-canvas * { transition: none !important; animation: none !important; } }
 
-/* 22 Oct r3 — hero fade, revealed by scrolling.
-   The hero box is 120svh tall: the first 100svh is the viewport and shows the photograph unfaded. The
-   photograph is anchored to the bottom of the box, so its last 20svh sits BELOW the first screen. The
-   dissolve is the mask over that last 20svh, so nothing fades until the reader scrolls, and the fade
-   moves up the screen as they scroll (scroll 0 -> clean; scroll 20svh -> fully transparent).
-   Nothing is animated; the motion is the page's own scroll. */
+/* 22 Oct r4 — hero fade, revealed by scrolling, with the ORIGINAL framing preserved.
+   r3 grew the box to 120svh and let `cover` rescale to fill it — that re-zoomed the whole photograph
+   (bottom-anchored), which pushed the island further down the frame and cropped its lowest strip.
+   Here the image is explicitly locked to exactly 100svh tall (background-size, not `cover`) and
+   anchored to the TOP of the box, so the visible viewport reproduces the original, unzoomed framing
+   pixel for pixel. The box itself is taller than the viewport by one rhythm unit (the same gap the
+   page already leaves below the hero), so that extra strip is blank page-colour, reachable only by
+   scrolling — and the mask dissolves the image's own bottom edge into that blank strip, rather than
+   re-cropping the photo. Nothing fades before the reader scrolls; nothing is zoomed. */
 .hero-canvas,
 :root[data-theme="dark"] .hero-canvas,
 :root:not([data-theme="light"]) .hero-canvas {
-  height: 120svh;
-  background-position: center bottom;
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 83.3%, rgba(0,0,0,.82) 88%, rgba(0,0,0,.55) 93%, rgba(0,0,0,.25) 97.5%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 0%, #000 83.3%, rgba(0,0,0,.82) 88%, rgba(0,0,0,.55) 93%, rgba(0,0,0,.25) 97.5%, transparent 100%);
+  height: calc(100svh + var(--rhythm-large));
+  background-position: center top;
+  background-size: auto 100svh;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 84%, rgba(0,0,0,.7) 90%, rgba(0,0,0,.35) 95%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 84%, rgba(0,0,0,.7) 90%, rgba(0,0,0,.35) 95%, transparent 100%);
 }
