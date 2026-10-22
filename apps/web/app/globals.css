@@ -39,11 +39,11 @@
    * pigment on stock, with the recessed step slightly *warmer* rather than
    * simply darker.
    */
-  --h-canvas: #fbfaf6;
-  --h-canvas-subtle: #f0ece1;
-  --h-canvas-elevated: #fbf9f4;
-  --h-surface: #ffffff;
-  --h-surface-raised: #ffffff;
+  --h-canvas: #f3f4ee;
+  --h-canvas-subtle: #e9ebe0;
+  --h-canvas-elevated: #f8f9f4;
+  --h-surface: #fdfdfb;
+  --h-surface-raised: #fdfdfb;
 
   /* ----------------------------------------------------------------- TEXT
    * Near-black carries a green cast so type belongs to the same family as
@@ -64,7 +64,7 @@
    * names; the legacy healthy/watch/risk aliases below keep existing
    * components compiling against the same values.
    */
-  --h-safe: #197a3f;
+  --h-safe: #135f33;
   --h-safe-bg: rgba(25, 122, 63, 0.09);
   /* Darkened from #a35f00, which gave the 10px "Chưa xác minh" provenance
    * badge only 4.07:1 on its own 9% tint — below the 4.5:1 that text this
@@ -2364,9 +2364,18 @@ main {
    moving independently was the misalignment. Other pages keep the quiet fixed atmosphere. */
 body:has(.hero-canvas) .horizon-atmosphere { display: none; }
 @media (prefers-reduced-motion: reduce) { .hero-canvas, .hero-canvas * { transition: none !important; animation: none !important; } }
-/* The hero is now the only copy of the photograph, so it dissolves into the page ground by itself
-   (alpha mask on the same element: no second image, no colour to match, moves with the scroll). */
-.hero-canvas {
-  -webkit-mask-image: linear-gradient(to bottom,#000 0%,#000 55%,rgba(0,0,0,.8) 68%,rgba(0,0,0,.5) 80%,rgba(0,0,0,.2) 91%,transparent 100%);
-  mask-image: linear-gradient(to bottom,#000 0%,#000 55%,rgba(0,0,0,.8) 68%,rgba(0,0,0,.5) 80%,rgba(0,0,0,.2) 91%,transparent 100%);
+
+/* 22 Oct r3 — hero fade, revealed by scrolling.
+   The hero box is 120svh tall: the first 100svh is the viewport and shows the photograph unfaded. The
+   photograph is anchored to the bottom of the box, so its last 20svh sits BELOW the first screen. The
+   dissolve is the mask over that last 20svh, so nothing fades until the reader scrolls, and the fade
+   moves up the screen as they scroll (scroll 0 -> clean; scroll 20svh -> fully transparent).
+   Nothing is animated; the motion is the page's own scroll. */
+.hero-canvas,
+:root[data-theme="dark"] .hero-canvas,
+:root:not([data-theme="light"]) .hero-canvas {
+  height: 120svh;
+  background-position: center bottom;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 83.3%, rgba(0,0,0,.82) 88%, rgba(0,0,0,.55) 93%, rgba(0,0,0,.25) 97.5%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 83.3%, rgba(0,0,0,.82) 88%, rgba(0,0,0,.55) 93%, rgba(0,0,0,.25) 97.5%, transparent 100%);
 }

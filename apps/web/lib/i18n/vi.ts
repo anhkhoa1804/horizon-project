@@ -38,6 +38,8 @@ export const vi = {
 
   controls: {
     toDark: "Chuyển sang giao diện tối",
+    themeSwitchToDark: "Chuyển sang giao diện tối",
+    themeSwitchToLight: "Chuyển sang giao diện sáng",
     themeLight: "Giao diện sáng",
     themeDark: "Giao diện tối",
     themeSystem: "Theo hệ thống",

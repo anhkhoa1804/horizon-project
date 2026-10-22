@@ -188,7 +188,7 @@ export function SiteHeader({ register = "public", activePath, adminEmail, adminA
           <div className="mx-1 hidden h-5 w-px bg-border md:block" aria-hidden />
 
           <ThemeToggle />
-          <LanguageToggle className="ml-0.5" />
+          <LanguageToggle className="ml-1" />
         </div>
       </div>
 

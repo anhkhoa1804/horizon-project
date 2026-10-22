@@ -400,12 +400,12 @@ function SoilPairCard({
       className={cn("status-card rounded-xl border border-border", "flex flex-col justify-between gap-2 p-[var(--bento-pad)]", status ? regionSurface(status) : "bg-[var(--h-domain-soil)]", placement)}
     >
       <RegionHeader icon={Icon} title={title} status={status} dict={dict} />
-      <div className="grid grid-cols-2 divide-x divide-border">
+      <div className="grid grid-cols-2 gap-x-6 md:gap-x-10">
         {readings.map((r, i) => {
           const has = !!r.metric && r.metric.value !== null;
           const stale = has && r.metric!.provenance.origin === "historical";
           return (
-            <div key={r.label} className={cn("min-w-0", i === 0 ? "pr-3" : "pl-3 sm:pl-4")} data-status={r.status?.level ?? "none"}>
+            <div key={r.label} className="min-w-0" data-status={r.status?.level ?? "none"}>
               <p className="truncate text-[11px] font-semibold uppercase leading-[1.3] tracking-[0.08em] text-foreground-subtle">{r.label}</p>
               <p className={cn("status-value mt-1.5 font-medium tabular-nums leading-none tracking-tight [font-family:var(--font-data)] text-3xl md:text-4xl", has ? undefined : "text-foreground-subtle")}>
                 {has ? (

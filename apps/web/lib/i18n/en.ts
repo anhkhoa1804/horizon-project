@@ -39,6 +39,8 @@ export const en: Dictionary = {
 
   controls: {
     toDark: "Switch to dark theme",
+    themeSwitchToDark: "Switch to dark theme",
+    themeSwitchToLight: "Switch to light theme",
     themeLight: "Light theme",
     themeDark: "Dark theme",
     themeSystem: "Follow system",

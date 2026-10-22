@@ -1,26 +1,26 @@
 {
-  "at": "2026-10-22T04:32:08.230Z",
+  "at": "2026-10-22T07:03:32.659Z",
   "base": "http://127.0.0.1:3100",
   "results": [
     {
-      "name": "new visitor, OS=dark: no explicit choice, follows the OS",
+      "name": "new visitor, OS=dark: no explicit choice stored, follows the OS",
       "ok": true,
-      "detail": "{\"attr\":null,\"stored\":null,\"checked\":[\"Dark theme\",\"Switch to English\"],\"canvas\":\"#242e38\"}"
+      "detail": "{\"attr\":null,\"stored\":null,\"canvas\":\"#242e38\"}"
     },
     {
-      "name": "new visitor, OS=dark: the matching Light/Dark option shows as selected",
+      "name": "OS=dark: the button offers the opposite theme",
       "ok": true,
-      "detail": "Dark theme|Switch to English"
+      "detail": "Switch to light theme"
     },
     {
-      "name": "OS=dark: header offers no System option",
+      "name": "OS=dark: canvas matches the OS",
+      "ok": true,
+      "detail": "#242e38"
+    },
+    {
+      "name": "OS=dark: no System option anywhere in the header",
       "ok": true,
       "detail": ""
-    },
-    {
-      "name": "OS=dark: canvas colour matches the OS",
-      "ok": true,
-      "detail": "#242e38 lum=0.17"
     },
     {
       "name": "OS=dark: no hydration errors",
@@ -28,24 +28,24 @@
       "detail": ""
     },
     {
-      "name": "new visitor, OS=light: no explicit choice, follows the OS",
+      "name": "new visitor, OS=light: no explicit choice stored, follows the OS",
       "ok": true,
-      "detail": "{\"attr\":null,\"stored\":null,\"checked\":[\"Light theme\",\"Switch to English\"],\"canvas\":\"#fbfaf6\"}"
+      "detail": "{\"attr\":null,\"stored\":null,\"canvas\":\"#f3f4ee\"}"
     },
     {
-      "name": "new visitor, OS=light: the matching Light/Dark option shows as selected",
+      "name": "OS=light: the button offers the opposite theme",
       "ok": true,
-      "detail": "Light theme|Switch to English"
+      "detail": "Switch to dark theme"
     },
     {
-      "name": "OS=light: header offers no System option",
+      "name": "OS=light: canvas matches the OS",
+      "ok": true,
+      "detail": "#f3f4ee"
+    },
+    {
+      "name": "OS=light: no System option anywhere in the header",
       "ok": true,
       "detail": ""
-    },
-    {
-      "name": "OS=light: canvas colour matches the OS",
-      "ok": true,
-      "detail": "#fbfaf6 lum=0.98"
     },
     {
       "name": "OS=light: no hydration errors",
@@ -53,24 +53,29 @@
       "detail": ""
     },
     {
-      "name": "explicit Dark beats a light OS and is stored",
+      "name": "one press on a light OS switches to dark, stored explicitly",
       "ok": true,
-      "detail": "{\"attr\":\"dark\",\"stored\":\"dark\",\"checked\":[\"Dark theme\",\"Switch to English\"],\"canvas\":\"#242e38\"}"
+      "detail": "{\"attr\":\"dark\",\"stored\":\"dark\",\"canvas\":\"#242e38\"}"
     },
     {
-      "name": "after reload the theme is applied before first paint (attribute present at DOMContentLoaded)",
+      "name": "after the press the button now offers light",
+      "ok": true,
+      "detail": "Switch to light theme"
+    },
+    {
+      "name": "after reload the explicit theme is applied before first paint",
       "ok": true,
       "detail": "dark"
     },
     {
-      "name": "explicit Light is stored",
+      "name": "second press returns to light and stores it",
       "ok": true,
-      "detail": "{\"attr\":\"light\",\"stored\":\"light\",\"checked\":[\"Light theme\",\"Switch to English\"],\"canvas\":\"#fbfaf6\"}"
+      "detail": "{\"attr\":\"light\",\"stored\":\"light\",\"canvas\":\"#f3f4ee\"}"
     },
     {
-      "name": "explicit choice survives a reload and a later OS change",
+      "name": "explicit light is NOT overridden when the OS changes to dark",
       "ok": true,
-      "detail": "{\"attr\":\"light\",\"stored\":\"light\",\"checked\":[\"Light theme\",\"Switch to English\"],\"canvas\":\"#fbfaf6\"}"
+      "detail": "{\"attr\":\"light\",\"stored\":\"light\",\"canvas\":\"#f3f4ee\"}"
     },
     {
       "name": "theme interactions raise no page errors",
@@ -118,12 +123,22 @@
       "detail": ""
     },
     {
-      "name": "switching language keeps the current route",
+      "name": "the language button shows the CURRENT language (VI)",
+      "ok": true,
+      "detail": "VI"
+    },
+    {
+      "name": "one press switches to English and keeps the route",
       "ok": true,
       "detail": "http://127.0.0.1:3100/dashboard"
     },
     {
-      "name": "switching language sets <html lang> and remembers the choice",
+      "name": "the button now shows EN",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the choice is remembered in the cookie",
       "ok": true,
       "detail": ""
     },
