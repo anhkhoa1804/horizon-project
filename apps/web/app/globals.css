@@ -146,8 +146,8 @@
    * theme without touching a component. Dark needs a lighter ink at a LOWER
    * alpha than light does, or the grid becomes visible noise.
    */
-  --h-grid-line: rgba(19, 29, 27, 0.028);
-  --h-grid-line-major: rgba(19, 29, 27, 0.045);
+  --h-grid-line: rgba(19, 29, 27, 0.14);
+  --h-grid-line-major: rgba(19, 29, 27, 0.22);
   /* Atmospheric pools. Extremely low alpha — they should register as light,
      never as a gradient. Light mode reads as morning survey paper: warm
      white at the top, a cool blue-white pool through the centre, warm
@@ -248,8 +248,8 @@
     --h-cover-hover: rgba(255, 255, 255, 0.12);
     --h-cover-shadow: rgba(12, 23, 22, 0.78);
 
-    --h-grid-line: rgba(255, 255, 255, 0.045);
-    --h-grid-line-major: rgba(255, 255, 255, 0.07);
+    --h-grid-line: rgba(255, 255, 255, 0.16);
+    --h-grid-line-major: rgba(255, 255, 255, 0.24);
     --h-atmos-cool: rgba(79, 176, 212, 0.14);
     --h-atmos-warm: rgba(255, 166, 46, 0.05);
     --h-atmos-green: rgba(69, 192, 120, 0.07);
@@ -332,8 +332,8 @@
   --h-cover-hover: rgba(255, 255, 255, 0.12);
   --h-cover-shadow: rgba(12, 23, 22, 0.78);
 
-  --h-grid-line: rgba(255, 255, 255, 0.045);
-  --h-grid-line-major: rgba(255, 255, 255, 0.07);
+  --h-grid-line: rgba(255, 255, 255, 0.16);
+  --h-grid-line-major: rgba(255, 255, 255, 0.24);
   --h-atmos-cool: rgba(79, 176, 212, 0.14);
   --h-atmos-warm: rgba(255, 166, 46, 0.05);
   --h-atmos-green: rgba(69, 192, 120, 0.07);
@@ -761,33 +761,29 @@
   will-change: transform;
 }
 
-/* Layer 1 — the graticule. 64px minor module, 256px major.
+/* Layer 1 — the dot grid. 64px minor module, 256px major (every 4th dot, larger).
  *
- * Static. This layer used to drift against the scroll; the whole scroll-driven
- * system was removed because the effect read as either invisible or wrong, and
- * the page is stronger as a still composition. All four gradients therefore sit
- * at one fixed position — the minor and major modules are one drawing.
+ * 22 Oct r6: was a square line graticule (two 1px rules at each of two scales);
+ * replaced with dots at the same two scales per request. Still one texture, still
+ * static (the whole scroll-driven drift system was removed earlier because the
+ * effect read as either invisible or wrong — the page is stronger as a still
+ * composition), still the page's one background system — see the note below this
+ * rule on why a second, hero-only dot texture is NOT what this is.
  *
- * The mask fades the grid toward the edges so it reads as a survey sheet laid
- * on the page rather than wallpaper running under it.
+ * The mask fades the dots toward the edges so it reads as a sheet of graph-paper
+ * dots laid on the page rather than wallpaper running under it.
  */
 .horizon-atmosphere::before {
   content: "";
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(to right, var(--h-grid-line) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--h-grid-line) 1px, transparent 1px),
-    linear-gradient(to right, var(--h-grid-line-major) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--h-grid-line-major) 1px, transparent 1px);
+    radial-gradient(circle, var(--h-grid-line) 1.4px, transparent 1.4px),
+    radial-gradient(circle, var(--h-grid-line-major) 2.2px, transparent 2.2px);
   background-size:
     64px 64px,
-    64px 64px,
-    256px 256px,
     256px 256px;
   background-position:
-    center,
-    center,
     center,
     center;
   -webkit-mask-image: radial-gradient(ellipse 96% 80% at 50% 42%, #000 42%, transparent 100%);
@@ -828,27 +824,27 @@
  * lost its only job — and what remained was its side effect: a soft horizontal
  * shadow across the middle of every page, which is the "bóng ngang" reported
  * against the background. Deleted rather than softened; the atmosphere is now
- * the graticule and the gradient pools, neither of which has an edge.
+ * Layer 1 (the dot grid above) and the gradient pools, neither of which has an edge.
  */
 
 /*
- * LAYER 2: the dot field. Hero moments only — never a whole-page texture.
- * `--dot-fade` keeps it from running into the content below the hero.
- */
-/*
  * THE DOT FIELD IS GONE — deliberately, and this note is here so it does not
- * come back by accident.
+ * come back by accident. (Layer 1 itself is a dot grid as of 22 Oct r6 — this
+ * note is about a DIFFERENT, second, hero-only dot texture that used to exist
+ * on top of it; see below.)
  *
- * There used to be a second global texture: a 26px radial-dot field bled
- * edge-to-edge behind every hero. Because it lived on the shared PageHero and
- * the graticule lives on the always-present atmosphere, the two were on
- * screen together on all four public routes — dots and squares competing over
- * the same area, which is what made the pages read as visually busy.
+ * There used to be a second global texture on top of today's dot grid: a 26px
+ * radial-dot field bled edge-to-edge behind every hero. Because it lived on
+ * the shared PageHero and Layer 1 lives on the always-present atmosphere, the
+ * two were on screen together on all four public routes — two different dot
+ * scales competing over the same area, which is what made the pages read as
+ * visually busy.
  *
- * One primary background system, per the owner's direction: the square
- * survey grid, over the gradient atmosphere. If a sparse dot texture is ever
- * wanted again it belongs inside BackgroundAtmosphere, scoped to a region,
- * and never simultaneously with the grid over that same region.
+ * One primary background system, per the owner's direction: Layer 1 above
+ * (a dot grid as of 22 Oct r6, a square survey grid before that), over the
+ * gradient atmosphere. If a second, denser dot texture is ever wanted again
+ * it belongs inside BackgroundAtmosphere, scoped to a region, and never
+ * simultaneously with Layer 1 over that same region.
  */
 
 /* A hairline brand rule — the green→orange sweep of the mark, used to open
@@ -1305,55 +1301,11 @@ main {
   z-index: 0;
   pointer-events: none;
 
-  /*
-   * THE TRANSITION, and why it is a MASK rather than a gradient overlay.
-   *
-   * Every previous attempt painted a gradient that faded to `var(--h-canvas)`
-   * on top of the picture. That can never be continuous, because the page
-   * below the hero is not flat canvas — it is canvas PLUS the atmosphere
-   * layers (graticule, gradient pools, vignette). So the fade always resolved
-   * to a slightly different surface than the thing underneath it, and the
-   * mismatch read as a band: dark in dark mode, muddy beige in light.
-   *
-   * Masking the image's own alpha instead means there is no destination
-   * colour to match. The picture simply becomes transparent over the last
-   * quarter of the hero and the REAL page background — whatever it happens to
-   * be, in either theme — shows through. Continuity is structural rather than
-   * something to be tuned.
-   *
-   * Long and soft: the dissolve now begins at 40% and runs to the bottom —
-   * ~540px of travel at 900px tall — across nine stops rather than four. The
-   * earlier four-stop version started at 62% and, with big jumps between
-   * stops, the eye could still find the point where the falloff began. More
-   * stops over a longer distance means no single step is large enough to
-   * register as a boundary.
-   */
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    #000 0%,
-    #000 40%,
-    rgba(0, 0, 0, 0.97) 52%,
-    rgba(0, 0, 0, 0.88) 62%,
-    rgba(0, 0, 0, 0.72) 71%,
-    rgba(0, 0, 0, 0.52) 79%,
-    rgba(0, 0, 0, 0.32) 86%,
-    rgba(0, 0, 0, 0.16) 92%,
-    rgba(0, 0, 0, 0.06) 96%,
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to bottom,
-    #000 0%,
-    #000 40%,
-    rgba(0, 0, 0, 0.97) 52%,
-    rgba(0, 0, 0, 0.88) 62%,
-    rgba(0, 0, 0, 0.72) 71%,
-    rgba(0, 0, 0, 0.52) 79%,
-    rgba(0, 0, 0, 0.32) 86%,
-    rgba(0, 0, 0, 0.16) 92%,
-    rgba(0, 0, 0, 0.06) 96%,
-    transparent 100%
-  );
+  /* 22 Oct r6 — no mask. The hero used to dissolve into the page at its own
+     bottom edge (a mask-image fade, not a gradient overlay, for the reasons a
+     flat-gradient fade fails — see the git history on this rule if that
+     reasoning is wanted again). Removed per request: the photo now simply
+     fills the box and ends there, straight into the next section. */
 }
 
 .hero-canvas__image {
@@ -1458,7 +1410,14 @@ main {
 .h-text .h-text,.h-media .h-media,.h-spatial .h-media { padding-inline: 0; }
 .public-main--home { padding-top: 0; }
 .public-main:not(.public-main--home) .h-text { padding-inline: 0; max-width: var(--width-text); }
-.horizon-atmosphere::before,.horizon-atmosphere::after { display: none; }
+/* A stray, unscoped copy of this rule lived here (no selector condition around it —
+   depth-0 in the stylesheet), unconditionally hiding BackgroundAtmosphere's dot grid
+   AND gradient-pool layers on every single page since long before this change. It is
+   NOT the same as the two properly-scoped copies further down that disable these layers
+   specifically where the home hero (or another page) paints its own photographic scene
+   over `.horizon-atmosphere` instead — this one had no such condition and so applied
+   everywhere, which is why the page's one stated background system has not actually
+   been visible anywhere. Removed; the scoped copies are what actually need it. */
 .site-header { background: var(--h-canvas); border-bottom: 1px solid var(--h-border); }
 .site-header.site-header--cover { background: transparent; border-bottom: 0; backdrop-filter: none; }
 .hero-canvas { top: 0; height: max(760px, 100svh); mask-image: none; -webkit-mask-image: none; }
@@ -2181,8 +2140,16 @@ main {
     --h-scene-night: url('/assets/backgrounds/f5da8a9c-7d5a-4217-8f5c-f04172790e9d.png');
   }
 }
-.horizon-atmosphere { background: var(--h-scene-image) center bottom / cover no-repeat; opacity: var(--h-scene-opacity); }
-.horizon-atmosphere::before,.horizon-atmosphere::after { display: none; }
+/* A second unscoped pair of rules lived here, same bug shape as the one removed above:
+   they redefined `.horizon-atmosphere`'s own background to a near-invisible day/night
+   scene-photo wash and hid its dot-grid + gradient-pool layers, with no selector
+   condition restricting either to a particular page. The home hero is the only place
+   `--h-scene-image` is meant to show through the page background, and home already
+   hides `.horizon-atmosphere` outright (see `body:has(.hero-canvas)` below) — so on
+   home this pair was always inert, and its only real effect was to silently replace the
+   one page-wide background system (Layer 1 above + the gradient pools) with almost
+   nothing on every OTHER page. Removed; `--h-scene-day/night/image/opacity` stay
+   defined above because `.hero-canvas__photo` still uses them for the actual hero. */
 .hero-canvas__photo { position: absolute; inset: 0; height: 100svh; background: var(--h-scene-image) center bottom / cover no-repeat; }
 .hero-canvas__scrim { background: linear-gradient(90deg,rgba(10,30,31,.63),rgba(10,30,31,.12) 75%),linear-gradient(0deg,rgba(10,30,31,.23),transparent 70%); }
 .horizon-cover__title > span { white-space: nowrap; }
@@ -2363,33 +2330,23 @@ main {
 .horizon-map-credits-panel a { color: var(--h-brand-blue); text-decoration: underline; text-underline-offset: 2px; }
 
 /* HERO: one photograph, one scroll context. The home hero paints the day/night scene itself
-   (.hero-canvas, scrolls with the page, scrim + bottom dissolve live on the same element), so the
-   fixed page-level copy of that same scene is not rendered behind it: two copies of one photograph
-   moving independently was the misalignment. Other pages keep the quiet fixed atmosphere. */
-body:has(.hero-canvas) .horizon-atmosphere { display: none; }
-@media (prefers-reduced-motion: reduce) { .hero-canvas, .hero-canvas * { transition: none !important; animation: none !important; } }
+   (.hero-canvas, scrolls with the page, scrim lives on the same element).
 
-/* 22 Oct r5 — hero fade, revealed by scrolling, with the ORIGINAL framing AND full-width
-   coverage both preserved. r3 grew `.hero-canvas` to 120svh and let `cover` rescale to fill it —
-   that re-zoomed the photograph and pushed the island down the frame. r4 fixed the zoom by locking
-   `.hero-canvas` itself to `background-size: auto 100svh`, but that sizing mode only guarantees the
-   image fills the requested HEIGHT, not the box's width — at aspect ratios where `cover` would have
-   been width-constrained instead, it left a blank strip down one side.
-   r5 splits the two jobs across two elements instead of fighting over one. The actual photograph
-   lives on `.hero-canvas__photo` (see above): a child pinned to exactly 100svh using true `cover`,
-   which mathematically guarantees it fills BOTH dimensions of its own 100svh box at any aspect
-   ratio — the same guarantee `cover` always gave, now evaluated against a box that never grows.
-   `.hero-canvas` itself paints nothing; it is only the taller (+1 rhythm unit) mask-bearing frame
-   that the photo sits at the top of, so the blank strip below the photo's own bottom edge is what
-   the mask dissolves into, reachable only by scrolling. Nothing fades before the reader scrolls;
-   nothing is zoomed; nothing is width-starved. */
-.hero-canvas,
-:root[data-theme="dark"] .hero-canvas,
-:root:not([data-theme="light"]) .hero-canvas {
-  height: calc(100svh + var(--rhythm-large));
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 93%, rgba(0,0,0,.6) 97%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 0%, #000 93%, rgba(0,0,0,.6) 97%, transparent 100%);
-}
+   22 Oct r6 — the scroll-revealed bottom fade is removed per request. `.hero-canvas` is back to
+   exactly one screen tall with no mask: the photo (`.hero-canvas__photo`, pinned to 100svh with
+   true `cover` — see above, guarantees full coverage at any aspect ratio) fills the box edge to
+   edge and the hero ends cleanly at its own bottom edge, straight into the next section.
+
+   `.horizon-atmosphere` (the dot grid + gradient pools) used to be hidden on the WHOLE home page,
+   hero and every section below it, with the stated reason "two copies of one photograph moving
+   independently" — `.horizon-atmosphere` used to also paint the hero's own day/night scene photo
+   (see the removed "Final refinement" block above), and that second, independently-scrolling copy
+   was what visually misaligned against the hero's real one. `.horizon-atmosphere` no longer paints
+   any photo, so that reason is gone: Home now gets the same dot-grid atmosphere as every other page.
+   It stays invisible for the hero's own first screen regardless, simply because the hero's own
+   opaque photo (`.hero-canvas__photo`, in front, `z-index: 0`, vs. the atmosphere's `z-index: -1`)
+   fully covers it there — it only becomes visible once a reader scrolls past the hero. */
+@media (prefers-reduced-motion: reduce) { .hero-canvas, .hero-canvas * { transition: none !important; animation: none !important; } }
 
 /* Header controls (theme icon, VI/EN). Plain, borderless — same grammar as the nav links beside them,
    not a framed chip. The text control inherits the header's own font (not a mono/data face), so "VI"/
