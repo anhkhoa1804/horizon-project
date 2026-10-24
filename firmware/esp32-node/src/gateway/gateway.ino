@@ -113,7 +113,7 @@ static const int MODEM_PEN_PIN = 39;  // SIM 4G PEN / enable pin. Set to -1 if n
 // IN1 -> IO45: GREEN (normal)
 // IN2 -> IO48: YELLOW (soil pH high)
 // IN3 -> IO47: RED (water surface <= 50 cm from ultrasonic sensor)
-// IN4 -> IO21: BUZZER relay (continuous alarm when water surface <= 5 cm).
+// IN4 -> IO21: BUZZER relay (alarm only when water is at the sensor face).
 // Push button -> IO14 to GND: mute buzzer for the CURRENT critical-water event.
 static const int RELAY_GREEN_PIN = 45;
 static const int RELAY_YELLOW_PIN = 48;
@@ -130,7 +130,9 @@ static const bool RELAY_ACTIVE_LOW = false;
 // These distance/pH constants are independent of threshold_registry and alert_configs.
 // Distance is the S1 ultrasonic distance-to-water field.
 static const float WATER_RED_DISTANCE_CM = 50.0f;
-static const float WATER_CRITICAL_DISTANCE_CM = 5.0f;
+// A02YYUW accepts measurements down to 3 cm. Treat that minimum valid
+// distance as "water has reached/touched the ultrasonic sensor".
+static const float WATER_TOUCH_DISTANCE_CM = 3.0f;
 static const float SOIL_PH_HIGH_THRESHOLD = 7.0f;
 
 static const uint32_t MODEM_TIMEOUT_MS = 12000;
@@ -251,7 +253,7 @@ static bool lastRelayRedOn = false;
 static bool lastRelayBuzzerOn = false;
 static bool relayStateInitialized = false;
 
-// Buzzer mute latch. When the critical condition clears (> 5 cm), this resets
+// Buzzer mute latch. When water leaves the sensor-touch zone, this resets
 // automatically so a future critical-water event will sound the buzzer again.
 static bool buzzerMutedForCurrentCritical = false;
 static bool buzzerCriticalWasActive = false;
@@ -355,9 +357,8 @@ void selfTestStatusOutputs() {
   writeRelay(RELAY_RED_PIN, true);
   watchdogDelay(180);
   writeRelay(RELAY_RED_PIN, false);
-  writeRelay(BUZZER_RELAY_PIN, true);
-  watchdogDelay(120);
-  writeRelay(BUZZER_RELAY_PIN, false);
+  // Do not sound the buzzer during boot self-test. The buzzer is reserved for
+  // the real water-touch condition handled by updateStatusOutputs().
 }
 
 void serviceWatchdog() {
@@ -417,7 +418,7 @@ void serviceBuzzerMuteButton() {
   // not pre-mute the next alarm.
   if (buzzerButtonStablePressed) {
     const bool criticalNow = relayWaterDistanceValid &&
-                             relayWaterDistanceCm <= WATER_CRITICAL_DISTANCE_CM;
+                             relayWaterDistanceCm <= WATER_TOUCH_DISTANCE_CM;
     if (criticalNow && !buzzerMutedForCurrentCritical) {
       buzzerMutedForCurrentCritical = true;
       writeRelay(BUZZER_RELAY_PIN, false);
@@ -445,13 +446,13 @@ void updateStatusOutputs() {
   serviceBuzzerMuteButton();
 
   const bool redOn = relayWaterDistanceValid && relayWaterDistanceCm <= WATER_RED_DISTANCE_CM;
-  const bool criticalOn = relayWaterDistanceValid && relayWaterDistanceCm <= WATER_CRITICAL_DISTANCE_CM;
+  const bool criticalOn = relayWaterDistanceValid && relayWaterDistanceCm <= WATER_TOUCH_DISTANCE_CM;
   const bool yellowOn = relaySoilPhValid && relaySoilPh > SOIL_PH_HIGH_THRESHOLD;
 
-  // Leaving the <=5 cm critical zone rearms the buzzer for the NEXT event.
+  // Leaving the sensor-touch zone rearms the buzzer for the NEXT event.
   if (!criticalOn && buzzerCriticalWasActive) {
     buzzerMutedForCurrentCritical = false;
-    Serial.println("[BUZZER] Muc nuoc da thoat nguong <=5cm -> da ARM lai coi");
+    Serial.println("[BUZZER] Muc nuoc da roi khoi cam bien -> da ARM lai coi");
   }
   buzzerCriticalWasActive = criticalOn;
 
