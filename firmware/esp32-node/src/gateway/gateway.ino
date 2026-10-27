@@ -8,6 +8,8 @@
 #include <WebServer.h>
 #include "gateway_types.h"
 #include "simple_telemetry.h"
+#include "upload_flash_esp32.h"
+#include "upload_session.h"
 bool initModem();
 #if __has_include("gateway_secrets.h")
 #include "gateway_secrets.h"
@@ -269,27 +271,21 @@ static bool forcedBuzzerAlert = false;
 static uint32_t ignoredLoraLineCount = 0;
 static uint32_t recoveredLoraJsonCount = 0;
 
-// Paired-batch uploader. Gateway stays in LoRa-only mode until it has one fresh
-// payload from BOTH stations. Only then is 4G powered, the two payloads are sent,
-// and the modem is powered down again. This prevents modem startup/HTTP work from
-// stealing the normal LoRa receive window.
-static String pendingUploadStation1;
-static String pendingUploadStation2;
-static bool pendingStation1Ready = false;
-static bool pendingStation2Ready = false;
-static bool pairedBatchTriggered = false;
-static bool batchStation1Uploaded = false;
-static bool batchStation2Uploaded = false;
+// Durable store-and-forward uploader (upload_queue.h). Every CRC-valid station
+// frame is taken into custody (flash ring) BEFORE it is ACKed; 4G is powered only
+// to drain the queue. Stations are independent: neither waits for the other.
 static bool modemHttpBusy = false;
-// A rejected transport header is a firmware/modem configuration fault, not a
-// transient delivery failure. Keep the staged reading, but do not POST the
-// exact same malformed request every retry interval. A reboot with corrected
-// firmware/configuration clears this guard and starts a fresh modem session.
-static bool gatewayHeaderSerializationBlocked = false;
-static uint32_t lastBatchUploadAttemptMs = 0;
 static uint32_t lastSimpleLoRaActivityMs = 0;
-static uint32_t completedBatchCount = 0;
-static uint32_t pairWaitStartedMs = 0;
+static horizon::GatewayFlash uploadFlash;
+static horizon::DurableQueue<horizon::GatewayFlash> *uploadQueue = nullptr;
+static horizon::UploadPolicy uploadPolicy;
+static horizon::SchedulerState uploadState;
+static horizon::HttpAttempt lastHttpAttempt;   // filled by httpPostJsonTo(); read by the session driver
+static uint32_t gatewayBootId = 0;
+static bool inLoraService = false;
+static uint32_t lastHealthLogMs = 0;
+static const char *gatewayResetReasonText = "unknown";
+static bool uploadBacklog() { return uploadQueue != nullptr && uploadQueue->depth() > 0; }
 // RX health / auto-recovery state. These are declared early because the SIMPLE
 // packet handler updates them before the parser implementation appears below.
 static uint32_t loraPhysicalRxBytes = 0;
@@ -323,7 +319,6 @@ static uint32_t lastLoraByteMs = 0;
 void serviceWatchdog();
 void watchdogDelay(uint32_t ms);
 void readSimpleLoRaUart();
-void servicePairedBatchUpload();
 void serviceBuzzerMuteButton();
 
 void writeRelay(int pin, bool on) {
@@ -368,6 +363,15 @@ void serviceWatchdog() {
 
   if (esp_task_wdt_status(NULL) == ESP_OK) {
     esp_task_wdt_reset();
+  }
+
+  // While the modem session blocks loop(), keep draining LoRa so stations are
+  // still ACKed (after custody) instead of retrying for minutes. Guarded against
+  // re-entry; only runs when bytes are actually waiting.
+  if (modemHttpBusy && !inLoraService && loraSerial.available() > 0) {
+    inLoraService = true;
+    readSimpleLoRaUart();
+    inLoraService = false;
   }
 }
 
@@ -1435,7 +1439,7 @@ bool consumeRemoteConfigByte(char c);
 void sendRemoteConfigForStation(bool station1);
 
 void maybeEnterGatewaySleep() {
-  if (gatewaySleepIntervalMs == 0 || loraLine.length() > 0 || pairedBatchTriggered || pendingStation1Ready || pendingStation2Ready || modemHttpBusy) {
+  if (gatewaySleepIntervalMs == 0 || loraLine.length() > 0 || uploadBacklog() || modemHttpBusy) {
     return;
   }
 
@@ -1456,6 +1460,7 @@ HttpPostOutcome httpPostJsonTo(const String &payload, const char *targetUrl) {
     return HTTP_POST_RETRY;
   }
 
+  lastHttpAttempt = horizon::HttpAttempt();
   Serial.printf("[HTTP] POST %u byte -> %s\n",
                 static_cast<unsigned int>(payload.length()), targetUrl);
   printSafePayloadDiagnostic(payload);
@@ -1525,6 +1530,7 @@ sendAt("AT+HTTPTERM", "OK", 2500);
   // AT+HTTPACTION is ASYNCHRONOUS: immediate OK is NOT the HTTP result.
   // Wait for +HTTPACTION: 1,<status>,<length> before deciding success/failure.
   clearModemRx(30);
+  lastHttpAttempt.requestSent = true;  // body is with the modem; from here the server may have it
   modemSerial.print("AT+HTTPACTION=1\r\n");
   const uint32_t actionStartedAt = millis();
   const String actionResponse = modemWaitHttpAction(1, HTTP_TIMEOUT_MS);
@@ -1532,6 +1538,7 @@ sendAt("AT+HTTPTERM", "OK", 2500);
 
   const int httpStatus = parseHttpActionStatus(actionResponse, 1);
   const int responseLength = parseHttpActionLength(actionResponse, 1);
+  lastHttpAttempt.status = httpStatus;
   Serial.printf("[HTTP] HTTPACTION POST status=%d len=%d\n", httpStatus, responseLength);
   printHttpActionDiagnostic(actionResponse, 1, millis() - actionStartedAt);
 
@@ -1557,6 +1564,7 @@ sendAt("AT+HTTPTERM", "OK", 2500);
     String readResponse = readHttpResponseBody(responseLength);
     if (readResponse.length() > 0) {
       printSafeHttpResponse(readResponse);
+      lastHttpAttempt.body.assign(readResponse.c_str(), readResponse.length() > 400 ? 400 : readResponse.length());
       terminalRejection = readResponse.indexOf("\"retryable\":false") >= 0;
       retryableHeaderSerializationFailure = readResponse.indexOf("x-contract-version header does not match payload.contract_version") >= 0;
     } else if (responseLength > 0) {
@@ -1567,8 +1575,9 @@ sendAt("AT+HTTPTERM", "OK", 2500);
   sendAt("AT+HTTPTERM", "OK", 3000);
   if (success) return HTTP_POST_DELIVERED;
   if (retryableHeaderSerializationFailure) {
-    gatewayHeaderSerializationBlocked = true;
-    Serial.println("[HTTP BLOCKED] Contract header serialization mismatch; giu goi, dung auto-retry den khi reboot/flash firmware da sua");
+    // Configuration fault, not a bad packet. The upload session classifies this as
+    // HoldSystemic: data is kept and retries back off; nothing is discarded.
+    Serial.println("[HTTP HOLD] Contract header mismatch; du lieu duoc giu, thu lai sau khi back-off");
     return HTTP_POST_RETRY;
   }
   if (terminalRejection) {
@@ -1648,7 +1657,7 @@ static uint32_t remoteForwardAttempt=0;
 void beginRemoteConfig(){remoteGateway.begin();}
 bool consumeRemoteConfigByte(char c){return remoteGateway.consume(c);}
 void pollRuntimeConfigs(){
- if(!MODEM_ENABLED||!CONFIG_POLL_ENABLED||pairedBatchTriggered||pendingStation1Ready||pendingStation2Ready||modemHttpBusy)return;
+ if(!MODEM_ENABLED||!CONFIG_POLL_ENABLED||uploadBacklog()||modemHttpBusy)return;
  if(loraSerial.available()>0||(lastSimpleLoRaActivityMs&&millis()-lastSimpleLoRaActivityMs<5000)||millis()-lastConfigPollMs<configPollIntervalMs)return;
  lastConfigPollMs=millis();modemHttpBusy=true;const String body=httpGet(CONFIG_URL);modemHttpBusy=false;
  if(!remoteGateway.ingest(body))Serial.println("[CONFIG] HTTP/contract rejected; durable desired state remains on server");
@@ -1657,7 +1666,7 @@ void sendRemoteConfigForStation(bool station1){if(CONFIG_POLL_ENABLED)remoteGate
 void serviceRemoteConfig(){
  if(!CONFIG_POLL_ENABLED)return;
  remoteGateway.sendDue(loraSerial,millis());
- if(remoteGateway.eventCount&&millis()-remoteForwardAttempt>=30000&&!pairedBatchTriggered&&!pendingStation1Ready&&!pendingStation2Ready&&!modemHttpBusy&&loraSerial.available()==0&&millis()-lastSimpleLoRaActivityMs>5000){
+ if(remoteGateway.eventCount&&millis()-remoteForwardAttempt>=30000&&!uploadBacklog()&&!modemHttpBusy&&loraSerial.available()==0&&millis()-lastSimpleLoRaActivityMs>5000){
  remoteForwardAttempt=millis();modemHttpBusy=true;const HttpPostOutcome result=httpPostJsonTo(remoteGateway.eventJson(),CONFIG_EVENTS_URL);modemHttpBusy=false;if(result==HTTP_POST_DELIVERED)remoteGateway.forwarded();
  // Non-2xx, auth/configuration faults and timeouts retain the same bounded evidence for reconnect.
  }
@@ -1969,8 +1978,6 @@ waitingForPollResponse ? activePollStation.c_str() : "chuan_bi_poll");
 // ACKs immediately, and de-duplicates by station + sequence.
 
 static String simpleRxLine;
-static uint32_t lastSimpleSeq1 = 0xFFFFFFFFUL;
-static uint32_t lastSimpleSeq2 = 0xFFFFFFFFUL;
 
 String simpleField(const String &line, uint8_t index) {
   int start = 0;
@@ -2228,140 +2235,93 @@ String simplePacketToStationJson(const String &line, bool station1, uint32_t seq
   return String(json.c_str());
 }
 
-void stagePairedUpload(const String &payload, bool station1) {
-  // Do not overwrite a payload that already belongs to an active batch. Newer
-  // readings are still ACKed/displayed and will form the next batch after this one.
-  if (pairedBatchTriggered) {
-    Serial.printf("[BATCH] Dang gui cap hien tai -> %s moi se doi cap tiep theo\n",
-                  station1 ? "S1" : "S2");
+static uint32_t currentReceiptEpoch() {
+  return networkEpochAtSync != 0 ? gatewayReceiptTimestamp() : 0;
+}
+
+static void setupUploadQueue() {
+  gatewayBootId = esp_random();
+  const bool durable = uploadFlash.begin();
+  uploadQueue = new horizon::DurableQueue<horizon::GatewayFlash>(uploadFlash, uploadFlash.ringSectors());
+  uploadQueue->begin();
+  uploadPolicy.batchWindowMs = PAIR_WAIT_TIMEOUT_MS;
+  uploadPolicy.loraSettleMs = BATCH_LORA_SETTLE_MS;
+  uploadPolicy.backoffBaseMs = BATCH_UPLOAD_RETRY_MS;
+  const horizon::UqStats &st = uploadQueue->stats();
+  Serial.printf("[QUEUE] durable=%s%s ring_sectors=%lu recovered_S1=%u recovered_S2=%u corrupt=%lu\n",
+                durable ? "yes" : "NO(RAM)", uploadFlash.foreignPartition() ? " (partition spiffs co du lieu la, khong ghi de)" : "",
+                static_cast<unsigned long>(uploadFlash.ringSectors()),
+                static_cast<unsigned int>(uploadQueue->depth(1)), static_cast<unsigned int>(uploadQueue->depth(2)),
+                static_cast<unsigned long>(st.corruptRecords));
+}
+
+// Adapter between the host-tested session driver and this sketch's modem code.
+struct GatewayTransport {
+  bool modemUp() {
+    powerOnModem();
+    lastModemInitAttemptMs = 0;  // intentional fresh power-up
+    modemReady = initModem();
+    return modemReady;
+  }
+  bool syncClock() { return syncGatewayClock(); }
+  uint32_t epochNow() { return gatewayReceiptTimestamp(); }
+  uint32_t uptimeMs() { return millis(); }
+  uint32_t bootId() { return gatewayBootId; }
+  const char *gatewayId() { return GATEWAY_ID; }
+  horizon::HttpAttempt post(const std::string &json) {
+    httpPostJson(String(json.c_str()));
+    return lastHttpAttempt;
+  }
+  void modemDown() { powerOffModem(); }
+  void serviceRadio() { readSimpleLoRaUart(); }
+};
+
+static long ageSeconds(uint32_t thenMs) { return thenMs == 0 ? -1L : static_cast<long>((millis() - thenMs) / 1000UL); }
+
+static void serviceUploadQueue() {
+  if (!MODEM_ENABLED || modemHttpBusy || uploadQueue == nullptr) return;
+  if (!horizon::shouldStartSession(*uploadQueue, uploadPolicy, uploadState, millis(), lastSimpleLoRaActivityMs,
+                                   loraSerial.available() > 0, gatewayBootId)) {
     return;
   }
 
-  if (station1) {
-    pendingUploadStation1 = payload;
-    pendingStation1Ready = true;
-  } else {
-    pendingUploadStation2 = payload;
-    pendingStation2Ready = true;
-  }
-
-  if (!pairedBatchTriggered && pairWaitStartedMs == 0) {
-    pairWaitStartedMs = millis();
-  }
-
-  Serial.printf("[BATCH] da_co_S1=%s da_co_S2=%s\n",
-                pendingStation1Ready ? "YES" : "NO",
-                pendingStation2Ready ? "YES" : "NO");
-
-  if (pendingStation1Ready && pendingStation2Ready) {
-    pairedBatchTriggered = true;
-    batchStation1Uploaded = false;
-batchStation2Uploaded = false;
-    lastBatchUploadAttemptMs = 0;
-    Serial.println("[BATCH] DU S1 + S2 -> se bat 4G va upload 2 goi");
-  }
-}
-
-void finishPairedBatchIfDone() {
-  if (!pairedBatchTriggered) return;
-  if (!batchStation1Uploaded || !batchStation2Uploaded) return;
-
-  pendingUploadStation1 = "";
-  pendingUploadStation2 = "";
-  pendingStation1Ready = false;
-  pendingStation2Ready = false;
-  pairedBatchTriggered = false;
-  pairWaitStartedMs = 0;
-  batchStation1Uploaded = false;
-  batchStation2Uploaded = false;
-  completedBatchCount += 1;
-  Serial.printf("[BATCH] HOAN TAT cap #%lu -> quay lai LoRa-only\n",
-                static_cast<unsigned long>(completedBatchCount));
-}
-
-void servicePairedBatchUpload() {
-  if (!MODEM_ENABLED || modemHttpBusy) return;
-
-  if (!pairedBatchTriggered &&
-      (pendingStation1Ready || pendingStation2Ready) &&
-      pairWaitStartedMs != 0 &&
-      millis() - pairWaitStartedMs >= PAIR_WAIT_TIMEOUT_MS) {
-    pairedBatchTriggered = true;
-    // Mark the absent station as already complete so the existing uploader
-    // sends only the station that arrived instead of an empty payload.
-    batchStation1Uploaded = !pendingStation1Ready;
-    batchStation2Uploaded = !pendingStation2Ready;
-    lastBatchUploadAttemptMs = 0;
-    Serial.println("[BATCH] Het cua so doi cap -> upload tram dang co, khong cho vo han");
-  }
-
-  if (!pairedBatchTriggered) return;
-  if (gatewayHeaderSerializationBlocked) {
-    Serial.println("[BATCH] USERDATA header da bi Edge tu choi; giu goi, khong POST lai den khi reboot/flash firmware da sua");
-    return;
-  }
-  if (loraSerial.available() > 0) return;
-  if (lastSimpleLoRaActivityMs != 0 && millis() - lastSimpleLoRaActivityMs < BATCH_LORA_SETTLE_MS) return;
-  if (lastBatchUploadAttemptMs != 0 && millis() - lastBatchUploadAttemptMs < BATCH_UPLOAD_RETRY_MS) return;
-
-  lastBatchUploadAttemptMs = millis();
   modemHttpBusy = true;
-
-  Serial.println("[BATCH] ===== BAT 4G SAU KHI DA NHAN DU S1 + S2 =====");
-  powerOnModem();
-  lastModemInitAttemptMs = 0;  // this is an intentional fresh power-up
-  modemReady = initModem();
-
-  if (!modemReady) {
-    Serial.println("[BATCH] Modem khoi tao that bai -> tat 4G, giu cap du lieu de thu lai");
-    powerOffModem();
-    modemHttpBusy = false;
-    return;
-  }
-
-  if (!syncGatewayClock()) {
-    Serial.println("[BATCH] Khong co gio UTC tu mang; giu goi de thu lai");
-    powerOffModem();
-    modemHttpBusy = false;
-    return;
-  }
-
-  if (!batchStation1Uploaded) {
-    Serial.println("[BATCH] Upload STATION_01...");
-    const HttpPostOutcome outcome = httpPostJson(attachGatewayReceiptTimestamp(pendingUploadStation1));
-    batchStation1Uploaded = outcome != HTTP_POST_RETRY;
-    Serial.printf("[BATCH] S1 upload=%s\n", outcome == HTTP_POST_DELIVERED ? "ACCEPTED" : outcome == HTTP_POST_TERMINAL_REJECTION ? "REJECTED_TERMINAL" : "RETRY");
-  }
-
-  // Give LoRa parser a chance between the two HTTP transactions.
-  readSimpleLoRaUart();
-
-  if (!batchStation2Uploaded && !gatewayHeaderSerializationBlocked) {
-    Serial.println("[BATCH] Upload STATION_02...");
-    const HttpPostOutcome outcome = httpPostJson(attachGatewayReceiptTimestamp(pendingUploadStation2));
-    batchStation2Uploaded = outcome != HTTP_POST_RETRY;
-    Serial.printf("[BATCH] S2 upload=%s\n", outcome == HTTP_POST_DELIVERED ? "ACCEPTED" : outcome == HTTP_POST_TERMINAL_REJECTION ? "REJECTED_TERMINAL" : "RETRY");
-  }
-
-  Serial.println("[BATCH] Tat 4G sau phien upload");
-  powerOffModem();
+  Serial.printf("[UPLOAD] ===== BAT 4G: cho gui S1=%u S2=%u =====\n",
+                static_cast<unsigned int>(uploadQueue->depth(1)), static_cast<unsigned int>(uploadQueue->depth(2)));
+  GatewayTransport transport;
+  const horizon::SessionResult r = horizon::runUploadSession(*uploadQueue, transport, uploadPolicy, uploadState);
   modemHttpBusy = false;
+  Serial.printf("[UPLOAD] xong attempted=%lu delivered=%lu quarantined=%lu retry=%lu unknown=%lu hold=%lu modem_fail=%s clock_fail=%s con_lai=%u thu_lai_sau=%lus\n",
+                static_cast<unsigned long>(r.attempted), static_cast<unsigned long>(r.delivered),
+                static_cast<unsigned long>(r.quarantined), static_cast<unsigned long>(r.retryable),
+                static_cast<unsigned long>(r.unknown), static_cast<unsigned long>(r.held),
+                r.modemFailed ? "yes" : "no", r.clockFailed ? "yes" : "no",
+                static_cast<unsigned int>(uploadQueue->depth()),
+                static_cast<unsigned long>((uploadState.nextSessionAtMs > millis()) ? (uploadState.nextSessionAtMs - millis()) / 1000UL : 0));
+}
 
-  if (batchStation1Uploaded && batchStation2Uploaded) {
-    finishPairedBatchIfDone();
-    lastBatchUploadAttemptMs = 0;
-  } else {
-    if (gatewayHeaderSerializationBlocked) {
-      Serial.printf("[BATCH] Giu S1=%s S2=%s; auto-retry bi khoa do USERDATA contract mismatch\n",
-                    batchStation1Uploaded ? "OK" : "PENDING",
-                    batchStation2Uploaded ? "OK" : "PENDING");
-      return;
-    }
-    Serial.printf("[BATCH] Con loi S1=%s S2=%s -> giu du lieu, thu lai sau %lus\n",
-                  batchStation1Uploaded ? "OK" : "PENDING",
-                  batchStation2Uploaded ? "OK" : "PENDING",
-                  static_cast<unsigned long>(BATCH_UPLOAD_RETRY_MS / 1000UL));
-  }
+// One line per minute with everything needed to tell "no radio", "no modem", "no
+// server" and "no clock" apart. No token, SIM number or payload is ever printed.
+static void logGatewayHealth() {
+  if (uploadQueue == nullptr || millis() - lastHealthLogMs < 60000UL) return;
+  lastHealthLogMs = millis();
+  const horizon::UqStats &st = uploadQueue->stats();
+  const horizon::UqItem *oldest = uploadQueue->oldest();
+  const long oldestAge = (oldest != nullptr && oldest->bootId == gatewayBootId) ? ageSeconds(oldest->recvUptimeMs) : (oldest != nullptr ? -2L : -1L);
+  Serial.printf("[HEALTH] up=%lus reset=%s boot=%lu durable=%s q1=%u q2=%u oldest_age_s=%ld(-2=prev_boot) rx_age_s=%ld/%ld ok_age_s=%ld/%ld "
+                "delivered=%lu rejected=%lu retries=%lu unknown=%lu holds=%lu dup=%lu overflow=%lu nocustody=%lu "
+                "sessions=%lu/%lu clock=%s last=%s fails=%lu\n",
+                static_cast<unsigned long>(millis() / 1000UL), gatewayResetReasonText, static_cast<unsigned long>(rtcBootCount),
+                uploadFlash.durable() ? "yes" : "no",
+                static_cast<unsigned int>(uploadQueue->depth(1)), static_cast<unsigned int>(uploadQueue->depth(2)), oldestAge,
+                ageSeconds(uploadState.lastRxMs[0]), ageSeconds(uploadState.lastRxMs[1]),
+                ageSeconds(uploadState.lastSuccessMs[0]), ageSeconds(uploadState.lastSuccessMs[1]),
+                static_cast<unsigned long>(st.delivered), static_cast<unsigned long>(st.quarantined),
+                static_cast<unsigned long>(uploadState.retries), static_cast<unsigned long>(uploadState.unknownDeliveries),
+                static_cast<unsigned long>(uploadState.holds), static_cast<unsigned long>(st.duplicates),
+                static_cast<unsigned long>(st.overflowDropped), static_cast<unsigned long>(st.noCustody),
+                static_cast<unsigned long>(uploadState.sessionsOk), static_cast<unsigned long>(uploadState.sessions),
+                uploadState.clockValid ? "ok" : "no", uploadState.lastError, static_cast<unsigned long>(uploadState.consecutiveFailedSessions));
 }
 
 void handleSimpleLoRaLine(String line) {
@@ -2384,33 +2344,42 @@ const uint32_t seq = static_cast<uint32_t>(simpleField(line, 1).toInt());
   loraLastGoodFrameMs = millis();
   loraGarbageBadWindows = 0;
   lastSimpleLoRaActivityMs = millis();
-  sendSimpleAck(station1, seq);  // ACK before any HTTP work.
+  uploadState.lastRxMs[station1 ? 0 : 1] = millis();
+
+  // CUSTODY BEFORE ACK. The station deletes its packet the moment it hears the
+  // ACK, so the frame must already sit in the durable queue. Without custody we
+  // stay silent and the station keeps retrying - never a fake ACK.
+  bool stored = true;
+  if (MODEM_ENABLED && uploadQueue != nullptr) {
+    const horizon::EnqueueResult custody =
+        uploadQueue->enqueue(station1 ? 1 : 2, seq, std::string(line.c_str()), currentReceiptEpoch(), millis(), gatewayBootId);
+    if (custody == horizon::EnqueueResult::NoCustody) {
+      Serial.printf("[QUEUE] KHONG NHAN GIU %s seq=%lu -> khong ACK, tram se gui lai\n",
+                    station1 ? "STATION_01" : "STATION_02", static_cast<unsigned long>(seq));
+      return;
+    }
+    stored = custody == horizon::EnqueueResult::Stored;
+  }
+
+  sendSimpleAck(station1, seq);  // custody confirmed; this ACK means "gateway holds it", not "server has it"
   sendRemoteConfigForStation(station1); // Target the station while its configuration listen window is open.
   markDashboardStationSeen(station1);
 
-  uint32_t &lastSeq = station1 ? lastSimpleSeq1 : lastSimpleSeq2;
-  if (lastSeq == seq) {
-    Serial.printf("[LORA] Goi trung %s seq=%lu -> ACK lai, khong xu ly lai\n",
-                  station1 ? "STATION_01" : "STATION_02",
-                  static_cast<unsigned long>(seq));
+  if (!stored) {
+    Serial.printf("[LORA] Goi trung %s seq=%lu -> ACK lai, khong xep hang lai\n",
+                  station1 ? "STATION_01" : "STATION_02", static_cast<unsigned long>(seq));
     return;
   }
-  lastSeq = seq;
   updateDashboardSnapshot(line, station1, seq);
 
-  const String stationPayload = simplePacketToStationJson(line, station1, seq);
   Serial.println("============================================================");
-  Serial.printf("[NHAN OK] %s seq=%lu wire_bytes=%u\n",
+  Serial.printf("[NHAN OK] %s seq=%lu wire_bytes=%u queue=%u/%u\n",
                 station1 ? "STATION_01" : "STATION_02",
                 static_cast<unsigned long>(seq),
-                static_cast<unsigned int>(line.length()));
-  Serial.println("[LORA] CRC valid; canonical telemetry staged without payload dump");
-
-  if (MODEM_ENABLED) {
-    stagePairedUpload(stationPayload, station1);
-  } else {
-    Serial.println("[HTTP] Modem dang tat, LoRa da ACK thanh cong");
-  }
+                static_cast<unsigned int>(line.length()),
+                static_cast<unsigned int>(uploadQueue ? uploadQueue->depth(1) : 0),
+                static_cast<unsigned int>(uploadQueue ? uploadQueue->depth(2) : 0));
+  if (!MODEM_ENABLED) Serial.println("[HTTP] Modem dang tat, LoRa da ACK thanh cong");
 }
 
 // Stream-recovery receiver.
@@ -2697,7 +2666,7 @@ void readSimpleLoRaUart() {
   serviceLoRaRxHealth();
   if (!gotByte && millis() - lastLoraWaitLogMs >= LORA_WAIT_LOG_INTERVAL_MS) {
     lastLoraWaitLogMs = millis();
-    Serial.printf("[LORA] rx=%lu rac=%lu hong=%lu crc_fail=%lu fast_ok=%lu markerS1=%lu markerS2=%lu AUX=%s restart=%lu S1=%s S2=%s batch=%s\n",
+    Serial.printf("[LORA] rx=%lu rac=%lu hong=%lu crc_fail=%lu fast_ok=%lu markerS1=%lu markerS2=%lu AUX=%s restart=%lu q1=%u q2=%u\n",
                   static_cast<unsigned long>(loraPhysicalRxBytes),
                   static_cast<unsigned long>(simpleGarbageBytes),
                   static_cast<unsigned long>(simpleAbortedFrames),
@@ -2707,9 +2676,8 @@ void readSimpleLoRaUart() {
                   static_cast<unsigned long>(simpleS2MarkerStarts),
                   digitalRead(LORA_AUX_PIN) == HIGH ? "HIGH" : "LOW",
                   static_cast<unsigned long>(loraUartRestartCount),
-                  pendingStation1Ready ? "YES" : "NO",
-                  pendingStation2Ready ? "YES" : "NO",
-                  pairedBatchTriggered ? "READY" : "WAIT");
+                  static_cast<unsigned int>(uploadQueue ? uploadQueue->depth(1) : 0),
+                  static_cast<unsigned int>(uploadQueue ? uploadQueue->depth(2) : 0));
   }
 }
 
@@ -2725,6 +2693,7 @@ void setup() {
   Serial.println();
   rtcBootCount += 1;
   const esp_reset_reason_t resetReason = esp_reset_reason();
+  gatewayResetReasonText = resetReasonName(resetReason);
   Serial.println("[HORIZON] Gateway dang khoi dong");
   Serial.printf("[RESET] reason=%d (%s) rtc_boot=%lu\n",
                 static_cast<int>(resetReason),
@@ -2752,7 +2721,7 @@ loraSerial.setRxBufferSize(LORA_RX_BUFFER_BYTES);
   Serial.printf("[LORA] AUX IO%d=%s\n", LORA_AUX_PIN, digitalRead(LORA_AUX_PIN) == HIGH ? "HIGH" : "LOW");
   Serial.printf("[CONFIG] runtime_poll=%s (protocol v1; field interlock)\n", CONFIG_POLL_ENABLED ? "BAT" : "TAT");
 
-  Serial.println("[FLASH] Gateway khong dung SPIFFS/SD");
+  setupUploadQueue();
 
   setupWifiDashboard();
 
@@ -2789,8 +2758,14 @@ void loop() {
   }
   readSimpleLoRaUart();
 
-  // Only after one fresh packet from BOTH stations do we power 4G and upload.
-  servicePairedBatchUpload();
+  // Drain the durable queue; each station is uploaded on its own, no pairing gate.
+  serviceUploadQueue();
+  // Erase the next flash sector while the radio is quiet, never mid-frame.
+  if (uploadQueue != nullptr && !modemHttpBusy && loraSerial.available() == 0 &&
+      (lastSimpleLoRaActivityMs == 0 || millis() - lastSimpleLoRaActivityMs > 3000UL)) {
+    uploadQueue->prepareNext();
+  }
+  logGatewayHealth();
   // Keep remote polling disabled until station config delivery and revision ACKs are field-verified.
   if (CONFIG_POLL_ENABLED) { serviceRemoteConfig(); pollRuntimeConfigs(); }
   maybeEnterGatewaySleep();
