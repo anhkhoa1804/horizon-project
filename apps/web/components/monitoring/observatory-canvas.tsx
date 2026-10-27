@@ -21,6 +21,7 @@ import type { PilotStationId } from "@/lib/publicStations";
 import { statusFor, worstStatus, STATUS_SURFACE, type MetricStatus } from "@/lib/monitoring/status";
 import { regionVerdict, toMetricStatus, verdictFor, type MetricVerdict } from "@/lib/monitoring/displayStatus";
 import type { DisplayKey } from "@/lib/monitoring/assessment";
+import { DataScopeSection } from "@/components/monitoring/data-scope-section";
 import { ProvenancePanel } from "@/components/monitoring/provenance-panel";
 import { useNowMs } from "@/lib/monitoring/useNowMs";
 import { cn } from "@/lib/utils";
@@ -838,8 +839,11 @@ export function ObservatoryCanvas({
           mapStations={mapStations}
         />
         <p className="observatory-source-line">STATION_01 · STATION_02 <span>Open-Meteo · {dict.monitoring.regionalContextLabel}</span></p>
-        <ProvenancePanel groups={signalGroups} thresholds={thresholds} series={series} isDemo={model.mode === "demo"} />
       </section>
+
+      {/* Scope and limits sit directly under the instrument, then the per-figure provenance. */}
+      <DataScopeSection dict={dict} />
+      <ProvenancePanel groups={signalGroups} thresholds={thresholds} series={series} isDemo={model.mode === "demo"} />
 
       <section className="instrument-in-2 space-y-6">
         <div>

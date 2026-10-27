@@ -100,7 +100,7 @@ const CHAPTER_EN: Record<string, string> = {
   "Hình ảnh dự án.": "A field album.",
   "Cùng đọc Cồn Hô.": "Read Cồn Hô together.",
   "Hai trạm đo môi trường và một gateway. Mỗi nút trả lời một câu hỏi khác nhau — không phải ba trạm cảm biến.": "Two environmental stations and a gateway. Each node serves a different question.",
-  "Bảy chặng, từ đầu dò đặt tại Cồn Hô tới Observatory. Mỗi chặng giữ lại dấu vết cần thiết để đọc lại dữ liệu.": "Seven stages from the probes at Cồn Hô to the Observatory, preserving the evidence needed to read the data.",
+  "Bảy chặng, từ đầu dò đặt tại Cồn Hô tới Observatory. Mỗi chặng giữ lại dấu vết cần thiết để đọc lại dữ liệu. Đây là mô hình thí điểm cộng đồng: số liệu mang tính tham khảo, không thay thế quan trắc chính thức.": "Seven stages from the probes at Cồn Hô to the Observatory, preserving the evidence needed to read the data. This is a community pilot: the figures are for reference and do not replace official monitoring.",
   "Mỗi hướng cho thấy dữ liệu đang có, và những phép đo còn thiếu trước khi có thể ra quyết định tốt hơn.": "Each direction identifies the available data and the measurements still needed for better decisions.",
   "Hai trạm cảm biến và một gateway tạo thành lần triển khai đầu tiên. Trạng thái dưới đây đến từ dữ liệu hệ thống; nó không thay cho kiểm chứng lắp đặt hay hiệu chuẩn ngoài hiện trường.": "Two sensor stations and a gateway form the first deployment. These statuses come from system data; field installation and calibration require separate verification.",
   "Hiệu chuẩn, nghiên cứu ngưỡng, ghi chép hiện trường và các giả định dự án đang kiểm chứng.": "Calibration, threshold research, field notes, and the assumptions being investigated.",
@@ -509,7 +509,7 @@ export default async function HomePage() {
             <Reveal stagger as="section" className="atlas-data-section">
               <ChapterHeading
                 number="05" title="Từ vườn tới màn hình."
-                lead="Bảy chặng, từ đầu dò đặt tại Cồn Hô tới Observatory. Mỗi chặng giữ lại dấu vết cần thiết để đọc lại dữ liệu."
+                lead="Bảy chặng, từ đầu dò đặt tại Cồn Hô tới Observatory. Mỗi chặng giữ lại dấu vết cần thiết để đọc lại dữ liệu. Đây là mô hình thí điểm cộng đồng: số liệu mang tính tham khảo, không thay thế quan trắc chính thức."
               />
               <div className="mt-10 atlas-data-diagram">
                 <WorkflowChapter />

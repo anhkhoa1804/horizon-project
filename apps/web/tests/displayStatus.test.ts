@@ -123,26 +123,32 @@ describe("copy and components", () => {
     assert.deepEqual(keys(vi.assessment).sort(), keys(en.assessment).sort());
     assert.deepEqual(keys(vi.dataScope).sort(), keys(en.dataScope).sort());
   });
-  it("the scope notice never says the data is safe or official", () => {
+  it("the scope statement never says the data is safe or official, and says it is not a substitute", () => {
     for (const d of [vi, en]) {
       const all = JSON.stringify(d.dataScope) + JSON.stringify(d.assessment);
       assert.doesNotMatch(all, /an toàn tuyệt đối|absolutely safe|đã được chứng nhận|officially certified/i);
     }
-    assert.match(vi.dataScope.notice.p3, /không thay thế/);
-    assert.match(en.dataScope.notice.p3, /does not replace/);
+    assert.match(vi.dataScope.items.reference.body, /Không thay thế/);
+    assert.match(en.dataScope.items.reference.body, /not replace/i);
   });
-  it("the ticker has a pause control, reduced-motion handling, a fixed height and a link to the full text", () => {
-    const tsx = fs.readFileSync("components/monitoring/scope-ticker.tsx", "utf8");
-    assert.match(tsx, /aria-pressed/);
-    assert.match(tsx, /prefers-reduced-motion/);
-    assert.match(tsx, /href="\/data-scope"/);
+  it("the scope statement sits directly under the observatory, with no scrolling ticker or separate page", () => {
+    const canvas = fs.readFileSync("components/monitoring/observatory-canvas.tsx", "utf8");
+    assert.match(canvas, /<DataScopeSection dict=\{dict\} \/>/);
+    assert.ok(canvas.indexOf("DataScopeSection dict") < canvas.indexOf("<ProvenancePanel"));
+    assert.equal(fs.existsSync("components/monitoring/scope-ticker.tsx"), false);
+    assert.equal(fs.existsSync("app/data-scope"), false);
     const css = fs.readFileSync("app/globals.css", "utf8");
-    assert.match(css, /\.scope-ticker\s*\{[^}]*height:\s*2\.5rem/);
-    assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.scope-ticker__track\s*\{\s*animation:\s*none/);
-    assert.match(css, /scope-ticker:focus-within/);
+    assert.doesNotMatch(css, /scope-ticker/);
+    assert.match(fs.readFileSync("components/monitoring/data-scope-section.tsx", "utf8"), /data-legal-review="pending"/);
   });
-  it("the data-scope page carries a visible legal-review marker", () => {
-    assert.match(fs.readFileSync("app/data-scope/page.tsx", "utf8"), /data-legal-review="pending"/);
+  it("coloured status boxes carry no stripe, shadow or coloured outline", () => {
+    const css = fs.readFileSync("app/globals.css", "utf8");
+    const i = css.indexOf("STATUS TREATMENT");
+    const block = css.slice(i, css.indexOf("Collapsed map credits", i));
+    assert.doesNotMatch(block, /inset \d+px/);
+    assert.match(block, /box-shadow:\s*none/);
+    assert.match(block, /border-color:\s*transparent/);
+    assert.doesNotMatch(block, /border:\s*1px solid color-mix/);
   });
   it("the canvas no longer colours from the threshold registry directly", () => {
     const src = fs.readFileSync("components/monitoring/observatory-canvas.tsx", "utf8");

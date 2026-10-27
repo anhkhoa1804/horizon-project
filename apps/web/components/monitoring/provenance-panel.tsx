@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { verdictFor, type MetricVerdict } from "@/lib/monitoring/displayStatus";
 import type { ThresholdRow } from "@/lib/monitoring/thresholdTypes";
 import type { SignalGroup } from "@/lib/monitoring/signals";
@@ -83,6 +82,9 @@ export function ProvenancePanel({
                         <div><dt className="inline text-foreground-subtle">{a.panel.freshness}: </dt><dd className="inline">{a.freshnessState[v.assessment.freshness]}</dd></div>
                         <div><dt className="inline text-foreground-subtle">{a.panel.quality}: </dt><dd className="inline">{a.qualityState[v.assessment.quality]}</dd></div>
                         <div><dt className="inline text-foreground-subtle">{a.panel.threshold}: </dt><dd className="inline">{a.thresholdState[v.assessment.threshold.level]}</dd></div>
+                        {v.assessment.threshold.source?.title ? (
+                          <div><dt className="inline text-foreground-subtle">{a.panel.thresholdSource}: </dt><dd className="inline">{[v.assessment.threshold.source.title, v.assessment.threshold.source.version?.slice(0, 10), v.assessment.threshold.source.scope].filter(Boolean).join(" · ")}</dd></div>
+                        ) : null}
                         <div><dt className="inline text-foreground-subtle">{a.panel.history}: </dt><dd className="inline">{a.anomalyState[v.assessment.anomaly.level]}</dd></div>
                       </>
                     ) : null}
@@ -92,7 +94,6 @@ export function ProvenancePanel({
               );
             })}
           </ul>
-          <p className="mt-4 text-xs"><Link href="/data-scope" className="underline underline-offset-4">{dict.dataScope.readMore}</Link></p>
         </>
       )}
     </details>

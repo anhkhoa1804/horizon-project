@@ -2254,9 +2254,9 @@ main {
 
 /* Keep fields distinct from the page without darkening their content. */
 .report-field-opening,.atlas-status-list,.report-single .report-evidence { border: 1px solid var(--h-border); }
-:root[data-theme="dark"] .observatory-bento,:root[data-theme="dark"] .admin-console-workspace { --h-status-normal: #493b40; --h-status-warning: #6b474b; --h-status-critical: #8d535a; }
+:root[data-theme="dark"] .observatory-bento,:root[data-theme="dark"] .admin-console-workspace,:root[data-theme="dark"] .data-scope-legend { --h-status-normal: #493b40; --h-status-warning: #6b474b; --h-status-critical: #8d535a; }
 @media (prefers-color-scheme:dark) {
-  :root:not([data-theme="light"]) .observatory-bento,:root:not([data-theme="light"]) .admin-console-workspace { --h-status-normal: #493b40; --h-status-warning: #6b474b; --h-status-critical: #8d535a; }
+  :root:not([data-theme="light"]) .observatory-bento,:root:not([data-theme="light"]) .admin-console-workspace,:root:not([data-theme="light"]) .data-scope-legend { --h-status-normal: #493b40; --h-status-warning: #6b474b; --h-status-critical: #8d535a; }
 }
 @media (max-width:767px) { .floating-contacts { display: none; } }
 
@@ -2267,7 +2267,7 @@ main {
    normal = soft green, watch = warm neutral (between safe and elevated), warning = light red, critical = stronger red.
    Colour is never the only carrier: every status surface also prints the status word and a per-severity glyph, and a
    metric with no registry threshold (or no data) keeps its plain domain surface and prints no status at all. */
-.observatory-bento,.admin-console-workspace { --h-status-normal: #d8ecde; --h-status-watch: #f4eedd; --h-status-warning: #efc7be; --h-status-critical: #e2998d; --h-status-none: var(--h-surface); }
+.observatory-bento,.admin-console-workspace,.data-scope-legend { --h-status-normal: #d8ecde; --h-status-watch: #f4eedd; --h-status-warning: #efc7be; --h-status-critical: #e2998d; --h-status-none: var(--h-surface); }
 :root[data-theme="dark"] .observatory-bento,:root[data-theme="dark"] .admin-console-workspace { --h-status-normal: #17392b; --h-status-watch: #38352a; --h-status-warning: #4f302d; --h-status-critical: #6e3436; }
 @media (prefers-color-scheme:dark) {
   :root:not([data-theme="light"]) .observatory-bento,:root:not([data-theme="light"]) .admin-console-workspace { --h-status-normal: #17392b; --h-status-watch: #38352a; --h-status-warning: #4f302d; --h-status-critical: #6e3436; }
@@ -2293,14 +2293,15 @@ main {
 .observatory-bento .status-card[data-status="warn"] { --st: var(--st-warn); }
 .observatory-bento .status-card[data-status="critical"] { --st: var(--st-critical); }
 .observatory-bento .status-card:is([data-status="ok"],[data-status="watch"],[data-status="warn"],[data-status="critical"]) {
+  /* Tinted fill only: no inset stripe, no shadow, no coloured outline. */
   background: color-mix(in srgb, var(--st) 15%, var(--h-surface));
-  box-shadow: inset 5px 0 0 var(--st);
-  border-color: color-mix(in srgb, var(--st) 45%, var(--h-border, transparent));
+  box-shadow: none;
+  border-color: transparent;
 }
 .observatory-bento .status-card:is([data-status="ok"],[data-status="watch"],[data-status="warn"],[data-status="critical"]) .region-heading-status {
   padding: 1px 7px; border-radius: 999px; font-weight: 600;
   background: color-mix(in srgb, var(--st) 22%, transparent);
-  border: 1px solid color-mix(in srgb, var(--st) 70%, transparent);
+  border: 0;
 }
 .observatory-bento .status-card:is([data-status="ok"],[data-status="watch"],[data-status="warn"],[data-status="critical"]) .region-heading svg:not(:first-child) { color: var(--st); }
 
@@ -2362,19 +2363,10 @@ main {
 .site-header--cover .site-control:hover,
 .site-header--cover .site-control:focus-visible { color: var(--h-cover-ink); }
 
-/* ── Scope ticker (data scope & limits notice) ─────────────────────────────
-   Fixed height so starting/pausing/reduced-motion never shifts layout. */
-.scope-ticker { display: flex; align-items: center; gap: 0.75rem; height: 2.5rem; margin: 0 0 1rem; border-block: 1px solid var(--border, rgba(127,127,127,.3)); font-size: 0.8125rem; color: var(--foreground-muted, inherit); }
-.scope-ticker__viewport { position: relative; flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(90deg, transparent 0, #000 1.5rem, #000 calc(100% - 1.5rem), transparent 100%); }
-.scope-ticker__track { display: inline-flex; width: max-content; animation: scope-ticker-scroll 70s linear infinite; }
-.scope-ticker[data-running="false"] .scope-ticker__track,
-.scope-ticker:hover .scope-ticker__track,
-.scope-ticker:focus-within .scope-ticker__track { animation-play-state: paused; }
-.scope-ticker__item { padding-right: 4rem; }
-.scope-ticker__static { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scope-ticker__actions { display: flex; flex: none; align-items: center; gap: 0.5rem; }
-.scope-ticker__link { text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
-.scope-ticker__button { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border: 1px solid var(--border, rgba(127,127,127,.4)); background: transparent; color: inherit; cursor: pointer; }
-.scope-ticker__button:focus-visible, .scope-ticker__link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
-@keyframes scope-ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-@media (prefers-reduced-motion: reduce) { .scope-ticker__track { animation: none; } }
+
+/* Colour legend under the observatory: tinted fills, no border, no shadow. */
+.data-scope-chip { color: var(--h-foreground); border: 0; box-shadow: none; }
+.data-scope-chip[data-tone="green"] { background: var(--h-status-normal); }
+.data-scope-chip[data-tone="yellow"] { background: var(--h-status-watch); }
+.data-scope-chip[data-tone="red"] { background: var(--h-status-critical); }
+.data-scope-chip[data-tone="gray"] { background: var(--h-surface-subtle, color-mix(in srgb, var(--h-foreground) 10%, var(--h-surface))); }

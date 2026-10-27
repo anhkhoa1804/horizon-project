@@ -57,36 +57,23 @@ export const vi = {
 
   /**
    * Scope and limits of the data, and how each reading is assessed.
-   * LEGAL REVIEW PENDING: `notice.*` is the project's draft wording and must be
+   * LEGAL REVIEW PENDING: `dataScope.items.*` is the project's draft wording and must be
    * reviewed before official release (see docs/DATA_ASSESSMENT.md).
    */
   dataScope: {
-    ticker: "HORIZON là mô hình quan trắc môi trường cộng đồng thí điểm tại Cồn Hô, phục vụ tham khảo thông tin về môi trường, sinh kế và đời sống địa phương. Dữ liệu không thay thế kết quả quan trắc chính thức, kết luận chuyên môn hoặc thông báo của cơ quan có thẩm quyền.",
-    tickerLabel: "Thông báo phạm vi dữ liệu",
-    pause: "Tạm dừng thông báo chạy",
-    resume: "Cho thông báo chạy tiếp",
-    readMore: "Đọc đầy đủ",
-    legalPending: "Văn bản dự thảo — cần được rà soát pháp lý trước khi công bố chính thức.",
-    navLabel: "Phạm vi và giới hạn dữ liệu",
-    pageTitle: "Phạm vi và giới hạn sử dụng dữ liệu",
-    pageEyebrow: "Thông tin dữ liệu",
-    notice: {
-      p1: "HORIZON là sáng kiến quan trắc môi trường cộng đồng do thanh niên triển khai thí điểm tại Cồn Hô, xã Nhị Long, tỉnh Vĩnh Long, nhằm hỗ trợ người dân tiếp cận và theo dõi thông tin môi trường phục vụ sinh kế, đời sống và nâng cao nhận thức về thích ứng biến đổi khí hậu.",
-      p2: "Các số liệu được thu thập từ hệ thống cảm biến tại những vị trí lắp đặt cụ thể, có thể chịu ảnh hưởng bởi điều kiện môi trường, thiết bị, hiệu chuẩn và kết nối truyền dữ liệu. Vì vậy, dữ liệu chỉ phản ánh thông tin quan trắc trong phạm vi và thời điểm tương ứng; không mặc nhiên đại diện cho toàn bộ khu vực ngoài địa bàn triển khai.",
-      p3: "Thông tin do HORIZON cung cấp mang tính tham khảo cộng đồng, không thay thế dữ liệu quan trắc chính thức, kết quả kiểm định, kết luận chuyên môn hoặc thông báo của cơ quan nhà nước có thẩm quyền. Không sử dụng dữ liệu này làm căn cứ duy nhất cho các quyết định có ảnh hưởng lớn đến an toàn con người, sản xuất, đầu tư hoặc các thủ tục pháp lý.",
-      p4: "Người sử dụng cần xem xét thời điểm cập nhật, tình trạng cảm biến, phương pháp xác định cảnh báo và đối chiếu các nguồn thông tin phù hợp trước khi đưa ra quyết định. Nhóm thực hiện cam kết trình bày minh bạch nguồn gốc, phạm vi, giới hạn kỹ thuật và các thay đổi liên quan đến dữ liệu trong khả năng quản lý của dự án.",
+    eyebrow: "Thông tin dữ liệu",
+    title: "Phạm vi và giới hạn sử dụng dữ liệu",
+    items: {
+      pilot: { title: "Thí điểm cộng đồng", body: "Mô hình quan trắc môi trường do thanh niên triển khai tại Cồn Hô, xã Nhị Long, tỉnh Vĩnh Long, phục vụ sinh kế, đời sống và nhận thức thích ứng khí hậu." },
+      place: { title: "Đúng nơi, đúng lúc", body: "Số liệu chỉ phản ánh vị trí lắp đặt và thời điểm đo, và có thể chịu ảnh hưởng của thiết bị, hiệu chuẩn, kết nối." },
+      reference: { title: "Tham khảo, không thay thế", body: "Không thay thế quan trắc chính thức hay thông báo của cơ quan có thẩm quyền; không là căn cứ duy nhất cho quyết định về an toàn, sản xuất, đầu tư hoặc pháp lý." },
+      context: { title: "Đọc cùng ngữ cảnh", body: "Xem thời điểm cập nhật, tình trạng cảm biến và cách xác định cảnh báo; đối chiếu thêm nguồn phù hợp." },
     },
-    method: {
-      title: "Cách HORIZON đọc một số liệu",
-      intro: "Mỗi số liệu được xét qua bốn câu hỏi độc lập. Màu chỉ xuất hiện khi có đủ cơ sở cho câu trả lời tương ứng.",
-      freshness: "Độ mới: so với chu kỳ truyền thực tế của thiết bị, không phải một mốc cố định.",
-      quality: "Chất lượng: dựa trên cờ lỗi và trạng thái cảm biến. Ô trống không bao giờ được đọc là số 0.",
-      threshold: "Ngưỡng: chỉ dùng ngưỡng đã được cấu hình, có nguồn, đơn vị, phiên bản và phạm vi áp dụng. Chưa có ngưỡng nghĩa là chưa có đánh giá, không có nghĩa là an toàn.",
-      history: "So với lịch sử: chỉ dùng dữ liệu thật đã qua kiểm tra chất lượng và chỉ khi đủ số mẫu và thời gian. Khác biệt so với lịch sử không đồng nghĩa với nguy hiểm.",
-      green: "Xanh: trong ngưỡng tham chiếu đã cấu hình, dữ liệu hợp lệ và còn mới.",
-      yellow: "Vàng: gần ngưỡng đã cấu hình, đang xác nhận, hoặc khác biệt đáng kể so với dữ liệu trước đây. Cần theo dõi thêm, không mặc định là nguy hiểm.",
-      red: "Đỏ: vượt ngưỡng cảnh báo đã cấu hình và đã được xác nhận bằng nhiều mẫu liên tiếp.",
-      gray: "Xám: chưa đủ cơ sở đánh giá, dữ liệu cũ hoặc thiếu, cảm biến lỗi, hoặc chưa có ngưỡng.",
+    legend: {
+      green: "Xanh · trong ngưỡng tham chiếu",
+      yellow: "Vàng · gần ngưỡng, cần theo dõi",
+      red: "Đỏ · vượt ngưỡng, đã xác nhận",
+      gray: "Xám · chưa đủ cơ sở đánh giá",
     },
   },
 
@@ -114,6 +101,7 @@ export const vi = {
       freshness: "Trạng thái cập nhật",
       quality: "Chất lượng dữ liệu",
       threshold: "Đối chiếu ngưỡng",
+      thresholdSource: "Nguồn ngưỡng",
       history: "So với lịch sử",
       note: "Ghi chú",
       noTimestamp: "Chưa có dữ liệu",

@@ -10,7 +10,6 @@ import { ObservatoryCanvas } from "@/components/monitoring/observatory-canvas";
 import { loadThresholdRegistry, loadSoilWaterModels } from "@/lib/monitoring/thresholds";
 import { HashScroll } from "@/components/ui/hash-scroll";
 import { PublicShell } from "@/components/layout/public-shell";
-import { ScopeTicker } from "@/components/monitoring/scope-ticker";
 import { ToolPageHeading } from "@/components/layout/tool-page-heading";
 import DashboardLoading from "./loading";
 
@@ -103,8 +102,6 @@ export default async function DashboardPage({
             <FlaskConical className="h-4 w-4" aria-hidden />{dict.monitoring.demoBannerTitle}
           </span>
         ) : null} />
-
-      <ScopeTicker />
 
       <Suspense fallback={<DashboardLoading />}>
         <MonitoringContent mode={mode} />

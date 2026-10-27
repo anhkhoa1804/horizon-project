@@ -1,7 +1,7 @@
 # Data assessment and display rules (website)
 
 Status: implemented in `apps/web/lib/monitoring/{assessment,displayStatus}.ts`, wired into
-`observatory-canvas.tsx`. **Not deployed.** Notice wording in `dataScope.notice.*` is a project
+`observatory-canvas.tsx`. Scope statement: `data-scope-section.tsx`, directly under the dashboard (no ticker, no separate page). **Not deployed.** Notice wording in `dataScope.notice.*` is a project
 draft and needs legal review before official release.
 
 ## Four independent questions
@@ -39,6 +39,7 @@ shows the reason; red/yellow from any reading still win.
   gateway queue is flashed, a delayed backlog frame is stamped with forward time until the backend honours
   `received_at_epoch` (see `GATEWAY_UPLOAD_QUEUE.md`), so freshness can over-state recency for backlog rows.
 * Before hydration (first paint) nothing is coloured: the browser clock is not known yet.
+* Thresholds and their sources are unchanged: same registry rows and filter as before; the provenance panel now also prints each threshold's source, version and scope.
 * Visible behaviour change: warning-severity exceedances now render red (previously the warn tint);
   readings that were green while stale are now neutral.
 
