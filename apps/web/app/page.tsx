@@ -93,7 +93,7 @@ const CHAPTER_EN: Record<string, string> = {
   "Ba nút. Ba vai trò.": "Three nodes. Three roles.",
   "Bản đồ Cồn Hô.": "Mapping Cồn Hô.",
   "Từ vườn tới màn hình.": "From the garden to the screen.",
-  "Ngày khởi đầu.": "The first day.",
+  "Nhìn lại hành trình.": "Looking back.",
   "Ba hướng canh tác.": "Three growing systems.",
   "Mạng lưới hiện có.": "The current network.",
   "Nhật ký dự án.": "Field notes.",
@@ -181,7 +181,7 @@ async function ChapterHeading({
   const { locale } = await getI18n();
   const heading = locale === "en" ? CHAPTER_EN[title] ?? title : title;
   const subjects: Record<string,string> = {
-    "Cồn Hô giữa dòng sông.": "Cồn Hô", "Từ hiện trường.": "hiện trường", "Ba nút. Ba vai trò.": "Ba vai trò", "Bản đồ Cồn Hô.": "Cồn Hô", "Từ vườn tới màn hình.": "màn hình", "Ngày khởi đầu.": "khởi đầu", "Ba hướng canh tác.": "canh tác", "Mạng lưới hiện có.": "Mạng lưới", "Nhật ký dự án.": "Nhật ký", "Hình ảnh dự án.": "Hình ảnh", "Cùng đọc Cồn Hô.": "Cồn Hô",
+    "Cồn Hô giữa dòng sông.": "Cồn Hô", "Từ hiện trường.": "hiện trường", "Ba nút. Ba vai trò.": "Ba vai trò", "Bản đồ Cồn Hô.": "Cồn Hô", "Từ vườn tới màn hình.": "màn hình", "Nhìn lại hành trình.": "hành trình", "Ba hướng canh tác.": "canh tác", "Mạng lưới hiện có.": "Mạng lưới", "Nhật ký dự án.": "Nhật ký", "Hình ảnh dự án.": "Hình ảnh", "Cùng đọc Cồn Hô.": "Cồn Hô",
     "An islet in the river.": "islet", "From the field.": "field", "Three nodes. Three roles.": "Three roles", "Mapping Cồn Hô.": "Cồn Hô", "From the garden to the screen.": "screen", "The first day.": "first day", "Three growing systems.": "growing systems", "The current network.": "network", "Field notes.": "Field notes", "A field album.": "field album", "Read Cồn Hô together.": "Cồn Hô"
   };
   return (
@@ -394,8 +394,8 @@ async function ApplicationProfilesChapter() {
 }
 
 const PROJECT_START_VIDEO = {
-  id: "SCH_xDue6xg",
-  title: "[HORIZON] NGÀY DỰ ÁN KHỞI ĐẦU",
+  id: "rksAkYJWK40",
+  title: "[HORIZON] HÀNH TRÌNH KIẾN TẠO THÍCH ỨNG TỪ NHỊP THỞ CỒN HÔ",
 } as const;
 
 const FIELD_STORY_VIDEO = {
@@ -518,7 +518,7 @@ export default async function HomePage() {
           </div>
 
           <Reveal as="figure" className="atlas-documentary h-media">
-            <ChapterHeading number="06" title="Ngày khởi đầu." />
+            <ChapterHeading number="06" title="Nhìn lại hành trình." />
             <AutoPlayVideo {...PROJECT_START_VIDEO} captionId="project-start-video-caption" />
             <figcaption id="project-start-video-caption">{PROJECT_START_VIDEO.title}</figcaption>
           </Reveal>
