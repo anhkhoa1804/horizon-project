@@ -48,6 +48,14 @@ export function Footer() {
                     </Link>
                   </li>
                 ))}
+                <li>
+                  <Link
+                    href="/data-scope"
+                    className="text-foreground-subtle transition-colors duration-[var(--motion-base)] hover:text-foreground"
+                  >
+                    {dict.dataScope.navLabel}
+                  </Link>
+                </li>
               </ul>
             </nav>
 

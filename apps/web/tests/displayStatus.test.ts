@@ -1,0 +1,152 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import fs from "node:fs";
+import { recentSamples, regionVerdict, toMetricStatus, verdictFor } from "@/lib/monitoring/displayStatus";
+import type { ObservatoryMetric, ObservationPoint } from "@/lib/monitoring/types";
+import type { ThresholdRow } from "@/lib/monitoring/thresholdTypes";
+import { vi } from "@/lib/i18n/vi";
+import { en } from "@/lib/i18n/en";
+
+const NOW = Date.parse("2026-10-27T05:00:00Z");
+const MIN = 60_000;
+const iso = (msAgo: number) => new Date(NOW - msAgo).toISOString();
+
+const row = (over: Partial<ThresholdRow>): ThresholdRow => ({
+  id: "r", metric_key: "k", quantity: "water_salinity", unit: "ppt", threshold_value: 2, upper_value: null,
+  comparison: "above", severity: "warning", basis: "SITE_CALIBRATED", source_title: "Project config", source_url: null,
+  source_locator: null, scope: "STATION_01", validation_status: "OPERATIONAL", is_active: true, notes: null, effective_from: null, ...over,
+});
+const rows = [row({ threshold_value: 1.5, severity: "watch" }), row({ threshold_value: 2, severity: "warning" }), row({ id: "c", threshold_value: 3, severity: "critical" })];
+
+const metric = (value: string | null, ageMs: number, origin: ObservatoryMetric["provenance"]["origin"] = "telemetry"): ObservatoryMetric => ({
+  label: "x", value, provenance: { origin, observedAt: iso(ageMs) },
+});
+const pt = (ageMs: number, salinity: number | null): ObservationPoint => ({
+  timestamp: iso(ageMs), label: "", salinity, waterLevel: null, waterEc: null, waterTemp: null, soilMoisture: null, soilEc: null,
+  soilPh: null, soilTemp: null, airTemp: null, airHumidity: null, weatherTemp: null, weatherHumidity: null, weatherWind: null, weatherPrecipitation: null,
+});
+const ctx = (over = {}) => ({ rows, nowMs: NOW, stationQuality: "valid" as const, ...over });
+
+describe("display status: the four layers decide the colour", () => {
+  it("is neutral before the browser knows the time", () => {
+    assert.equal(verdictFor(metric("0.4", MIN), "water_salinity", ctx({ nowMs: null })), null);
+  });
+  it("green only for a fresh, valid value inside a configured threshold", () => {
+    const v = verdictFor(metric("0.4", MIN), "water_salinity", ctx())!;
+    assert.equal(v.display.tone, "green");
+    assert.equal(toMetricStatus(v)?.level, "ok");
+  });
+  it("NEVER green from a stale reading, even when the number is inside the band", () => {
+    const v = verdictFor(metric("0.4", 30 * MIN), "water_salinity", ctx())!;
+    assert.equal(v.display.tone, "gray");
+    assert.equal(v.display.key, "stale");
+    assert.equal(toMetricStatus(v), null);
+    assert.equal(verdictFor(metric("0.4", 3 * 60 * MIN), "water_salinity", ctx())!.display.key, "offline");
+  });
+  it("no configured threshold is gray 'noThreshold', never green", () => {
+    const v = verdictFor(metric("0.4", MIN), "water_salinity", ctx({ rows: [] }))!;
+    assert.equal(v.display.tone, "gray");
+    assert.equal(v.display.key, "noThreshold");
+  });
+  it("a station fault makes the value gray, not green or red", () => {
+    const v = verdictFor(metric("5", MIN), "water_salinity", ctx({ stationQuality: "error" }))!;
+    assert.equal(v.display.tone, "gray");
+    assert.equal(v.display.key, "sensorFault");
+  });
+  it("missing value is 'missing', never 0", () => {
+    const v = verdictFor(metric(null, MIN), "water_salinity", ctx())!;
+    assert.equal(v.display.key, "missing");
+  });
+  it("no quality evidence is gray", () => {
+    assert.equal(verdictFor(metric("0.4", MIN), "water_salinity", ctx({ stationQuality: null }))!.display.key, "unknownQuality");
+  });
+  it("external weather and reference values are never assessed", () => {
+    assert.equal(verdictFor(metric("30", MIN, "external"), "water_salinity", ctx()), null);
+    assert.equal(verdictFor(metric("30", MIN, "reference"), "water_salinity", ctx()), null);
+  });
+  it("one exceeding sample is 'confirming' (yellow); two consecutive are red", () => {
+    const one = verdictFor(metric("2.4", MIN), "water_salinity", ctx({ series: [] }))!;
+    assert.equal(one.display.tone, "yellow");
+    assert.equal(one.display.key, "confirming");
+    const two = verdictFor(metric("2.4", MIN), "water_salinity", ctx({ series: [pt(3 * MIN, 2.3)] }))!;
+    assert.equal(two.display.tone, "red");
+    assert.equal(toMetricStatus(two)?.level, "critical");
+  });
+  it("a spike between two normal samples does not alarm", () => {
+    const v = verdictFor(metric("2.4", MIN), "water_salinity", ctx({ series: [pt(3 * MIN, 0.5)] }))!;
+    assert.notEqual(v.display.tone, "red");
+  });
+  it("history alone cannot colour: with no baseline the anomaly layer is insufficient", () => {
+    const v = verdictFor(metric("0.4", MIN), "soil_moisture", ctx({ rows: [] }))!;
+    assert.equal(v.assessment.anomaly.level, "INSUFFICIENT_BASELINE");
+    assert.equal(v.display.tone, "gray");
+  });
+  it("tide-driven metrics are not compared with history", () => {
+    const v = verdictFor(metric("0.4", MIN), "water_level", ctx())!;
+    assert.equal(v.assessment.anomaly.reason, "policy");
+  });
+});
+
+describe("recent samples used for confirmation", () => {
+  it("ignores null, future, and samples older than the freshness window", () => {
+    const cur = iso(MIN);
+    const r = recentSamples([pt(2 * MIN, null), pt(-10 * MIN, 9), pt(60 * MIN, 9), pt(3 * MIN, 2.2)], "water_salinity", 2.4, cur);
+    assert.deepEqual(r, [2.2, 2.4]);
+  });
+  it("returns only the current value for quantities the series does not carry", () => {
+    assert.deepEqual(recentSamples([pt(MIN, 1)], "unknown_q", 5, iso(0)), [5]);
+  });
+});
+
+describe("a region is never greener than its data", () => {
+  const green = verdictFor(metric("0.4", MIN), "water_salinity", ctx())!;
+  const stale = verdictFor(metric("0.4", 30 * MIN), "water_level", ctx({ rows: [row({ quantity: "water_level" })] }))!;
+  const red = verdictFor(metric("2.4", MIN), "water_salinity", ctx({ series: [pt(3 * MIN, 2.3)] }))!;
+  it("one stale reading keeps a region from showing green", () => {
+    const r = regionVerdict([green, stale]);
+    assert.equal(r.status, null);
+    assert.equal(r.grayReason, "stale");
+  });
+  it("red outranks everything", () => {
+    assert.equal(regionVerdict([green, stale, red]).status?.level, "critical");
+  });
+  it("all-green region is green; empty region is neutral", () => {
+    assert.equal(regionVerdict([green]).status?.level, "ok");
+    assert.equal(regionVerdict([null, null]).status, null);
+  });
+});
+
+describe("copy and components", () => {
+  it("VI and EN dictionaries expose the same assessment/dataScope keys", () => {
+    const keys = (o: unknown, p = ""): string[] =>
+      o && typeof o === "object" ? Object.entries(o).flatMap(([k, v]) => keys(v, `${p}${k}.`)) : [p];
+    assert.deepEqual(keys(vi.assessment).sort(), keys(en.assessment).sort());
+    assert.deepEqual(keys(vi.dataScope).sort(), keys(en.dataScope).sort());
+  });
+  it("the scope notice never says the data is safe or official", () => {
+    for (const d of [vi, en]) {
+      const all = JSON.stringify(d.dataScope) + JSON.stringify(d.assessment);
+      assert.doesNotMatch(all, /an toàn tuyệt đối|absolutely safe|đã được chứng nhận|officially certified/i);
+    }
+    assert.match(vi.dataScope.notice.p3, /không thay thế/);
+    assert.match(en.dataScope.notice.p3, /does not replace/);
+  });
+  it("the ticker has a pause control, reduced-motion handling, a fixed height and a link to the full text", () => {
+    const tsx = fs.readFileSync("components/monitoring/scope-ticker.tsx", "utf8");
+    assert.match(tsx, /aria-pressed/);
+    assert.match(tsx, /prefers-reduced-motion/);
+    assert.match(tsx, /href="\/data-scope"/);
+    const css = fs.readFileSync("app/globals.css", "utf8");
+    assert.match(css, /\.scope-ticker\s*\{[^}]*height:\s*2\.5rem/);
+    assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.scope-ticker__track\s*\{\s*animation:\s*none/);
+    assert.match(css, /scope-ticker:focus-within/);
+  });
+  it("the data-scope page carries a visible legal-review marker", () => {
+    assert.match(fs.readFileSync("app/data-scope/page.tsx", "utf8"), /data-legal-review="pending"/);
+  });
+  it("the canvas no longer colours from the threshold registry directly", () => {
+    const src = fs.readFileSync("components/monitoring/observatory-canvas.tsx", "utf8");
+    assert.doesNotMatch(src, /resolveSeverity\(applicable/);
+    assert.match(src, /verdictFor/);
+  });
+});
