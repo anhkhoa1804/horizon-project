@@ -66,7 +66,8 @@ export function ProvenancePanel({
               const v = e.verdict;
               const note =
                 !v ? null
-                : v.assessment.freshness !== "FRESH" ? a.notes.stale
+                : v.assessment.freshness === "STALE" || v.assessment.freshness === "OFFLINE" ? a.notes.stale
+                : v.assessment.freshness !== "FRESH" || v.assessment.quality === "MISSING" ? null
                 : v.assessment.anomaly.reason === "policy" ? a.notes.tidal
                 : v.assessment.anomaly.level === "INSUFFICIENT_BASELINE" ? a.notes.noBaselineQuality
                 : null;
