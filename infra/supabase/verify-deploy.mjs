@@ -1,12 +1,13 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
 import pg from "pg";
+import { auditRequiredCredentials, inspectHostedSecretNames } from "./credential-audit.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function loadLocalEnv() {
-  const envPath = path.join(__dirname, ".env.supabase");
+function loadEnvFile(envPath) {
   if (!existsSync(envPath)) return {};
   const env = {};
   for (const line of readFileSync(envPath, "utf8").split(/\r?\n/)) {
@@ -14,7 +15,7 @@ function loadLocalEnv() {
     const index = line.indexOf("=");
     if (index === -1) continue;
     const key = line.slice(0, index).trim();
-    const value = line.slice(index + 1).trim();
+    const value = line.slice(index + 1).trim().replace(/^['"]|['"]$/g, "");
     if (key && value) env[key] = value;
   }
   return env;
@@ -35,7 +36,19 @@ function apiKeyKind(value) {
   return `legacy:${jwtRole(value)}`;
 }
 
-const env = { ...loadLocalEnv(), ...process.env };
+const repoRoot = path.resolve(__dirname, "../..");
+const env = {
+  ...loadEnvFile(path.join(repoRoot, ".env")),
+  ...loadEnvFile(path.join(repoRoot, "apps/web/.env.local")),
+  ...loadEnvFile(path.join(__dirname, ".env.supabase")),
+  ...process.env,
+};
+const gatewaySecretsPath = path.join(repoRoot, "firmware/esp32-node/src/gateway/gateway_secrets.h");
+const gatewaySecretsText = existsSync(gatewaySecretsPath) ? readFileSync(gatewaySecretsPath, "utf8") : null;
+const stationHeaders = Object.fromEntries(["station_01", "station_02"].map((station) => {
+  const headerPath = path.join(repoRoot, `firmware/esp32-node/src/${station}_config_secrets.h`);
+  return [station, existsSync(headerPath) ? readFileSync(headerPath, "utf8") : null];
+}));
 const databaseUrl = env.DATABASE_URL ?? env.DATABASE_POOLER_URL;
 
 /** Migration filenames on disk, used to report what `db:migrate` would apply. */
@@ -74,7 +87,50 @@ if (!databaseUrl) {
 }
 
 if (!env.SUPABASE_ACCESS_TOKEN) {
-  console.log("WARN    SUPABASE_ACCESS_TOKEN not set (run: npx supabase login)");
+  console.log("WARN    SUPABASE_ACCESS_TOKEN not set; hosted Supabase Edge secret presence cannot be verified (run: npx supabase login)");
+}
+
+for (const issue of auditRequiredCredentials({ env, gatewayHeaderText: gatewaySecretsText, stationHeaders })) {
+  console.log(`FAIL    Credential: ${issue.credentialClass}`);
+  console.log(`        ${issue.reason}.`);
+  console.log(`        Supply it via ${issue.source}.`);
+  ok = false;
+}
+console.log("        Real production credentials must be provisioned/rotated outside source control; values are never printed by this check.");
+console.log("        Local environment files do not prove that hosted runtime secrets are present.");
+
+const supabaseCli = path.join(repoRoot, "node_modules/supabase/dist/supabase.js");
+if (!env.SUPABASE_ACCESS_TOKEN || !env.SUPABASE_PROJECT_REF || !existsSync(supabaseCli)) {
+  console.log("FAIL    Credential: hosted Supabase Edge secret inventory");
+  console.log("        Cannot verify GATEWAY_INGEST_TOKEN without SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF, and the repository Supabase CLI.");
+  ok = false;
+} else {
+  try {
+    const output = execFileSync(process.execPath, [
+      supabaseCli, "secrets", "list", "--project-ref", env.SUPABASE_PROJECT_REF,
+      "--output-format", "json", "--log-level", "fatal",
+    ], {
+      encoding: "utf8",
+      timeout: 30000,
+      stdio: ["ignore", "pipe", "ignore"],
+      env: { ...process.env, SUPABASE_ACCESS_TOKEN: env.SUPABASE_ACCESS_TOKEN },
+    });
+    const inventory = inspectHostedSecretNames(JSON.parse(output));
+    if (!inventory.verified) {
+      console.log("FAIL    Credential: hosted Supabase Edge secret inventory returned an unrecognized shape; secret values withheld.");
+      ok = false;
+    } else if (inventory.missing.includes("GATEWAY_INGEST_TOKEN")) {
+      console.log("FAIL    Credential: gateway ingest token");
+      console.log("        GATEWAY_INGEST_TOKEN is absent from the hosted Supabase Edge Function secrets.");
+      console.log("        Supply it with `supabase secrets set GATEWAY_INGEST_TOKEN` for this project and provision the matching gateway header outside source control.");
+      ok = false;
+    } else {
+      console.log("OK      Hosted Supabase Edge secret name GATEWAY_INGEST_TOKEN is configured (value withheld)");
+    }
+  } catch {
+    console.log("FAIL    Credential: hosted Supabase Edge secret inventory could not be verified; diagnostic and secret values withheld.");
+    ok = false;
+  }
 }
 
 if (env.SUPABASE_ANON_KEY) {
@@ -127,15 +183,11 @@ if (databaseUrl) {
     }
 
     /*
-     * Device secrets are the HMAC keys that authenticate telemetry
-     * (services/edge-ingestion/src/canonical.ts). The pilot seed ships
-     * placeholder values so a fresh clone can run the ingestion path, and
-     * those values are committed to the repository — i.e. public. A database
-     * still holding them will accept forged readings from anyone who can read
-     * the repo, which is precisely the fabricated-data failure this project
-     * exists to avoid.
-     *
-     * Compared by digest so nothing is printed and nothing is logged.
+     * `devices.device_secret` is a legacy schema field; the active Edge path
+     * authenticates the gateway bearer token checked above, not this column.
+     * Keep this release gate so public seed values cannot silently become
+     * credentials again if a retired direct-device path is restored. Select
+     * only device_id and never emit the matched placeholder value.
      */
     try {
       const { rows: weak } = await client.query(
@@ -149,20 +201,15 @@ if (databaseUrl) {
       if (weak.length === 0) {
         console.log("OK      Device secrets rotated (no repo placeholders in use)");
       } else {
-        console.log(
-          `FAIL    ${weak.length} device(s) still use the PUBLIC placeholder secret: ${weak
-            .map((r) => r.device_id)
-            .join(", ")}`,
-        );
-        console.log("        These are committed in infra/supabase/seed/pilot_seed.sql and are public.");
-        console.log("        Rotate before exposing the ingestion endpoint — see docs/PRODUCTION_READINESS.md.");
+        console.log(`FAIL    Credential: legacy devices.device_secret uses a public repository placeholder on ${weak.length} device(s): ${weak.map((r) => r.device_id).join(", ")}`);
+        console.log("        Source: infra/supabase/seed/pilot_seed.sql. This is a legacy field; active gateway auth is separately checked. Provision/rotate production credentials outside source control.");
         ok = false;
       }
-    } catch (error) {
-      console.log(`WARN    Could not check device secrets: ${error instanceof Error ? error.message : error}`);
+    } catch {
+      console.log("WARN    Could not check legacy device-secret placeholders (database diagnostic withheld)");
     }
-  } catch (error) {
-    console.log(`FAIL    Database connection: ${error instanceof Error ? error.message : error}`);
+  } catch {
+    console.log("FAIL    Database connection (diagnostic withheld to protect configured credentials)");
     if (databaseUrl.includes("db.") && databaseUrl.includes(".supabase.co:5432")) {
       console.log("        Hint: use pooler URL (port 6543) if direct db.* host fails DNS/IPv6.");
     }

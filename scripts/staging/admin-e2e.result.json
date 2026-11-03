@@ -1,0 +1,134 @@
+{
+  "at": "2026-10-21T15:17:28.809Z",
+  "target": "http://127.0.0.1:3100",
+  "results": [
+    {
+      "name": "A1 unauthenticated /admin redirects to /admin/login",
+      "ok": true
+    },
+    {
+      "name": "A2 unauthenticated /admin/export is refused (login redirect or 401) and returns no data",
+      "ok": true
+    },
+    {
+      "name": "A3 forged/invalid session (garbage cookie) is refused on /admin and /admin/export",
+      "ok": true
+    },
+    {
+      "name": "A3 forged/invalid session (valid payload, wrong signature) is refused on /admin and /admin/export",
+      "ok": true
+    },
+    {
+      "name": "A3 forged/invalid session (expired but correctly signed) is refused on /admin and /admin/export",
+      "ok": true
+    },
+    {
+      "name": "A3 forged/invalid session (correctly signed but email NOT on allowlist) is refused on /admin and /admin/export",
+      "ok": true
+    },
+    {
+      "name": "A3 forged/invalid session (unsigned payload only) is refused on /admin and /admin/export",
+      "ok": true
+    },
+    {
+      "name": "A4 login: wrong password and non-allowlisted email give the SAME answer (no enumeration)",
+      "ok": true
+    },
+    {
+      "name": "A5 login brute-force: 6th failure from one client+email is rate-limited",
+      "ok": true
+    },
+    {
+      "name": "A6 a different client is NOT locked out by someone else's failures",
+      "ok": true
+    },
+    {
+      "name": "A7 open-redirect attempt via redirectTo is neutralised",
+      "ok": true
+    },
+    {
+      "name": "B1 admin console renders for the allow-listed admin",
+      "ok": true
+    },
+    {
+      "name": "B2 freshness truth: STATION_02 has no recent soil row -> NOT shown as healthy/online",
+      "ok": true
+    },
+    {
+      "name": "B3 CSV export returns real rows only, correct header, and writes an audit event",
+      "ok": true
+    },
+    {
+      "name": "B4 CSV export rejects malformed ranges and unknown stations don't widen scope",
+      "ok": true
+    },
+    {
+      "name": "B5 evidence: admin sees the uploaded video via a signed URL that actually serves the file",
+      "ok": true
+    },
+    {
+      "name": "B6 report review: mark viewed -> reviewing + viewed_at/viewed_by in DB + audit event",
+      "ok": true
+    },
+    {
+      "name": "B7 report resolve -> status resolved in DB",
+      "ok": true
+    },
+    {
+      "name": "B8 report action with a non-existent id changes nothing and shows an error",
+      "ok": true
+    },
+    {
+      "name": "B9 alert threshold save -> alert_configs upsert (and idempotent on second save)",
+      "ok": true
+    },
+    {
+      "name": "B10 alert threshold validation: warning > critical (above) is refused, nothing written",
+      "ok": true
+    },
+    {
+      "name": "B11 maintenance log add -> row in DB attributed to the admin",
+      "ok": true
+    },
+    {
+      "name": "B12 calibration record add -> row in DB; non-numeric reference refused",
+      "ok": true
+    },
+    {
+      "name": "B13 soil water model (STATION_02): valid save stored; PWP>=FC refused",
+      "ok": true
+    },
+    {
+      "name": "B14 water level context (datum/bank/infrastructure) save -> row",
+      "ok": true
+    },
+    {
+      "name": "B15 admin allow-list: add -> active row; revoke -> inactive; env-root admin cannot be revoked",
+      "ok": true
+    },
+    {
+      "name": "B16 remote config: save stores a new revision (state STORED, never 'applied'); a STALE form from another tab is rejected and changes nothing",
+      "ok": true
+    },
+    {
+      "name": "B17 stale tab after sign-out: a mutation submitted without a session is refused and writes nothing",
+      "ok": true
+    },
+    {
+      "name": "B18 revoked mid-session: a previously valid cookie stops working once the email is revoked from the allow-list",
+      "ok": true
+    },
+    {
+      "name": "B19 sign out clears access",
+      "ok": true
+    },
+    {
+      "name": "B20 no uncaught React/page errors during the admin session",
+      "ok": true
+    },
+    {
+      "name": "B21 audit trail has an entry for each admin write, with actor and no secrets",
+      "ok": true
+    }
+  ]
+}

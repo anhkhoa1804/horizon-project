@@ -15,21 +15,63 @@
 
 const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_RATE_MAX_ATTEMPTS = 5;
+/**
+ * Ceiling on failures for ONE email across all clients. Much higher than the
+ * per-client limit on purpose: if a stranger could trip it with five bad
+ * guesses they could lock the real administrator out (audit I-11). It only
+ * has to cap distributed guessing, not stop a single caller.
+ */
+const LOGIN_EMAIL_MAX_ATTEMPTS = 40;
 const failedLoginAttempts = new Map<string, number[]>();
 
-export function isLoginRateLimited(email: string, now = Date.now()): boolean {
+export function isLoginRateLimited(key: string, now = Date.now(), max = LOGIN_RATE_MAX_ATTEMPTS): boolean {
   const windowStart = now - LOGIN_RATE_WINDOW_MS;
-  const attempts = (failedLoginAttempts.get(email) ?? []).filter((t) => t > windowStart);
-  return attempts.length >= LOGIN_RATE_MAX_ATTEMPTS;
+  const attempts = (failedLoginAttempts.get(key) ?? []).filter((t) => t > windowStart);
+  return attempts.length >= max;
 }
 
-export function recordFailedLoginAttempt(email: string, now = Date.now()): void {
+export function recordFailedLoginAttempt(key: string, now = Date.now()): void {
   const windowStart = now - LOGIN_RATE_WINDOW_MS;
-  const attempts = (failedLoginAttempts.get(email) ?? []).filter((t) => t > windowStart);
+  const attempts = (failedLoginAttempts.get(key) ?? []).filter((t) => t > windowStart);
   attempts.push(now);
-  failedLoginAttempts.set(email, attempts);
+  failedLoginAttempts.set(key, attempts);
 }
 
-export function clearLoginRateLimit(email: string): void {
-  failedLoginAttempts.delete(email);
+export function clearLoginRateLimit(key: string): void {
+  failedLoginAttempts.delete(key);
+}
+
+/**
+ * Throttle buckets for one sign-in attempt.
+ *
+ * - `client`: this caller + this email. Five failures lock THIS caller out of
+ *   THAT email only, so a stranger guessing the admin's address cannot stop
+ *   the admin signing in from somewhere else.
+ * - `email`: every caller combined, with a high ceiling (see above).
+ * - `anyEmail`: this caller across every address, so rotating emails (or
+ *   probing the allowlist) does not reset the allowance.
+ */
+export function loginThrottleKeys(email: string, client: string) {
+  return { client: `c:${client}|${email}`, email: `e:${email}`, anyEmail: `a:${client}` };
+}
+
+export function isSignInThrottled(email: string, client: string, now = Date.now()): boolean {
+  const k = loginThrottleKeys(email, client);
+  return (
+    isLoginRateLimited(k.client, now) ||
+    isLoginRateLimited(k.anyEmail, now, LOGIN_RATE_MAX_ATTEMPTS * 4) ||
+    isLoginRateLimited(k.email, now, LOGIN_EMAIL_MAX_ATTEMPTS)
+  );
+}
+
+export function recordSignInFailure(email: string, client: string, now = Date.now()): void {
+  const k = loginThrottleKeys(email, client);
+  recordFailedLoginAttempt(k.client, now);
+  recordFailedLoginAttempt(k.anyEmail, now);
+  recordFailedLoginAttempt(k.email, now);
+}
+
+export function clearSignInFailures(email: string, client: string): void {
+  const k = loginThrottleKeys(email, client);
+  clearLoginRateLimit(k.client);
 }

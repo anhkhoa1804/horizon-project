@@ -23,7 +23,7 @@ const compiler =
   (process.platform === "win32" && existsSync("C:/msys64/mingw64/bin/g++.exe")
     ? "C:/msys64/mingw64/bin/g++.exe"
     : "g++");
-for (const source of ["remote_config_host", "remote_gateway_host"]) {
+for (const source of ["remote_config_host", "remote_gateway_host", "simple_telemetry_host"]) {
   const args = [
     "-std=c++17",
     "-Wall",
@@ -41,5 +41,5 @@ for (const source of ["remote_config_host", "remote_gateway_host"]) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 console.log(
-  "Compiled production station and gateway configuration handlers for host simulation.",
+  "Compiled production station/gateway configuration handlers and telemetry parser/mapping for host simulation.",
 );

@@ -4,7 +4,7 @@ excerpt: Ba nhóm thiết bị, mỗi nhóm trả lời một câu hỏi khác n
 category: Thiết kế hệ thống
 date: 2026-04-02
 readingTime: 6 phút đọc
-cover: /assets/illustrations/station-water-placeholder.svg
+cover: /assets/hardware/board-station-water-soil.jpg
 status: draft
 ---
 

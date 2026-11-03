@@ -59,6 +59,10 @@ export function GalleryStrip({ items }: { items: GalleryItem[] }) {
     <div className="space-y-6">
       <div
         ref={trackRef}
+        // A scrollable region must be reachable by keyboard (axe: scrollable-region-focusable).
+        tabIndex={0}
+        role="region"
+        aria-label={dict.gallery.trackLabel}
         className="flex snap-x snap-mandatory gap-6 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {items.map((item) => {
@@ -74,7 +78,8 @@ export function GalleryStrip({ items }: { items: GalleryItem[] }) {
                   </span>
                 ) : null}
               </div>
-              <figcaption className="mt-4 space-y-1.5">
+              {/* Captions are written in Vietnamese. */}
+              <figcaption className="mt-4 space-y-1.5" lang="vi">
                 <p className="text-[11px] uppercase tracking-[0.14em] text-accent">{item.category}</p>
                 <p className="text-base font-semibold tracking-tight">{item.title}</p>
                 <p className="text-sm leading-relaxed text-muted">{item.caption}</p>

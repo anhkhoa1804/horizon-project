@@ -25,7 +25,13 @@ import {
   REPORT_CATEGORIES,
   categoryLabel,
 } from "@/lib/reports/reportCategories";
-import { REPORT_MEDIA_MAX_FILES, validateReportMedia } from "@/lib/reports/media";
+import {
+  REPORT_MEDIA_ACCEPT_BY_KIND,
+  REPORT_MEDIA_MAX_FILES,
+  checkReportMedia,
+  mediaFingerprint,
+} from "@/lib/reports/media";
+import { putToSignedUrl, type SignedUpload } from "@/lib/reports/directUpload";
 import { REPORT_STATION_OPTIONS, resolveStationOption } from "@/lib/reports/reportStations";
 import { stationDeviceCode, stationText } from "@/lib/stationProfile";
 import { STATION_COORDS } from "@/lib/geo";
@@ -37,31 +43,122 @@ import type { Dictionary } from "@/lib/i18n/vi";
 import type { StationKind } from "@/lib/stationProfile";
 
 const KIND_ICON: Record<StationKind, typeof Waves> = { water: Waves, soil: Sprout, gateway: Send };
+/** One attachment's journey after the report row exists. */
+interface EvidenceItem {
+  file: File;
+  mimeType: string;
+  path: string | null;
+  state: "uploaded" | "failed";
+}
+
 interface SubmitResult {
   id: string;
   demo: boolean;
-  mediaFailures: string[];
+  /** Files the server recorded as report_media rows — the only "saved" evidence. */
+  evidence: EvidenceItem[];
+  /** Server-signed capability to retry this report's uploads; null when none are pending. */
+  ticket: string | null;
+  demoSkipped: string[];
   stationName: string;
   categoryLabel: string;
   submittedAt: string;
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
 function errorMessageFor(status: number, code: string | undefined, dict: Dictionary): string {
   const f = dict.report.form;
   if (status === 429) return f.errRateLimit;
+  if (status === 413) return f.errPayloadTooLarge;
+  if (status === 503 || code === "persistence_unavailable") return f.errPersistence;
   if (code === "description_too_short") return fmt(f.errTooShort, { min: DESCRIPTION_MIN });
   if (code === "description_too_long") return fmt(f.errTooLong, { max: DESCRIPTION_MAX });
   if (code === "invalid_category") return f.errInvalidKind;
+  if (code === "too_many_media") return f.errMediaCapacity;
+  if (code === "invalid_media") return f.errMediaInvalid;
   return f.errSendFailed;
+}
+
+async function postJson(url: string, body: unknown): Promise<{ status: number; payload: Record<string, unknown> }> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  // A platform error page (413, 504) is HTML, not JSON — keep the status.
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  return { status: response.status, payload };
+}
+
+/**
+ * Uploads each pending file straight to Storage on its signed URL, then asks
+ * the server to record what actually arrived. Returns the items with their
+ * final state — "uploaded" only for files the server confirmed.
+ */
+async function uploadEvidence(
+  reportId: string,
+  ticket: string,
+  items: { file: File; mimeType: string; upload: SignedUpload }[],
+  onProgress: (label: string, pct: number) => void,
+  dict: Dictionary,
+): Promise<{ confirmed: Set<string>; attempted: Set<string> }> {
+  const f = dict.report.form;
+  const attempted = new Set<string>();
+  const total = items.reduce((sum, item) => sum + item.file.size, 0) || 1;
+  let done = 0;
+  for (const item of items) {
+    const outcome = await putToSignedUrl(item.upload, item.file, item.mimeType, (loaded) => {
+      onProgress(fmt(f.uploadingFile, { name: item.file.name, pct: Math.round(((done + loaded) / total) * 100) }), Math.round(((done + loaded) / total) * 100));
+    });
+    done += item.file.size;
+    if (outcome.ok) attempted.add(item.upload.path);
+  }
+  const confirmed = new Set<string>();
+  if (attempted.size === 0) return { confirmed, attempted };
+  onProgress(f.finalizing, 100);
+  try {
+    const { status, payload } = await postJson(`/api/public/reports/${encodeURIComponent(reportId)}/media`, {
+      ticket,
+      action: "finalize",
+      paths: [...attempted],
+    });
+    if (status >= 200 && status < 300 && Array.isArray(payload.media)) {
+      for (const row of payload.media as { path?: unknown }[]) {
+        if (typeof row.path === "string") confirmed.add(row.path);
+      }
+    }
+  } catch {
+    // Network loss after the bytes went up: those files stay "failed" in the
+    // UI and the retry path will finalize them (finalize is idempotent).
+  }
+  return { confirmed, attempted };
 }
 
 // ---------------------------------------------------------------------------
 // Success
 // ---------------------------------------------------------------------------
 
-function SuccessView({ result, onAnother }: { result: SubmitResult; onAnother: () => void }) {
+function SuccessView({
+  result,
+  onAnother,
+  onRetry,
+  retrying,
+  retryNote,
+}: {
+  result: SubmitResult;
+  onAnother: () => void;
+  onRetry: () => void;
+  retrying: boolean;
+  retryNote: string | null;
+}) {
   const dict = useDict();
   const f = dict.report.form;
+  const saved = result.evidence.filter((item) => item.state === "uploaded");
+  const failed = result.evidence.filter((item) => item.state === "failed");
+  const canRetry = failed.length > 0 && failed.some((item) => item.path) && result.ticket !== null;
   return (
     <div className="animate-entrance max-w-2xl space-y-8">
       <div className="space-y-4">
@@ -83,6 +180,10 @@ function SuccessView({ result, onAnother }: { result: SubmitResult; onAnother: (
           { label: f.station, value: result.stationName },
           { label: f.condition, value: result.categoryLabel },
           { label: f.time, value: result.submittedAt },
+          {
+            label: f.evidenceCount,
+            value: result.evidence.length === 0 ? f.mediaNone : `${saved.length}/${result.evidence.length}`,
+          },
         ].map((row) => (
           <div key={row.label} className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 py-3">
             <dt className="text-[11px] uppercase tracking-[0.14em] text-muted">{row.label}</dt>
@@ -97,9 +198,40 @@ function SuccessView({ result, onAnother }: { result: SubmitResult; onAnother: (
         </div>
       ) : null}
 
-      {!result.demo && result.mediaFailures.length > 0 ? (
+      {result.evidence.length > 0 ? (
+        <ul className="divide-y divide-border/50 border-y border-border/50" aria-label={f.evidenceCount}>
+          {result.evidence.map((item, index) => (
+            <li key={`${item.file.name}-${index}`} className="flex flex-wrap items-center justify-between gap-3 py-2.5 text-sm">
+              <span className="min-w-0 truncate">{item.file.name} · {formatBytes(item.file.size)}</span>
+              <span className={item.state === "uploaded" ? "text-healthy" : "text-critical"}>
+                {item.state === "uploaded" ? f.mediaStateUploaded : f.mediaStateFailed}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {!result.demo && failed.length === 0 && saved.length > 0 ? (
+        <p role="status" className="text-sm text-muted">{fmt(f.mediaAllSaved, { n: saved.length })}</p>
+      ) : null}
+
+      {result.demo && result.demoSkipped.length > 0 ? (
+        <Alert tone="warning">{fmt(f.mediaDemoSkipped, { files: result.demoSkipped.join(", ") })}</Alert>
+      ) : null}
+
+      {!result.demo && failed.length > 0 ? (
         <Alert tone="warning">
-          {fmt(f.mediaPartial, { files: result.mediaFailures.join(", ") })}
+          <span role="alert">
+            {fmt(f.mediaPartial, { failed: failed.length, files: failed.map((item) => item.file.name).join(", ") })}
+          </span>
+          {retryNote ? <span className="mt-2 block">{retryNote}</span> : null}
+          {canRetry ? (
+            <span className="mt-3 block">
+              <Button type="button" variant="outline" size="sm" onClick={onRetry} disabled={retrying}>
+                {retrying ? f.mediaRetrying : f.mediaRetry}
+              </Button>
+            </span>
+          ) : null}
         </Alert>
       ) : null}
 
@@ -137,7 +269,13 @@ export function ReportForm() {
   const [recording, setRecording] = useState(false);
   const [audioPending, setAudioPending] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [progressLabel, setProgressLabel] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [retryNote, setRetryNote] = useState<string | null>(null);
+  // A ref, not state: two clicks inside one frame both see `submitting ===
+  // false` in their closures, which is how one tap produced two reports.
+  const submittingRef = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
   const mountedRef = useRef(true);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -204,10 +342,28 @@ export function ReportForm() {
   function addAttachments(next: FileList | File[] | null) {
     if (!next) return;
     const files = Array.from(next);
-    if (files.some((file) => !validateReportMedia(file))) { setMediaError(f.errMediaInvalid); return; }
-    if (attachments.length + files.length > REPORT_MEDIA_MAX_FILES) { setMediaError(f.errMediaCapacity); return; }
-    setMediaError(null);
-    setAttachments((current) => [...current, ...files]);
+    const problems: string[] = [];
+    const accepted: File[] = [];
+    const seen = new Set(attachments.map(mediaFingerprint));
+    for (const file of files) {
+      const check = checkReportMedia(file);
+      if (check.reason === "unsupported_type") { problems.push(fmt(f.errMediaType, { name: file.name })); continue; }
+      if (check.reason === "empty") { problems.push(fmt(f.errMediaEmpty, { name: file.name })); continue; }
+      if (check.reason === "too_large") {
+        problems.push(fmt(f.errMediaTooLarge, { name: file.name, size: formatBytes(file.size), max: formatBytes(check.maxBytes ?? 0) }));
+        continue;
+      }
+      const key = mediaFingerprint(file);
+      if (seen.has(key)) { problems.push(fmt(f.errMediaDuplicate, { name: file.name })); continue; }
+      seen.add(key);
+      accepted.push(file);
+    }
+    if (attachments.length + accepted.length > REPORT_MEDIA_MAX_FILES) {
+      problems.push(f.errMediaCapacity);
+      accepted.splice(Math.max(0, REPORT_MEDIA_MAX_FILES - attachments.length));
+    }
+    setMediaError(problems.length > 0 ? problems.join(" ") : null);
+    if (accepted.length > 0) setAttachments((current) => [...current, ...accepted]);
   }
 
   async function toggleAudioRecording() {
@@ -254,53 +410,80 @@ export function ReportForm() {
   }
 
   async function handleSubmit() {
-    if (submitting || recording || audioPending || !category || !observationValid || (!station && !gps)) return;
+    if (submittingRef.current || submitting || recording || audioPending || !category || !observationValid || (!station && !gps)) return;
+    submittingRef.current = true;
 
     setSubmitting(true);
-    setUploadProgress(0);
+    setUploadProgress(null);
+    setProgressLabel(f.creatingReport);
     setError(null);
 
     try {
-      const form = new FormData();
-      form.set("category", category);
-      form.set("description", trimmed);
-      if (gps) {
-        form.set("lat", String(gps.lat));
-        form.set("lng", String(gps.lng));
-      }
-      if (station) form.set("stationId", station.id);
-      attachments.forEach((file) => form.append("media", file));
-      // Demo persistence can only be reached from an explicit `?mode=demo`
-      // page visit. Normal production submissions always use the durable API
-      // path and receive a clear failure if it is unavailable.
+      // Step 1 — the report itself, as a small JSON request. Evidence is
+      // DECLARED here (name, type, size) so the server can validate it and
+      // sign upload URLs, but the bytes do not travel through this request:
+      // the hosting platform rejects function bodies over 4.5 MB, which is
+      // smaller than most phone videos.
+      const media = attachments.map((file) => {
+        const check = checkReportMedia(file);
+        return { name: file.name, type: check.mimeType ?? file.type, size: file.size };
+      });
       const endpoint = new URL("/api/public/reports", window.location.origin);
       if (new URLSearchParams(window.location.search).get("mode") === "demo") {
         endpoint.searchParams.set("mode", "demo");
       }
-      const res = await new Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>((resolve, reject) => {
-        const request = new XMLHttpRequest();
-        request.open("POST", endpoint.toString());
-        request.timeout = 120000;
-        request.upload.onprogress = (event) => { if (event.lengthComputable) setUploadProgress(Math.round(event.loaded / event.total * 100)); };
-        request.onload = () => resolve({ ok: request.status >= 200 && request.status < 300, status: request.status, json: async () => JSON.parse(request.responseText) });
-        request.onerror = () => reject(new Error("upload failed"));
-        request.ontimeout = () => reject(new Error("upload timed out"));
-        request.send(form);
+      const { status, payload } = await postJson(endpoint.toString(), {
+        category,
+        description: trimmed,
+        ...(gps ? { lat: gps.lat, lng: gps.lng } : {}),
+        ...(station ? { stationId: station.id } : {}),
+        media,
       });
 
-      const payload = (await res.json().catch(() => ({}))) as { ok?: boolean; id?: string; demo?: boolean; error?: string; mediaFailures?: unknown };
-
-      if (!res.ok || payload.ok !== true) {
-        setError(errorMessageFor(res.status, payload.error, dict));
+      if (status < 200 || status >= 300 || payload.ok !== true || typeof payload.id !== "string") {
+        setError(errorMessageFor(status, typeof payload.error === "string" ? payload.error : undefined, dict));
         return;
       }
 
+      const reportId = payload.id;
+      const demo = payload.demo === true;
+      const ticket = typeof payload.uploadTicket === "string" ? payload.uploadTicket : null;
+      const signed = Array.isArray(payload.uploads)
+        ? (payload.uploads as { index?: unknown; path?: unknown; token?: unknown; signedUrl?: unknown; mimeType?: unknown }[])
+        : [];
+
+      // Step 2 — each file straight to Storage, then server confirmation.
+      const evidence: EvidenceItem[] = attachments.map((file, index) => {
+        const upload = signed.find((entry) => entry.index === index);
+        return {
+          file,
+          mimeType: typeof upload?.mimeType === "string" ? upload.mimeType : file.type,
+          path: typeof upload?.path === "string" ? upload.path : null,
+          state: "failed",
+        };
+      });
+
+      if (!demo && ticket) {
+        const items = signed.flatMap((entry) => {
+          const file = typeof entry.index === "number" ? attachments[entry.index] : undefined;
+          if (!file || typeof entry.path !== "string" || typeof entry.token !== "string" || typeof entry.signedUrl !== "string") return [];
+          return [{ file, mimeType: typeof entry.mimeType === "string" ? entry.mimeType : file.type, upload: { path: entry.path, token: entry.token, signedUrl: entry.signedUrl } }];
+        });
+        setUploadProgress(0);
+        const { confirmed } = await uploadEvidence(reportId, ticket, items, (label, pct) => {
+          if (!mountedRef.current) return;
+          setProgressLabel(label);
+          setUploadProgress(pct);
+        }, dict);
+        for (const item of evidence) if (item.path && confirmed.has(item.path)) item.state = "uploaded";
+      }
+
       setResult({
-        id: payload.id ?? "—",
-        demo: payload.demo === true,
-        mediaFailures: Array.isArray(payload.mediaFailures)
-          ? payload.mediaFailures.filter((name): name is string => typeof name === "string")
-          : [],
+        id: reportId,
+        demo,
+        evidence: demo ? [] : evidence,
+        ticket,
+        demoSkipped: demo ? attachments.map((file) => file.name) : [],
         stationName: station ? stationText(station.id, dict).name : f.gpsDevice,
         categoryLabel: categoryLabel(category, dict),
         submittedAt: new Intl.DateTimeFormat("vi-VN", { dateStyle: "medium", timeStyle: "short" }).format(new Date()),
@@ -308,8 +491,49 @@ export function ReportForm() {
     } catch {
       setError(f.errSendFailed);
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
       setUploadProgress(null);
+      setProgressLabel(null);
+    }
+  }
+
+  /** Retries only the files that did not arrive, into the SAME report. */
+  async function retryEvidence() {
+    if (!result || !result.ticket || retrying) return;
+    const pending = result.evidence.filter((item) => item.state === "failed" && item.path);
+    if (pending.length === 0) return;
+    setRetrying(true);
+    setRetryNote(null);
+    try {
+      const { status, payload } = await postJson(`/api/public/reports/${encodeURIComponent(result.id)}/media`, {
+        ticket: result.ticket,
+        action: "resign",
+        paths: pending.map((item) => item.path),
+      });
+      if (status < 200 || status >= 300 || payload.ok !== true) {
+        setRetryNote(f.mediaRetryExpired);
+        return;
+      }
+      const already = new Set(Array.isArray(payload.alreadyRecorded) ? (payload.alreadyRecorded as string[]) : []);
+      const fresh = Array.isArray(payload.uploads) ? (payload.uploads as SignedUpload[]) : [];
+      const items = pending.flatMap((item) => {
+        const upload = fresh.find((entry) => entry.path === item.path);
+        return upload ? [{ file: item.file, mimeType: item.mimeType, upload }] : [];
+      });
+      const { confirmed } = items.length
+        ? await uploadEvidence(result.id, result.ticket, items, () => undefined, dict)
+        : { confirmed: new Set<string>() };
+      setResult({
+        ...result,
+        evidence: result.evidence.map((item) =>
+          item.path && (confirmed.has(item.path) || already.has(item.path)) ? { ...item, state: "uploaded" } : item,
+        ),
+      });
+    } catch {
+      setRetryNote(f.errSendFailed);
+    } finally {
+      setRetrying(false);
     }
   }
 
@@ -325,10 +549,11 @@ export function ReportForm() {
     setError(null);
     setAttachments([]);
     setMediaError(null);
+    setRetryNote(null);
   }
 
   if (result) {
-    return <SuccessView result={result} onAnother={resetForm} />;
+    return <SuccessView result={result} onAnother={resetForm} onRetry={retryEvidence} retrying={retrying} retryNote={retryNote} />;
   }
 
   return (
@@ -473,16 +698,16 @@ export function ReportForm() {
                   <p className="mt-1 text-xs text-muted">{f.evidenceLimit}</p>
                 </div>
                 <div className="report-evidence-actions">
-                  <div className="evidence-choice"><Camera aria-hidden /><label>{f.addPhoto}<input className="sr-only" type="file" multiple accept="image/jpeg,image/png,image/webp,image/heic" disabled={recording || audioPending || submitting} onChange={(e) => { addAttachments(e.target.files); e.target.value = ""; }} /></label></div>
-                  <div className="evidence-choice"><Video aria-hidden /><label>{f.addVideo}<input className="sr-only" type="file" accept="video/mp4,video/webm,video/quicktime" disabled={recording || audioPending || submitting} onChange={(e) => { addAttachments(e.target.files); e.target.value = ""; }} /></label></div>
-                  <div className="evidence-choice"><Mic aria-hidden /><label>{f.addAudio}<input className="sr-only" type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/webm,audio/ogg" disabled={recording || audioPending || submitting} onChange={(e) => { addAttachments(e.target.files); e.target.value = ""; }} /></label><Button type="button" variant="outline" onClick={toggleAudioRecording} disabled={submitting || audioPending} aria-pressed={recording}>{recording ? f.stopAudio : f.recordAudio}</Button></div>
+                  <div className="evidence-choice"><Camera aria-hidden /><label>{f.addPhoto}<input className="sr-only" type="file" multiple accept={REPORT_MEDIA_ACCEPT_BY_KIND.photo} disabled={recording || audioPending || submitting} onChange={(e) => { addAttachments(e.target.files); e.target.value = ""; }} /></label></div>
+                  <div className="evidence-choice"><Video aria-hidden /><label>{f.addVideo}<input className="sr-only" type="file" accept={REPORT_MEDIA_ACCEPT_BY_KIND.video} disabled={recording || audioPending || submitting} onChange={(e) => { addAttachments(e.target.files); e.target.value = ""; }} /></label></div>
+                  <div className="evidence-choice"><Mic aria-hidden /><label>{f.addAudio}<input className="sr-only" type="file" accept={REPORT_MEDIA_ACCEPT_BY_KIND.audio} disabled={recording || audioPending || submitting} onChange={(e) => { addAttachments(e.target.files); e.target.value = ""; }} /></label><Button type="button" variant="outline" onClick={toggleAudioRecording} disabled={submitting || audioPending} aria-pressed={recording}>{recording ? f.stopAudio : f.recordAudio}</Button></div>
                 </div>
-                {recording ? <p role="status" className="text-sm text-critical">{f.stopAudio}</p> : null}
+                {recording ? <p role="status" className="text-sm text-critical">{f.recordingNow}</p> : null}
                 {mediaError ? <p role="alert" className="text-sm text-critical">{mediaError}</p> : null}
-                {attachmentUrls.length > 0 ? <ul className="evidence-previews">{attachmentUrls.map(({ file, url }, index) => <li key={`${file.name}-${index}`} className="overflow-hidden rounded-md border border-border p-2"><div className="aspect-video bg-wash-sunken">{file.type.startsWith("image/") ? <>
+                {attachmentUrls.length > 0 ? <ul className="evidence-previews">{attachmentUrls.map(({ file, url }, index) => <li key={`${file.name}-${index}`} className="overflow-hidden rounded-md border border-border p-2"><div className="aspect-video bg-wash-sunken">{(checkReportMedia(file).mimeType ?? file.type).startsWith("image/") ? <>
                   {/* eslint-disable-next-line @next/next/no-img-element -- local preview is a blob URL, not an optimisable remote image */}
                   <img src={url} alt={file.name} className="h-full w-full object-cover" />
-                </> : file.type.startsWith("video/") ? <video src={url} controls className="h-full w-full" /> : <audio src={url} controls className="w-full pt-6" />}</div><div className="mt-2 flex items-center justify-between gap-2"><span className="truncate text-xs">{file.name}</span><button type="button" onClick={() => setAttachments((all) => all.filter((_, itemIndex) => itemIndex !== index))} className="evidence-remove text-critical" aria-label={f.removeEvidence} disabled={recording || audioPending || submitting}><Trash2 className="h-4 w-4" aria-label={f.removeEvidence} /></button></div></li>)}</ul> : null}
+                </> : (checkReportMedia(file).mimeType ?? file.type).startsWith("video/") ? <video src={url} controls playsInline preload="metadata" className="h-full w-full" /> : <audio src={url} controls className="w-full pt-6" />}</div><div className="mt-2 flex items-center justify-between gap-2"><span className="min-w-0 truncate text-xs">{file.name} · {formatBytes(file.size)}</span><button type="button" onClick={() => { setAttachments((all) => all.filter((_, itemIndex) => itemIndex !== index)); setMediaError(null); }} className="evidence-remove text-critical" aria-label={fmt(f.removeEvidenceNamed, { name: file.name })} disabled={recording || audioPending || submitting}><Trash2 className="h-4 w-4" aria-hidden /></button></div></li>)}</ul> : null}
                 </div>
               </section>
               <p className="text-sm leading-relaxed text-muted">
@@ -493,7 +718,7 @@ export function ReportForm() {
             </div>
           )}
 
-          {submitting ? <div className="upload-status" role="status"><span>{f.sending}{uploadProgress !== null ? ` · ${uploadProgress}%` : ""}</span><progress value={uploadProgress ?? undefined} max={100} aria-label={f.sending} /></div> : null}
+          {submitting ? <div className="upload-status" role="status" aria-live="polite"><span>{progressLabel ?? f.sending}</span><progress value={uploadProgress ?? undefined} max={100} aria-label={f.sending} />{attachments.length > 0 ? <span className="text-xs text-muted">{f.mediaKeepPage}</span> : null}</div> : null}
           {/* Navigation */}
           <div className="flex flex-wrap items-center gap-3 border-t border-border/50 pt-6">
             <Button type="button" onClick={handleSubmit} disabled={submitting || recording || audioPending || !locationValid || !observationValid} className="min-w-[160px]">

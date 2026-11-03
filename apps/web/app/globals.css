@@ -39,11 +39,11 @@
    * pigment on stock, with the recessed step slightly *warmer* rather than
    * simply darker.
    */
-  --h-canvas: #fbfaf6;
-  --h-canvas-subtle: #f0ece1;
-  --h-canvas-elevated: #fbf9f4;
-  --h-surface: #ffffff;
-  --h-surface-raised: #ffffff;
+  --h-canvas: #f3f4ee;
+  --h-canvas-subtle: #e9ebe0;
+  --h-canvas-elevated: #f8f9f4;
+  --h-surface: #fdfdfb;
+  --h-surface-raised: #fdfdfb;
 
   /* ----------------------------------------------------------------- TEXT
    * Near-black carries a green cast so type belongs to the same family as
@@ -64,7 +64,7 @@
    * names; the legacy healthy/watch/risk aliases below keep existing
    * components compiling against the same values.
    */
-  --h-safe: #197a3f;
+  --h-safe: #135f33;
   --h-safe-bg: rgba(25, 122, 63, 0.09);
   /* Darkened from #a35f00, which gave the 10px "Chưa xác minh" provenance
    * badge only 4.07:1 on its own 9% tint — below the 4.5:1 that text this
@@ -146,8 +146,8 @@
    * theme without touching a component. Dark needs a lighter ink at a LOWER
    * alpha than light does, or the grid becomes visible noise.
    */
-  --h-grid-line: rgba(19, 29, 27, 0.028);
-  --h-grid-line-major: rgba(19, 29, 27, 0.045);
+  --h-grid-line: rgba(19, 29, 27, 0.14);
+  --h-grid-line-major: rgba(19, 29, 27, 0.22);
   /* Atmospheric pools. Extremely low alpha — they should register as light,
      never as a gradient. Light mode reads as morning survey paper: warm
      white at the top, a cool blue-white pool through the centre, warm
@@ -201,7 +201,7 @@
     --h-border-strong: rgba(255, 255, 255, 0.19);
     --h-border-accent: rgba(79, 176, 212, 0.45);
 
-    --h-safe: #4cb87a;
+    --h-safe: #62d08f;
     --h-safe-bg: rgba(76, 184, 122, 0.14);
     --h-warning: #d69a44;
     --h-warning-bg: rgba(214, 154, 68, 0.14);
@@ -248,8 +248,8 @@
     --h-cover-hover: rgba(255, 255, 255, 0.12);
     --h-cover-shadow: rgba(12, 23, 22, 0.78);
 
-    --h-grid-line: rgba(255, 255, 255, 0.045);
-    --h-grid-line-major: rgba(255, 255, 255, 0.07);
+    --h-grid-line: rgba(255, 255, 255, 0.16);
+    --h-grid-line-major: rgba(255, 255, 255, 0.24);
     --h-atmos-cool: rgba(79, 176, 212, 0.14);
     --h-atmos-warm: rgba(255, 166, 46, 0.05);
     --h-atmos-green: rgba(69, 192, 120, 0.07);
@@ -287,7 +287,7 @@
   --h-border-strong: rgba(255, 255, 255, 0.19);
   --h-border-accent: rgba(79, 176, 212, 0.45);
 
-  --h-safe: #4cb87a;
+  --h-safe: #62d08f;
   --h-safe-bg: rgba(76, 184, 122, 0.14);
   --h-warning: #d69a44;
   --h-warning-bg: rgba(214, 154, 68, 0.14);
@@ -332,8 +332,8 @@
   --h-cover-hover: rgba(255, 255, 255, 0.12);
   --h-cover-shadow: rgba(12, 23, 22, 0.78);
 
-  --h-grid-line: rgba(255, 255, 255, 0.045);
-  --h-grid-line-major: rgba(255, 255, 255, 0.07);
+  --h-grid-line: rgba(255, 255, 255, 0.16);
+  --h-grid-line-major: rgba(255, 255, 255, 0.24);
   --h-atmos-cool: rgba(79, 176, 212, 0.14);
   --h-atmos-warm: rgba(255, 166, 46, 0.05);
   --h-atmos-green: rgba(69, 192, 120, 0.07);
@@ -408,6 +408,7 @@
   /* Region-scale status surfaces (bg-status-normal / -warning / -critical /
      -none). Whole-region tints, not chips — see the note in :root. */
   --color-status-normal: var(--h-status-normal);
+  --color-status-watch: var(--h-status-watch);
   --color-status-warning: var(--h-status-warning);
   --color-status-critical: var(--h-status-critical);
   --color-status-none: var(--h-status-none);
@@ -760,37 +761,22 @@
   will-change: transform;
 }
 
-/* Layer 1 — the graticule. 64px minor module, 256px major.
+/* Layer 1 — the dot grid. 64px minor module, 256px major (every 4th dot, larger).
  *
- * Static. This layer used to drift against the scroll; the whole scroll-driven
- * system was removed because the effect read as either invisible or wrong, and
- * the page is stronger as a still composition. All four gradients therefore sit
- * at one fixed position — the minor and major modules are one drawing.
+ * 22 Oct r6: was a square line graticule (two 1px rules at each of two scales);
+ * replaced with dots at the same two scales per request. Still one texture, still
+ * static (the whole scroll-driven drift system was removed earlier because the
+ * effect read as either invisible or wrong — the page is stronger as a still
+ * composition), still the page's one background system — see the note below this
+ * rule on why a second, hero-only dot texture is NOT what this is.
  *
- * The mask fades the grid toward the edges so it reads as a survey sheet laid
- * on the page rather than wallpaper running under it.
+ * The mask fades the dots toward the edges so it reads as a sheet of graph-paper
+ * dots laid on the page rather than wallpaper running under it.
  */
+/* The dot grid is switched off (22 Oct r7). The layer itself is kept in place rather than
+   deleted so the tokens and scroll-free structure remain if it is wanted back. */
 .horizon-atmosphere::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(to right, var(--h-grid-line) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--h-grid-line) 1px, transparent 1px),
-    linear-gradient(to right, var(--h-grid-line-major) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--h-grid-line-major) 1px, transparent 1px);
-  background-size:
-    64px 64px,
-    64px 64px,
-    256px 256px,
-    256px 256px;
-  background-position:
-    center,
-    center,
-    center,
-    center;
-  -webkit-mask-image: radial-gradient(ellipse 96% 80% at 50% 42%, #000 42%, transparent 100%);
-  mask-image: radial-gradient(ellipse 96% 80% at 50% 42%, #000 42%, transparent 100%);
+  content: none;
 }
 
 /* Layer 3 — two soft atmospheric pools. The warm one sits high-left where
@@ -827,27 +813,27 @@
  * lost its only job — and what remained was its side effect: a soft horizontal
  * shadow across the middle of every page, which is the "bóng ngang" reported
  * against the background. Deleted rather than softened; the atmosphere is now
- * the graticule and the gradient pools, neither of which has an edge.
+ * Layer 1 (the dot grid above) and the gradient pools, neither of which has an edge.
  */
 
 /*
- * LAYER 2: the dot field. Hero moments only — never a whole-page texture.
- * `--dot-fade` keeps it from running into the content below the hero.
- */
-/*
  * THE DOT FIELD IS GONE — deliberately, and this note is here so it does not
- * come back by accident.
+ * come back by accident. (Layer 1 itself is a dot grid as of 22 Oct r6 — this
+ * note is about a DIFFERENT, second, hero-only dot texture that used to exist
+ * on top of it; see below.)
  *
- * There used to be a second global texture: a 26px radial-dot field bled
- * edge-to-edge behind every hero. Because it lived on the shared PageHero and
- * the graticule lives on the always-present atmosphere, the two were on
- * screen together on all four public routes — dots and squares competing over
- * the same area, which is what made the pages read as visually busy.
+ * There used to be a second global texture on top of today's dot grid: a 26px
+ * radial-dot field bled edge-to-edge behind every hero. Because it lived on
+ * the shared PageHero and Layer 1 lives on the always-present atmosphere, the
+ * two were on screen together on all four public routes — two different dot
+ * scales competing over the same area, which is what made the pages read as
+ * visually busy.
  *
- * One primary background system, per the owner's direction: the square
- * survey grid, over the gradient atmosphere. If a sparse dot texture is ever
- * wanted again it belongs inside BackgroundAtmosphere, scoped to a region,
- * and never simultaneously with the grid over that same region.
+ * One primary background system, per the owner's direction: Layer 1 above
+ * (a dot grid as of 22 Oct r6, a square survey grid before that), over the
+ * gradient atmosphere. If a second, denser dot texture is ever wanted again
+ * it belongs inside BackgroundAtmosphere, scoped to a region, and never
+ * simultaneously with Layer 1 over that same region.
  */
 
 /* A hairline brand rule — the green→orange sweep of the mark, used to open
@@ -1034,7 +1020,11 @@
   background: currentColor;
 }
 .site-header--cover nav a:not(.nav-link-active),
-.site-header--cover > div > div > button {
+.site-header--cover .site-control {
+  /* A plain descendant selector on the control's own class, not a `>` chain tied to the
+     header's current div nesting — the nesting has already changed once (the theme/language
+     controls gained a wrapping flex div) and silently broke a depth-specific selector here,
+     which is why they rendered in the wrong (non-cover) color over the hero photo. */
   color: var(--h-cover-ink);
 }
 .site-header--cover .nav-link-active { color: var(--h-cover-ink); }
@@ -1300,55 +1290,11 @@ main {
   z-index: 0;
   pointer-events: none;
 
-  /*
-   * THE TRANSITION, and why it is a MASK rather than a gradient overlay.
-   *
-   * Every previous attempt painted a gradient that faded to `var(--h-canvas)`
-   * on top of the picture. That can never be continuous, because the page
-   * below the hero is not flat canvas — it is canvas PLUS the atmosphere
-   * layers (graticule, gradient pools, vignette). So the fade always resolved
-   * to a slightly different surface than the thing underneath it, and the
-   * mismatch read as a band: dark in dark mode, muddy beige in light.
-   *
-   * Masking the image's own alpha instead means there is no destination
-   * colour to match. The picture simply becomes transparent over the last
-   * quarter of the hero and the REAL page background — whatever it happens to
-   * be, in either theme — shows through. Continuity is structural rather than
-   * something to be tuned.
-   *
-   * Long and soft: the dissolve now begins at 40% and runs to the bottom —
-   * ~540px of travel at 900px tall — across nine stops rather than four. The
-   * earlier four-stop version started at 62% and, with big jumps between
-   * stops, the eye could still find the point where the falloff began. More
-   * stops over a longer distance means no single step is large enough to
-   * register as a boundary.
-   */
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    #000 0%,
-    #000 40%,
-    rgba(0, 0, 0, 0.97) 52%,
-    rgba(0, 0, 0, 0.88) 62%,
-    rgba(0, 0, 0, 0.72) 71%,
-    rgba(0, 0, 0, 0.52) 79%,
-    rgba(0, 0, 0, 0.32) 86%,
-    rgba(0, 0, 0, 0.16) 92%,
-    rgba(0, 0, 0, 0.06) 96%,
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to bottom,
-    #000 0%,
-    #000 40%,
-    rgba(0, 0, 0, 0.97) 52%,
-    rgba(0, 0, 0, 0.88) 62%,
-    rgba(0, 0, 0, 0.72) 71%,
-    rgba(0, 0, 0, 0.52) 79%,
-    rgba(0, 0, 0, 0.32) 86%,
-    rgba(0, 0, 0, 0.16) 92%,
-    rgba(0, 0, 0, 0.06) 96%,
-    transparent 100%
-  );
+  /* 22 Oct r6 — no mask. The hero used to dissolve into the page at its own
+     bottom edge (a mask-image fade, not a gradient overlay, for the reasons a
+     flat-gradient fade fails — see the git history on this rule if that
+     reasoning is wanted again). Removed per request: the photo now simply
+     fills the box and ends there, straight into the next section. */
 }
 
 .hero-canvas__image {
@@ -1453,7 +1399,14 @@ main {
 .h-text .h-text,.h-media .h-media,.h-spatial .h-media { padding-inline: 0; }
 .public-main--home { padding-top: 0; }
 .public-main:not(.public-main--home) .h-text { padding-inline: 0; max-width: var(--width-text); }
-.horizon-atmosphere::before,.horizon-atmosphere::after { display: none; }
+/* A stray, unscoped copy of this rule lived here (no selector condition around it —
+   depth-0 in the stylesheet), unconditionally hiding BackgroundAtmosphere's dot grid
+   AND gradient-pool layers on every single page since long before this change. It is
+   NOT the same as the two properly-scoped copies further down that disable these layers
+   specifically where the home hero (or another page) paints its own photographic scene
+   over `.horizon-atmosphere` instead — this one had no such condition and so applied
+   everywhere, which is why the page's one stated background system has not actually
+   been visible anywhere. Removed; the scoped copies are what actually need it. */
 .site-header { background: var(--h-canvas); border-bottom: 1px solid var(--h-border); }
 .site-header.site-header--cover { background: transparent; border-bottom: 0; backdrop-filter: none; }
 .hero-canvas { top: 0; height: max(760px, 100svh); mask-image: none; -webkit-mask-image: none; }
@@ -2176,10 +2129,20 @@ main {
     --h-scene-night: url('/assets/backgrounds/f5da8a9c-7d5a-4217-8f5c-f04172790e9d.png');
   }
 }
-.horizon-atmosphere { background: var(--h-scene-image) center bottom / cover no-repeat; opacity: var(--h-scene-opacity); }
-.horizon-atmosphere::before,.horizon-atmosphere::after { display: none; }
-.hero-canvas { background: var(--h-scene-image) center bottom / cover no-repeat; }
-.hero-canvas__scrim { background: linear-gradient(90deg,rgba(10,30,31,.63),rgba(10,30,31,.12) 75%),linear-gradient(0deg,rgba(10,30,31,.23),transparent 70%); }
+/* A second unscoped pair of rules lived here, same bug shape as the one removed above:
+   they redefined `.horizon-atmosphere`'s own background to a near-invisible day/night
+   scene-photo wash and hid its dot-grid + gradient-pool layers, with no selector
+   condition restricting either to a particular page. The home hero is the only place
+   `--h-scene-image` is meant to show through the page background, and home already
+   hides `.horizon-atmosphere` outright (see `body:has(.hero-canvas)` below) — so on
+   home this pair was always inert, and its only real effect was to silently replace the
+   one page-wide background system (Layer 1 above + the gradient pools) with almost
+   nothing on every OTHER page. Removed; `--h-scene-day/night/image/opacity` stay
+   defined above because `.hero-canvas__photo` still uses them for the actual hero. */
+.hero-canvas__photo { position: absolute; inset: 0; height: 100svh; background: var(--h-scene-image) center bottom / cover no-repeat; }
+/* Horizontal scrim only. The bottom (0deg) darkening was removed: it peaked exactly at the
+   hero box's lower edge, so it ended in a visible hard stripe where the hero met the page. */
+.hero-canvas__scrim { background: linear-gradient(90deg,rgba(10,30,31,.63),rgba(10,30,31,.12) 75%); }
 .horizon-cover__title > span { white-space: nowrap; }
 .field-atlas-flow .h-media,.field-atlas-flow .h-spatial { max-width: calc(var(--width-media) + 2 * var(--gutter)); }
 .report-single { max-width: none; }
@@ -2264,7 +2227,11 @@ main {
 .report-observation-layout { background: var(--h-field-surface); color: var(--h-foreground); }
 .report-single .report-station-choice:hover { background: var(--h-field-hover); }
 .field-place-label,.admin-login-place > div { color: #142924; }
-.hero-name-highlight { background: #cbd7bb; color: #142924; padding: 0 .1em .025em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.hero-name-highlight { background: rgba(12,38,34,.68); color: #fff; padding: 0 .1em .025em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+/* Hero title: white in both themes — it always sits on the photographic scene plus its scrim, never on the page canvas.
+   The name is a white word on a deep-green plate (previously dark text on a pale plate, which read as black). */
+.horizon-cover__title { color: #fff; text-shadow: 0 1px 22px rgba(8,24,22,.32); }
+.horizon-cover__title .hero-name-highlight { color: #fff; text-shadow: none; }
 .floating-contacts { position: fixed; z-index: var(--z-drawer); left: 1rem; top: 50%; transform: translateY(-50%); }
 .floating-contacts__links { display: flex; flex-direction: column; gap: .45rem; }
 .floating-contacts a,.floating-contacts__toggle { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--h-surface); color: var(--h-foreground); box-shadow: 0 3px 12px rgba(0,0,0,.16); transition: background 180ms,color 180ms; }
@@ -2295,3 +2262,102 @@ main {
 
 /* Leaflet labels retain their light fill in either theme. */
 .leaflet-tooltip { color: #142924; }
+
+/* STATUS SURFACES — final scale: restrained green -> neutral white -> red, four distinct severities.
+   normal = soft green, watch = warm neutral (between safe and elevated), warning = light red, critical = stronger red.
+   Colour is never the only carrier: every status surface also prints the status word and a per-severity glyph, and a
+   metric with no registry threshold (or no data) keeps its plain domain surface and prints no status at all. */
+.observatory-bento,.admin-console-workspace { --h-status-normal: #d8ecde; --h-status-watch: #f4eedd; --h-status-warning: #efc7be; --h-status-critical: #e2998d; --h-status-none: var(--h-surface); }
+:root[data-theme="dark"] .observatory-bento,:root[data-theme="dark"] .admin-console-workspace { --h-status-normal: #17392b; --h-status-watch: #38352a; --h-status-warning: #4f302d; --h-status-critical: #6e3436; }
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) .observatory-bento,:root:not([data-theme="light"]) .admin-console-workspace { --h-status-normal: #17392b; --h-status-watch: #38352a; --h-status-warning: #4f302d; --h-status-critical: #6e3436; }
+}
+
+/* a11y: Leaflet attribution links must not rely on colour alone (axe link-in-text-block). */
+.leaflet-container .leaflet-control-attribution a { text-decoration: underline !important; text-underline-offset: 2px; }
+
+/* ===========================================================================
+ * STATUS TREATMENT (22 Oct revision). Colour reaches the card from the threshold registry only:
+ * the component sets data-status when a registry band exists, "none" otherwise. Each level pairs a
+ * hue with a glyph + word in the header (never colour alone). Unclassified/missing = plain surface.
+ * ======================================================================== */
+.observatory-bento {
+  --st-ok: #17803f; --st-watch: #a86800; --st-warn: #c24a0d; --st-critical: #c4202f;
+}
+:root[data-theme="dark"] .observatory-bento { --st-ok: #4fd98a; --st-watch: #f2b53a; --st-warn: #ff9150; --st-critical: #ff6b73; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .observatory-bento { --st-ok: #4fd98a; --st-watch: #f2b53a; --st-warn: #ff9150; --st-critical: #ff6b73; }
+}
+.observatory-bento .status-card[data-status="ok"] { --st: var(--st-ok); }
+.observatory-bento .status-card[data-status="watch"] { --st: var(--st-watch); }
+.observatory-bento .status-card[data-status="warn"] { --st: var(--st-warn); }
+.observatory-bento .status-card[data-status="critical"] { --st: var(--st-critical); }
+.observatory-bento .status-card:is([data-status="ok"],[data-status="watch"],[data-status="warn"],[data-status="critical"]) {
+  background: color-mix(in srgb, var(--st) 15%, var(--h-surface));
+  box-shadow: inset 5px 0 0 var(--st);
+  border-color: color-mix(in srgb, var(--st) 45%, var(--h-border, transparent));
+}
+.observatory-bento .status-card:is([data-status="ok"],[data-status="watch"],[data-status="warn"],[data-status="critical"]) .region-heading-status {
+  padding: 1px 7px; border-radius: 999px; font-weight: 600;
+  background: color-mix(in srgb, var(--st) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--st) 70%, transparent);
+}
+.observatory-bento .status-card:is([data-status="ok"],[data-status="watch"],[data-status="warn"],[data-status="critical"]) .region-heading svg:not(:first-child) { color: var(--st); }
+
+/* Collapsed map credits: a compact (i) button; the full legal credit opens in place and is never removed. */
+.horizon-map-credits { position: relative; margin: 0 8px 8px 0 !important; border: 0 !important; background: none !important; }
+.horizon-map-credits-btn {
+  width: 22px; height: 22px; border-radius: 999px; font: italic 600 12px/1 serif; cursor: pointer;
+  background: color-mix(in srgb, var(--h-surface) 82%, transparent); color: var(--h-foreground-muted);
+  border: 1px solid var(--h-border); backdrop-filter: blur(4px);
+}
+.horizon-map-credits-btn:focus-visible { outline: 2px solid var(--h-brand-blue); outline-offset: 2px; }
+.horizon-map-credits-panel {
+  position: absolute; right: 0; bottom: 28px; width: max-content; max-width: min(300px, 70vw); padding: 6px 9px;
+  border-radius: 8px; border: 1px solid var(--h-border); background: var(--h-surface-raised); color: var(--h-foreground-muted);
+  font: 400 11px/1.4 var(--font-sans, system-ui); box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+}
+.horizon-map-credits-panel[hidden] { display: none; }
+.horizon-map-credits-panel a { color: var(--h-brand-blue); text-decoration: underline; text-underline-offset: 2px; }
+
+/* HERO: one photograph, one scroll context. The home hero paints the day/night scene itself
+   (.hero-canvas, scrolls with the page, scrim lives on the same element).
+
+   22 Oct r6 — the scroll-revealed bottom fade is removed per request. `.hero-canvas` is back to
+   exactly one screen tall with no mask: the photo (`.hero-canvas__photo`, pinned to 100svh with
+   true `cover` — see above, guarantees full coverage at any aspect ratio) fills the box edge to
+   edge and the hero ends cleanly at its own bottom edge, straight into the next section.
+
+   `.horizon-atmosphere` (the dot grid + gradient pools) used to be hidden on the WHOLE home page,
+   hero and every section below it, with the stated reason "two copies of one photograph moving
+   independently" — `.horizon-atmosphere` used to also paint the hero's own day/night scene photo
+   (see the removed "Final refinement" block above), and that second, independently-scrolling copy
+   was what visually misaligned against the hero's real one. `.horizon-atmosphere` no longer paints
+   any photo, so that reason is gone: Home now gets the same dot-grid atmosphere as every other page.
+   It stays invisible for the hero's own first screen regardless, simply because the hero's own
+   opaque photo (`.hero-canvas__photo`, in front, `z-index: 0`, vs. the atmosphere's `z-index: -1`)
+   fully covers it there — it only becomes visible once a reader scrolls past the hero. */
+@media (prefers-reduced-motion: reduce) { .hero-canvas, .hero-canvas * { transition: none !important; animation: none !important; } }
+
+/* Header controls (theme icon, VI/EN). Plain, borderless — same grammar as the nav links beside them,
+   not a framed chip. The text control inherits the header's own font (not a mono/data face), so "VI"/
+   "EN" reads like the rest of the nav, just bold.
+
+   The "dimmed" look matches the inactive nav links by reusing their own muted-foreground COLOR token,
+   not by applying `opacity` to the full foreground color. Opacity thins the glyph itself (fading its
+   anti-aliased edges toward whatever sits behind it), which reads as a different, washed-out hue next
+   to text colored with the token directly — that mismatch is what made the two controls look off
+   against the rest of the header. Using the same token at full opacity keeps them one visual family. */
+.site-control {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  background: transparent; color: var(--h-foreground-muted); cursor: pointer; border: 0; border-radius: .375rem;
+  transition: color var(--motion-base, 200ms), background-color var(--motion-base, 200ms);
+}
+.site-control:hover { color: var(--h-foreground); background: color-mix(in srgb, currentColor 8%, transparent); }
+.site-control:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; color: var(--h-foreground); }
+.site-control--icon { width: 2.25rem; height: 2.75rem; }
+.site-control--text { height: 2.75rem; padding-inline: .375rem; font: inherit; font-weight: 600; font-size: 13px; letter-spacing: .02em; }
+/* Over the hero photo the controls stay on the cover-ink color at every state — hover/focus
+   must not fall back to the plain (dark-on-light) foreground token used on a solid header. */
+.site-header--cover .site-control:hover,
+.site-header--cover .site-control:focus-visible { color: var(--h-cover-ink); }

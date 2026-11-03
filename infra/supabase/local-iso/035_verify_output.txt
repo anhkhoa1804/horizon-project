@@ -1,0 +1,25 @@
+== PREFLIGHT
+rows|93|needs_ec|91|needs_temp|90
+checksum_salinity|1dfd692507b452ebe510167afb49cf57
+c1_before|1.111|22.2
+public_view_before||0.061
+== APPLY 035 (single transaction)
+psql:../migrations/035_mirror_water_ec_temperature.sql:36: NOTICE:  trigger "environmental_mirror_water_columns" for relation "public.environmental_readings" does not exist, skipping
+== POSTFLIGHT
+remaining_needs_ec|0|remaining_needs_temp|0
+checksum_salinity|1dfd692507b452ebe510167afb49cf57
+SALINITY UNCHANGED: yes
+c1_after_must_be_1.111_22.2|1.111|22.2
+d1_must_be_null|t|t
+e1_ec_copied_temp_null|0.200|t
+public_view_after|0.123|29.0|0.061
+== NEW OLD-STYLE INSERT (trigger must mirror)
+new_row|0.500|30.1
+INSERT 0 1
+public_view_latest|0.500|30.1
+== IDEMPOTENCY (re-apply)
+re-apply OK
+rows_unchanged_count|94
+== ROLLBACK (trigger+function only; data copies are retained, they equal the source values)
+rollback OK
+trigger_exists_after_rollback|0

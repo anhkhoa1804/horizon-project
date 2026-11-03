@@ -72,8 +72,14 @@ export class SupabaseDb implements DbPort {
       sensor_height_cm: row.sensor_height_cm,
       distance_cm: row.distance_cm,
       ec_ms_cm: row.ec_ms_cm,
+      // Public/Admin reading repositories use the water-qualified columns.
+      // Keep these canonical projections in step with the ingest contract's
+      // shorter firmware names; otherwise accepted EC/temperature disappear
+      // from the authoritative Admin read model.
+      water_ec_ms_cm: row.ec_ms_cm,
       ec_us_cm: row.ec_us_cm,
       temperature_c: row.temperature_c,
+      water_temp_c: row.temperature_c,
       tds_ppm: row.tds_ppm,
       sequence: row.sequence,
       summary_minutes: row.summary_minutes,

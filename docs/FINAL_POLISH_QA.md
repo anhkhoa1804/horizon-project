@@ -42,4 +42,4 @@ Browser screenshots and secret-bearing authenticated session state are held outs
 
 ## Remote-control follow-up
 
-The stored-intent-only observations above are historical. Remote configuration v1 is now implemented and software tested; see [REMOTE_CONFIGURATION_QA.md](REMOTE_CONFIGURATION_QA.md). Hardware remains unverified, polling remains disabled, and migration 034 has not been deployed.
+The stored-intent-only observations above are historical. Remote configuration v1 is now implemented and software tested; see [REMOTE_CONFIGURATION_QA.md](REMOTE_CONFIGURATION_QA.md). Migration 034 was applied to the configured Supabase database on 7 October 2026. Hardware remains unverified and polling remains disabled. See [ADMIN_DATA_FLOW_AUDIT.md](ADMIN_DATA_FLOW_AUDIT.md) for the current full-system findings.

@@ -102,7 +102,7 @@ export function AlertConfigPanel({
   return (
     <SectionShell
       title="Ngưỡng cảnh báo"
-      lead="Quy tắc cảnh báo mong muốn do người phụ trách lưu. Chưa nối với bộ đánh giá cảnh báo hay firmware; màu quan trắc sử dụng bảng ngưỡng đang hiệu lực phía trên."
+      lead="Chỉ lưu ý định của người phụ trách; hiện chưa được đánh giá và không thể thực thi trên thiết bị. Màu quan trắc sử dụng bảng ngưỡng đang hiệu lực phía trên."
     >
       {configs.length > 0 ? (
         <div className="divide-y divide-border border-y border-border">
@@ -309,8 +309,8 @@ export function DataExportPanel() {
             name="dataset"
             className="h-11 w-full rounded-md border border-border bg-background px-3 text-sm"
           >
-            <option value="environmental">Nước &amp; không khí</option>
-            <option value="soil">Đất</option>
+            <option value="environmental">Nước · STATION_01</option>
+            <option value="soil">Đất &amp; không khí · STATION_02</option>
           </select>
         </div>
         <div className="space-y-1.5">

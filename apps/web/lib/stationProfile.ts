@@ -225,13 +225,27 @@ export function sensorStatusLabel(status?: SensorStatus | null): string {
   }
 }
 
-export function qualityFor(profile: StationProfile, reading: EnvironmentalReading | null): QualityState {
-  if (profile.kind !== "water" || !reading) return "valid";
-  const hasFault = reading.fault_flags > 0 || reading.ec_probe_status === "fault" || reading.ultrasonic_status === "fault";
-  if (hasFault) return "error";
-  return reading.ec_probe_status === "unknown" || reading.ultrasonic_status === "unknown"
-    ? "estimated"
-    : "valid";
+/**
+ * Quality of a water reading, or null when there is no evidence either way.
+ *
+ * "valid" is a positive claim and needs positive evidence: a numeric
+ * `fault_flags` the instrument actually reported (0 = it reported no fault).
+ * A missing/non-numeric value is absence of evidence, NOT absence of fault,
+ * so it yields null (the UI shows no quality chip) instead of "valid".
+ * Availability (is there a reading), quality (can it be trusted), sensor
+ * health (probe status) and severity (threshold) stay separate axes.
+ */
+export function qualityFor(profile: StationProfile, reading: EnvironmentalReading | null): QualityState | null {
+  if (!reading) return null;
+  if (profile.kind !== "water") return null;
+  return waterQuality(reading.fault_flags, reading.ec_probe_status, reading.ultrasonic_status);
+}
+
+export function waterQuality(faultFlags: unknown, ecProbe: unknown, ultrasonic: unknown): QualityState | null {
+  const flags = typeof faultFlags === "number" && Number.isFinite(faultFlags) ? faultFlags : null;
+  if ((flags ?? 0) > 0 || ecProbe === "fault" || ultrasonic === "fault") return "error";
+  if (flags === null) return null;
+  return ecProbe === "unknown" || ultrasonic === "unknown" ? "estimated" : "valid";
 }
 
 /**

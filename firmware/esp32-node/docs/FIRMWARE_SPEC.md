@@ -10,10 +10,15 @@ See the authoritative [remote configuration v1 specification](../../../docs/REMO
 
 ## Build
 
-`pio run -d firmware/esp32-node -e station1 -e station2 -e gateway`
+`npm run firmware:build:gateway`, `npm run firmware:build:station1`, and
+`npm run firmware:build:station2` (or `npm run firmware:build:targets`).
 
-Explicit build_entries select one physical target each. Platform espressif32@6.12.0, Arduino framework, esp32dev board, ArduinoJson@7.4.2. No OTA implementation or hardware validation is implied by these builds.
+Explicit build_entries select one physical target each. Platform
+`espressif32@6.12.0` selects Arduino framework 2.0.17, `esp32dev`, and
+ArduinoJson 7.4.2. CI pins PlatformIO Core 6.1.18 and caches downloaded
+packages by the firmware configuration. No OTA implementation or hardware
+validation is implied by these builds.
 
 ## Provisioning and field checks
 
-Use the untracked example-based station/gateway secret headers; never commit real keys. Follow [FIELD_RELEASE_CHECKLIST.md](FIELD_RELEASE_CHECKLIST.md). Validate real sensor calibration, RF delivery, modem behavior, flash persistence, deep-sleep timing and power consumption on hardware before release.
+Use the untracked example-based station/gateway secret headers; never commit real keys. Follow [DEPLOYMENT_CREDENTIAL_CONTRACT.md](../../../docs/DEPLOYMENT_CREDENTIAL_CONTRACT.md) and [FIELD_RELEASE_CHECKLIST.md](FIELD_RELEASE_CHECKLIST.md). Validate real sensor calibration, RF delivery, modem behavior, flash persistence, deep-sleep timing and power consumption on hardware before release.

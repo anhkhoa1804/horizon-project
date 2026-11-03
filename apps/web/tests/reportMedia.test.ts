@@ -10,8 +10,8 @@ describe("report evidence media rules", () => {
 
   it("accepts configured evidence types within their own bounds", () => {
     assert.deepEqual(mediaRule("image/jpeg"), { type: "photo", maxBytes: 8 * 1024 * 1024, extension: "jpg" });
-    assert.deepEqual(validateReportMedia({ type: "audio/wav", size: 8_044 } as File), { type: "audio", extension: "wav" });
-    assert.deepEqual(validateReportMedia({ type: "video/mp4", size: 20 * 1024 * 1024 } as File), { type: "video", extension: "mp4" });
+    assert.deepEqual(validateReportMedia({ type: "audio/wav", size: 8_044 } as File), { type: "audio", extension: "wav", mimeType: "audio/wav" });
+    assert.deepEqual(validateReportMedia({ type: "video/mp4", size: 20 * 1024 * 1024 } as File), { type: "video", extension: "mp4", mimeType: "video/mp4" });
   });
 
   it("rejects unknown, empty, and oversized files before an upload starts", () => {

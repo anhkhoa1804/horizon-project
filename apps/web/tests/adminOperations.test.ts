@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 
-import { asManagedStationId, optionalNumber, optionalText } from "@/lib/admin/operations";
+import { asManagedStationId, optionalNumber, optionalText, runAuditedAdminWrite } from "@/lib/admin/operations";
 
 /**
  * Guards the operator console's persistence layer (migration 022).
@@ -67,6 +67,47 @@ describe("admin form parsing", () => {
     assert.equal(optionalText("  note  "), "note");
     assert.equal(optionalText("   "), null);
     assert.equal(optionalText(null), null);
+  });
+});
+
+describe("admin writes surface persistence and audit outcomes", () => {
+  const event = { actor: "admin@example.test", action: "test.saved", entity: "test", entityId: "1" };
+
+  it("does not report a failed database write as saved or append a success audit", async () => {
+    let auditCalls = 0;
+    const result = await runAuditedAdminWrite(
+      async () => ({ error: new Error("database unavailable") }),
+      event,
+      async () => { auditCalls += 1; return true; },
+    );
+    assert.equal(result, "write_failed");
+    assert.equal(auditCalls, 0);
+  });
+
+  it("reports missing rows and audit failure separately from successful persistence", async () => {
+    assert.equal(await runAuditedAdminWrite(async () => ({ error: null, count: 0 }), event, async () => true), "not_found");
+    assert.equal(await runAuditedAdminWrite(async () => ({ error: null, count: 1 }), event, async () => false), "audit_failed");
+    assert.equal(await runAuditedAdminWrite(async () => ({ error: null, count: 1 }), event, async () => true), "saved");
+  });
+
+  it("makes every Admin mutation inspect the shared write outcome", () => {
+    const page = code(SRC("app", "admin", "page.tsx"));
+    const mutations = code(SRC("lib", "admin", "mutations.ts"));
+    assert.match(page, /function finishMutation[\s\S]*outcomeError\(result\)/);
+    for (const action of [
+      "addAdminEmail", "removeAdminEmail", "markReportViewed", "saveAlertConfig",
+      "addMaintenanceLog", "addCalibrationRecord", "saveSoilWaterModel",
+      "saveWaterLevelContext", "resolveReport",
+    ]) {
+      const actionBody = page.slice(page.indexOf(`async function ${action}(`), page.indexOf("\nfunction finishMutation", page.indexOf(`async function ${action}(`)));
+      assert.match(actionBody, /finishMutation\(await mutate/);
+      const mutationName = `mutate${action[0].toUpperCase()}${action.slice(1)}`;
+      const start = mutations.indexOf(`async function ${mutationName}(`);
+      assert.notEqual(start, -1, `${action} is missing`);
+      const end = mutations.indexOf("\nexport async function ", start + 1);
+      const body = mutations.slice(start, end === -1 ? mutations.length : end);
+      assert.match(body, /runAuditedAdminWrite/, `${action} can finish without checking its database/audit outcome`);
+    }
   });
 });
 

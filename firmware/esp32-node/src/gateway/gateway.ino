@@ -7,6 +7,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include "gateway_types.h"
+#include "simple_telemetry.h"
 bool initModem();
 #if __has_include("gateway_secrets.h")
 #include "gateway_secrets.h"
@@ -1972,17 +1973,6 @@ static String simpleRxLine;
 static uint32_t lastSimpleSeq1 = 0xFFFFFFFFUL;
 static uint32_t lastSimpleSeq2 = 0xFFFFFFFFUL;
 
-uint16_t simpleCrc16(const String &text) {
-  uint16_t crc = 0xFFFF;
-  for (size_t i = 0; i < text.length(); ++i) {
-    crc ^= static_cast<uint16_t>(static_cast<uint8_t>(text[i])) << 8;
-    for (uint8_t bit = 0; bit < 8; ++bit) {
-      crc = (crc & 0x8000) ? static_cast<uint16_t>((crc << 1) ^ 0x1021) : static_cast<uint16_t>(crc << 1);
-    }
-  }
-  return crc;
-}
-
 String simpleField(const String &line, uint8_t index) {
   int start = 0;
   uint8_t current = 0;
@@ -1996,16 +1986,6 @@ String simpleField(const String &line, uint8_t index) {
     current += 1;
   }
 }
-
-String jsonNumberOrNullFromWire(const String &v) {
-  if (v.length() == 0 || v == "x" || v == "X") return "null";
-  return v;
-}
-
-bool wireValueMissing(const String &v) {
-  return v.length() == 0 || v == "x" || v == "X";
-}
-
 
 String dashboardWireText(const String &value) {
   if (value.length() == 0 || value == "x" || value == "X") return "-";
@@ -2208,35 +2188,10 @@ dashboardServer.on("/favicon.ico", HTTP_GET, []() { dashboardServer.send(204); }
   Serial.println("[WEB] Dashboard: http://192.168.4.1");
 }
 
-String scaledWireNumber(const String &v, float scale, uint8_t decimals) {
-  if (wireValueMissing(v)) return "null";
-  return String(v.toFloat() * scale, static_cast<unsigned int>(decimals));
-}
-
 // A receipt timestamp must never be part of the idempotency key: the same
 // staged frame can be posted again if the server committed it but the modem
 // lost the response. Hashing the complete CRC-validated LoRa frame makes that
 // retry stable while distinguishing a station reboot that reuses a sequence.
-uint64_t simpleFrameFingerprint(const String &line) {
-  uint64_t hash = 1469598103934665603ULL;  // FNV-1a 64-bit.
-  for (size_t i = 0; i < line.length(); ++i) {
-    hash ^= static_cast<uint8_t>(line[i]);
-    hash *= 1099511628211ULL;
-  }
-  return hash;
-}
-
-String stableStationMessageId(bool station1, const String &line, uint32_t seq) {
-  char messageId[64];
-  const uint64_t fingerprint = simpleFrameFingerprint(line);
-  snprintf(messageId, sizeof(messageId), "%s-%lu-%08lX%08lX",
-           station1 ? "STATION_01" : "STATION_02",
-           static_cast<unsigned long>(seq),
-           static_cast<unsigned long>(fingerprint >> 32),
-           static_cast<unsigned long>(fingerprint & 0xFFFFFFFFULL));
-  return String(messageId);
-}
-
 void sendSimpleAck(bool station1, uint32_t seq) {
   String ack = station1 ? "A1|" : "A2|";
   ack += String(seq);
@@ -2256,100 +2211,22 @@ void sendSimpleAck(bool station1, uint32_t seq) {
 }
 
 bool validateSimplePacket(const String &line, String &body) {
-  const int lastSep = line.lastIndexOf('|');
-  if (lastSep <= 0) return false;
-
-  body = line.substring(0, lastSep);
-  const String crcText = line.substring(lastSep + 1);
-  if (crcText.length() != 4) return false;
-
-  const uint16_t expected = static_cast<uint16_t>(strtoul(crcText.c_str(), nullptr, 16));
-  return simpleCrc16(body) == expected;
+  horizon::SimpleTelemetryFrame parsed;
+  const std::string input(line.c_str());
+  if (!horizon::parseSimpleTelemetryFrame(input, parsed)) return false;
+  const size_t lastSep = input.rfind('|');
+  body = String(input.substr(0, lastSep).c_str());
+  return true;
 }
 
 String simplePacketToStationJson(const String &line, bool station1, uint32_t seq) {
-  String json;
-  json.reserve(650);
-  const String messageId = stableStationMessageId(station1, line, seq);
-
-  if (station1) {
-    // S1|seq|min|distance|water|ec_ms|temp|tds|sal_ppt|bat_v|bat_pct|crc
-    const String minCount = simpleField(line, 2);
-    const String distance = simpleField(line, 3);
-    const String water = simpleField(line, 4);
-    const String ecMs = simpleField(line, 5);
-    const String temp = simpleField(line, 6);
-    const String tds = simpleField(line, 7);
-    const String salPpt = simpleField(line, 8);
-    const String batV = simpleField(line, 9);
-    const String batP = simpleField(line, 10);
-
-    const bool ecMissing = wireValueMissing(ecMs);
-    const bool ultrasonicMissing = wireValueMissing(water);
-    const uint8_t faultFlags = (ecMissing ? 0x01 : 0x00) | (ultrasonicMissing ? 0x02 : 0x00);
-
-    json += "{\"contract_version\":\"v1\",\"reading_kind\":\"water\",\"device_id\":\"STATION_01\",\"firmware_version\":\"simple-qos1-wire\",\"message_id\":\"";
-    json += messageId;
-    json += "\",\"timestamp\":0,\"fault_flags\":"; json += String(faultFlags); json += ",\"sequence\":"; json += String(seq);
-    json += ",\"summary_minutes\":"; json += jsonNumberOrNullFromWire(minCount);
-    json += ",\"sensor_height_cm\":350.0";
-    json += ",\"distance_cm\":"; json += jsonNumberOrNullFromWire(distance);
-    json += ",\"water_level\":"; json += jsonNumberOrNullFromWire(water);
-    json += ",\"ec_ms_cm\":"; json += jsonNumberOrNullFromWire(ecMs);
-    json += ",\"ec_us_cm\":"; json += scaledWireNumber(ecMs, 1000.0f, 0);
-    json += ",\"temperature_c\":"; json += jsonNumberOrNullFromWire(temp);
-    json += ",\"tds_ppm\":"; json += jsonNumberOrNullFromWire(tds);
-    json += ",\"salinity\":"; json += jsonNumberOrNullFromWire(salPpt);
-    json += ",\"salinity_ppm\":"; json += scaledWireNumber(salPpt, 1000.0f, 0);
-    json += ",\"battery_voltage\":"; json += jsonNumberOrNullFromWire(batV);
-    json += ",\"battery_percent\":"; json += jsonNumberOrNullFromWire(batP);
-    json += ",\"sensor_status\":{\"ec_probe\":\""; json += ecMissing ? "fault" : "ok";
-    json += "\",\"ultrasonic\":\""; json += ultrasonicMissing ? "fault" : "ok";
-    json += "\"},\"raw_station_payload\":{\"wire_protocol\":\"S1|...|CRC16\",\"gateway_id\":\""; json += GATEWAY_ID;
-    json += "\",\"timestamp_semantics\":\"gateway_network_receipt_time\"}}";
-  } else {
-    // S2|seq|min|airT|airH|soilT|moist|ec_ms|sal|tds|ph|bat_v|bat_pct|crc
-    const String minCount = simpleField(line, 2);
-    const String airT = simpleField(line, 3);
-    const String airH = simpleField(line, 4);
-    const String soilT = simpleField(line, 5);
-    const String moist = simpleField(line, 6);
-    const String ecMs = simpleField(line, 7);
-    const String sal = simpleField(line, 8);
-    const String tds = simpleField(line, 9);
-    const String ph = simpleField(line, 10);
-    const String batV = simpleField(line, 11);
-    const String batP = simpleField(line, 12);
-
-    const uint8_t faultFlags =
-      (wireValueMissing(airT) ? 0x01 : 0x00) |
-      (wireValueMissing(airH) ? 0x02 : 0x00) |
-      (wireValueMissing(soilT) ? 0x04 : 0x00) |
-      (wireValueMissing(moist) ? 0x08 : 0x00) |
-      (wireValueMissing(ecMs) ? 0x10 : 0x00) |
-      (wireValueMissing(sal) ? 0x20 : 0x00) |
-      (wireValueMissing(tds) ? 0x40 : 0x00) |
-      (wireValueMissing(ph) ? 0x80 : 0x00);
-
-    json += "{\"contract_version\":\"v1\",\"reading_kind\":\"soil\",\"device_id\":\"STATION_02\",\"firmware_version\":\"simple-qos1-wire\",\"message_id\":\"";
-    json += messageId;
-    json += "\",\"timestamp\":0,\"fault_flags\":"; json += String(faultFlags); json += ",\"sequence\":"; json += String(seq);
-    json += ",\"summary_minutes\":"; json += jsonNumberOrNullFromWire(minCount);
-    json += ",\"crop\":\"grapefruit\",\"soil\":{\"air_temp_c\":"; json += jsonNumberOrNullFromWire(airT);
-    json += ",\"air_humidity_pct\":"; json += jsonNumberOrNullFromWire(airH);
-    json += ",\"soil_temp_c\":"; json += jsonNumberOrNullFromWire(soilT);
-    json += ",\"soil_moisture_pct\":"; json += jsonNumberOrNullFromWire(moist);
-    json += ",\"soil_ec_ms_cm\":"; json += jsonNumberOrNullFromWire(ecMs);
-    json += ",\"soil_ec_us_cm\":"; json += scaledWireNumber(ecMs, 1000.0f, 0);
-    json += ",\"soil_salinity\":"; json += jsonNumberOrNullFromWire(sal);
-    json += ",\"soil_tds\":"; json += jsonNumberOrNullFromWire(tds);
-    json += ",\"soil_ph\":"; json += jsonNumberOrNullFromWire(ph);
-    json += "},\"battery_voltage\":"; json += jsonNumberOrNullFromWire(batV);
-    json += ",\"battery_percent\":"; json += jsonNumberOrNullFromWire(batP);
-    json += ",\"raw_station_payload\":{\"wire_protocol\":\"S2|...|CRC16\",\"gateway_id\":\""; json += GATEWAY_ID;
-    json += "\",\"timestamp_semantics\":\"gateway_network_receipt_time\"}}";
-  }
-  return json;
+  (void)station1;
+  (void)seq;
+  horizon::SimpleTelemetryFrame parsed;
+  const std::string input(line.c_str());
+  if (!horizon::parseSimpleTelemetryFrame(input, parsed)) return "";
+  const std::string json = horizon::simplePacketToTelemetryJson(parsed, input, GATEWAY_ID);
+  return String(json.c_str());
 }
 
 void stagePairedUpload(const String &payload, bool station1) {

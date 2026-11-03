@@ -22,24 +22,23 @@ import {
 } from "@/components/admin/operations-panels";
 import { loadApplicationProfiles, loadThresholdRegistry, loadSoilWaterModels, loadWaterLevelContexts } from "@/lib/monitoring/thresholds";
 import {
-  asManagedStationId,
   loadAlertConfigs,
   loadAuditEvents,
   loadCalibrationRecords,
   loadMaintenanceLogs,
-  optionalNumber,
-  optionalText,
-  recordAuditEvent,
 } from "@/lib/admin/operations";
+import {
+  mutateAddAdminEmail, mutateRemoveAdminEmail, mutateMarkReportViewed,
+  mutateSaveAlertConfig, mutateAddMaintenanceLog, mutateAddCalibrationRecord,
+  mutateSaveSoilWaterModel, mutateSaveWaterLevelContext, mutateResolveReport,
+  type AdminMutationResult,
+} from "@/lib/admin/mutations";
 import { redirect } from "next/navigation";
 import { Bell, ShieldCheck, Trash2, UserPlus, ArrowUpRight } from "lucide-react";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { SignOutButton } from "@/components/auth/sign-out-button";
-import {
-  adminAllowedEmails,
-  loadAdminAllowedEmailEntries,
-  normalizeEmail,
-} from "@/lib/auth/adminAllowlist";
+import { loadAdminAllowedEmailEntries } from "@/lib/auth/adminAllowlist";
+import { ADMIN_REPORT_PAGE_SIZE, loadAdminCommunityReportPage, parseReportQuery, type AdminReportStatusFilter } from "@/lib/admin/reports";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -112,12 +111,6 @@ function defaultConfig(stationId: string): RuntimeConfig {
     sleep_interval_seconds: intervalSeconds,
     mode: "normal",
   };
-}
-
-function nullableUuid(value: string): string | null {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
-    ? value
-    : null;
 }
 
 async function requireAdmin() {
@@ -202,32 +195,21 @@ async function loadAdminMetrics(
   }
 }
 
-async function loadCommunityReports(): Promise<CommunityReport[]> {
+interface CommunityReportPage {
+  reports: CommunityReport[];
+  total: number | null;
+  ok: boolean;
+}
+
+async function loadCommunityReports(query: { status: AdminReportStatusFilter; page: number }): Promise<CommunityReportPage> {
   const supabase = createServiceClient();
   if (!supabase) {
-    return [];
+    return { reports: [], total: null, ok: false };
   }
 
-  const { data, error } = await supabase
-    .from("damage_logs")
-    .select("id, description, status, lat, lng, timestamp, viewed_at")
-    .order("timestamp", { ascending: false })
-    .limit(20);
-
-  if (error) {
-    return [];
-  }
-  const reports = (data ?? []).map((row) => ({
-    id: row.id as string,
-    description: (row.description as string | null) ?? null,
-    status: row.status as string,
-    lat: Number(row.lat),
-    lng: Number(row.lng),
-    timestamp: row.timestamp as string,
-    viewed_at: (row.viewed_at as string | null) ?? null,
-    media: [] as ReportMedia[],
-  }));
-  if (reports.length === 0) return reports;
+  const pageResult = await loadAdminCommunityReportPage(query);
+  const reports = pageResult.rows.map((row) => ({ ...row, media: [] as ReportMedia[] }));
+  if (reports.length === 0) return { reports, total: pageResult.total, ok: pageResult.ok };
 
   const { data: mediaRows } = await supabase
     .from("report_media")
@@ -248,7 +230,7 @@ async function loadCommunityReports(): Promise<CommunityReport[]> {
     list.push(item);
     mediaByReport.set(row.report_id as string, list);
   }
-  return reports.map((report) => ({ ...report, media: mediaByReport.get(report.id) ?? [] }));
+  return { reports: reports.map((report) => ({ ...report, media: mediaByReport.get(report.id) ?? [] })), total: pageResult.total, ok: true };
 }
 
 async function updateRuntimeConfig(_previous: SaveResult | null, formData: FormData): Promise<SaveResult> {
@@ -268,102 +250,25 @@ async function updateRuntimeConfig(_previous: SaveResult | null, formData: FormD
 }
 
 async function addAdminEmail(formData: FormData) {
-  "use server";
-
-  const { user } = await requireAdmin();
-  const email = normalizeEmail(String(formData.get("email") ?? ""));
-  const note = String(formData.get("note") ?? "").trim() || null;
-
-  if (!email || !email.includes("@")) {
-    redirect("/admin?error=invalid-email");
-  }
-
-  const supabase = createServiceClient();
-  if (!supabase) {
-    redirect("/admin?error=missing-supabase");
-  }
-
-  const { data: existingRows } = await supabase
-    .from("admin_allowed_emails")
-    .select("id")
-    .eq("email", email)
-    .order("created_at", { ascending: false })
-    .limit(1);
-
-  const existing = existingRows?.[0] as { id: string } | undefined;
-  if (existing) {
-    await supabase
-      .from("admin_allowed_emails")
-      .update({
-        active: true,
-        note,
-        created_by: nullableUuid(user.id),
-        revoked_at: null,
-      })
-      .eq("id", existing.id);
-  } else {
-    await supabase.from("admin_allowed_emails").insert({
-      email,
-      note,
-      created_by: nullableUuid(user.id),
-      active: true,
-    });
-  }
-
-  revalidatePath("/admin");
+  "use server"; const { user } = await requireAdmin(); finishMutation(await mutateAddAdminEmail(formData,user), "invalid-email");
 }
-
 async function removeAdminEmail(formData: FormData) {
-  "use server";
-
-  await requireAdmin();
-  const email = normalizeEmail(String(formData.get("email") ?? ""));
-
-  if (!email || adminAllowedEmails().includes(email)) {
-    redirect("/admin?error=cannot-remove-env-email");
-  }
-
-  const supabase = createServiceClient();
-  if (!supabase) {
-    redirect("/admin?error=missing-supabase");
-  }
-
-  await supabase
-    .from("admin_allowed_emails")
-    .update({
-      active: false,
-      revoked_at: new Date().toISOString(),
-    })
-    .eq("email", email)
-    .eq("active", true);
-
-  revalidatePath("/admin");
+  "use server"; const { user } = await requireAdmin(); finishMutation(await mutateRemoveAdminEmail(formData,user), "cannot-remove-env-email");
+}
+async function markReportViewed(formData: FormData) {
+  "use server"; const { user } = await requireAdmin(); finishMutation(await mutateMarkReportViewed(formData,user), "report-not-found");
+}
+function finishMutation(result: AdminMutationResult, invalidCode: string): void {
+  if (result === "saved") { revalidatePath("/admin"); return; }
+  if (result === "invalid_input") redirect("/admin?error=" + invalidCode);
+  if (result === "unavailable") redirect("/admin?error=missing-supabase");
+  redirect("/admin?error=" + outcomeError(result));
 }
 
-async function markReportViewed(formData: FormData) {
-  "use server";
-
-  const { user } = await requireAdmin();
-  const reportId = String(formData.get("report_id") ?? "");
-  if (!reportId) {
-    redirect("/admin");
-  }
-
-  const supabase = createServiceClient();
-  if (!supabase) {
-    redirect("/admin?error=missing-supabase");
-  }
-
-  await supabase
-    .from("damage_logs")
-    .update({
-      viewed_at: new Date().toISOString(),
-      viewed_by: nullableUuid(user.id),
-      status: "reviewing",
-    })
-    .eq("id", reportId);
-
-  revalidatePath("/admin");
+function outcomeError(outcome: "write_failed" | "not_found" | "audit_failed"): string {
+  if (outcome === "not_found") return "admin-row-not-found";
+  if (outcome === "audit_failed") return "admin-audit-failed";
+  return "admin-write-failed";
 }
 
 
@@ -375,184 +280,22 @@ async function markReportViewed(formData: FormData) {
  * so these record what an operator DID or DECIDED, never what a node applied.
  */
 async function saveAlertConfig(formData: FormData) {
-  "use server";
-
-  const { user } = await requireAdmin();
-  const stationId = asManagedStationId(formData.get("station_id"));
-  const metric = optionalText(formData.get("metric"));
-  if (!stationId || !metric) redirect("/admin?error=invalid-alert");
-
-  const supabase = createServiceClient();
-  if (!supabase) redirect("/admin?error=missing-supabase");
-
-  const row = {
-    station_id: stationId,
-    metric,
-    comparison: formData.get("comparison") === "below" ? "below" : "above",
-    warning_threshold: optionalNumber(formData.get("warning_threshold")),
-    critical_threshold: optionalNumber(formData.get("critical_threshold")),
-    unit: optionalText(formData.get("unit")),
-    enabled: formData.get("enabled") === "on",
-    note: optionalText(formData.get("note")),
-    updated_by: nullableUuid(user.id),
-  };
-
-  const { error } = await supabase.from("alert_configs").upsert(row, { onConflict: "station_id,metric" });
-  if (error) redirect("/admin?error=config-save-failed#thresholds");
-  await recordAuditEvent({
-    actor: user.email,
-    action: "alert.config.saved",
-    entity: "alert_configs",
-    entityId: `${stationId}:${metric}`,
-    metadata: {
-      comparison: row.comparison,
-      warning: row.warning_threshold,
-      critical: row.critical_threshold,
-      enabled: row.enabled,
-    },
-  });
-
-  revalidatePath("/admin");
+  "use server"; const { user } = await requireAdmin(); finishMutation(await mutateSaveAlertConfig(formData,user), "invalid-alert");
 }
-
 async function addMaintenanceLog(formData: FormData) {
-  "use server";
-
-  const { user } = await requireAdmin();
-  const stationId = asManagedStationId(formData.get("station_id"));
-  const kind = optionalText(formData.get("kind"));
-  if (!stationId || !kind) redirect("/admin?error=invalid-maintenance");
-
-  const supabase = createServiceClient();
-  if (!supabase) redirect("/admin?error=missing-supabase");
-
-  await supabase.from("maintenance_logs").insert({
-    station_id: stationId,
-    kind,
-    operator: optionalText(formData.get("operator")) ?? user.email,
-    note: optionalText(formData.get("note")),
-    next_due_at: optionalText(formData.get("next_due_at")),
-  });
-
-  await recordAuditEvent({
-    actor: user.email,
-    action: "maintenance.recorded",
-    entity: "maintenance_logs",
-    entityId: stationId,
-    metadata: { kind },
-  });
-
-  revalidatePath("/admin");
+  "use server"; const { user } = await requireAdmin(); finishMutation(await mutateAddMaintenanceLog(formData,user), "invalid-maintenance");
 }
-
 async function addCalibrationRecord(formData: FormData) {
-  "use server";
-
-  const { user } = await requireAdmin();
-  const stationId = asManagedStationId(formData.get("station_id"));
-  const sensor = optionalText(formData.get("sensor"));
-  if (!stationId || !sensor) redirect("/admin?error=invalid-calibration");
-
-  const supabase = createServiceClient();
-  if (!supabase) redirect("/admin?error=missing-supabase");
-
-  await supabase.from("calibration_records").insert({
-    station_id: stationId,
-    sensor,
-    reference_value: optionalNumber(formData.get("reference_value")),
-    measured_value: optionalNumber(formData.get("measured_value")),
-    unit: optionalText(formData.get("unit")),
-    operator: optionalText(formData.get("operator")) ?? user.email,
-    note: optionalText(formData.get("note")),
-  });
-
-  await recordAuditEvent({
-    actor: user.email,
-    action: "calibration.recorded",
-    entity: "calibration_records",
-    entityId: `${stationId}:${sensor}`,
-    metadata: { sensor },
-  });
-
-  revalidatePath("/admin");
+  "use server"; const { user } = await requireAdmin(); finishMutation(await mutateAddCalibrationRecord(formData,user), "invalid-calibration");
 }
-
 async function saveSoilWaterModel(formData: FormData) {
-  "use server";
-  const { user } = await requireAdmin();
-  const fieldCapacity = optionalNumber(formData.get("field_capacity_pct"));
-  const wiltingPoint = optionalNumber(formData.get("permanent_wilting_point_pct"));
-  const mad = optionalNumber(formData.get("management_allowed_depletion_pct"));
-  if (fieldCapacity === null || wiltingPoint === null || mad === null || wiltingPoint >= fieldCapacity) {
-    redirect("/admin?error=invalid-site-model");
-  }
-  const supabase = createServiceClient();
-  if (!supabase) redirect("/admin?error=missing-supabase");
-  await supabase.from("soil_water_models").upsert({
-    station_id: "STATION_02",
-    field_capacity_pct: fieldCapacity,
-    permanent_wilting_point_pct: wiltingPoint,
-    management_allowed_depletion_pct: mad,
-    source_note: optionalText(formData.get("source_note")),
-    updated_by: nullableUuid(user.id),
-  });
-  await recordAuditEvent({
-    actor: user.email,
-    action: "site.soil_water_model.saved",
-    entity: "soil_water_models",
-    entityId: "STATION_02",
-    metadata: { fieldCapacity, wiltingPoint, mad, availableWater: fieldCapacity - wiltingPoint },
-  });
-  revalidatePath("/admin");
+  "use server"; const { user } = await requireAdmin(); finishMutation(await mutateSaveSoilWaterModel(formData,user), "invalid-site-model");
 }
-
 async function saveWaterLevelContext(formData: FormData) {
-  "use server";
-  const { user } = await requireAdmin();
-  const supabase = createServiceClient();
-  if (!supabase) redirect("/admin?error=missing-supabase");
-  const row = {
-    station_id: "STATION_01",
-    sensor_datum_cm: optionalNumber(formData.get("sensor_datum_cm")),
-    shore_bank_elevation_cm: optionalNumber(formData.get("shore_bank_elevation_cm")),
-    critical_infrastructure_elevation_cm: optionalNumber(formData.get("critical_infrastructure_elevation_cm")),
-    survey_note: optionalText(formData.get("survey_note")),
-    validation_status: "PILOT",
-    updated_by: nullableUuid(user.id),
-  };
-  await supabase.from("water_level_contexts").upsert(row);
-  await recordAuditEvent({
-    actor: user.email,
-    action: "site.water_level_context.saved",
-    entity: "water_level_contexts",
-    entityId: "STATION_01",
-    metadata: { validationStatus: "PILOT", geometryRecorded: true },
-  });
-  revalidatePath("/admin");
+  "use server"; const { user } = await requireAdmin(); finishMutation(await mutateSaveWaterLevelContext(formData,user), "invalid-water-context");
 }
-
 async function resolveReport(formData: FormData) {
-  "use server";
-
-  const { user } = await requireAdmin();
-  const reportId = String(formData.get("report_id") ?? "");
-  if (!reportId) redirect("/admin");
-
-  const supabase = createServiceClient();
-  if (!supabase) redirect("/admin?error=missing-supabase");
-
-  // The existing damage_logs row is UPDATED, never copied into a parallel
-  // store: the public submission stays the source of record.
-  await supabase.from("damage_logs").update({ status: "resolved" }).eq("id", reportId);
-
-  await recordAuditEvent({
-    actor: user.email,
-    action: "report.resolved",
-    entity: "damage_logs",
-    entityId: reportId,
-  });
-
-  revalidatePath("/admin");
+  "use server"; const { user } = await requireAdmin(); finishMutation(await mutateResolveReport(formData,user), "report-not-found");
 }
 
 function modeLabel(mode: string): string {
@@ -564,6 +307,10 @@ function modeLabel(mode: string): string {
     default:
       return "Bình thường";
   }
+}
+
+function formatFileSize(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
 }
 
 function formatReportTime(value: string): string {
@@ -621,8 +368,27 @@ function adminErrorMessage(error?: string): string | null {
       return "Email gốc trong ADMIN_ALLOWED_EMAILS không thể thu hồi từ giao diện.";
     case "missing-supabase":
       return "Supabase chưa cấu hình đủ nên chưa thể lưu thay đổi.";
+    case "admin-write-failed":
+      return "Không lưu được thay đổi vào cơ sở dữ liệu. Chưa ghi nhận thành công.";
+    case "admin-audit-failed":
+      return "Dữ liệu đã lưu nhưng nhật ký kiểm toán bị lỗi. Kiểm tra bản ghi trước khi gửi lại.";
+    case "admin-row-not-found":
+    case "report-not-found":
+      return "Bản ghi không còn tồn tại hoặc không thể cập nhật.";
+    case "invalid-alert":
+      return "Cấu hình cảnh báo chưa hợp lệ. Kiểm tra trạm, hướng so sánh và các ngưỡng.";
+    case "invalid-maintenance":
+      return "Bản ghi bảo trì chưa hợp lệ. Kiểm tra trạm và loại công việc.";
+    case "invalid-calibration":
+      return "Bản ghi hiệu chuẩn chưa hợp lệ. Kiểm tra trạm, cảm biến và giá trị số.";
+    case "invalid-water-context":
+      return "Bối cảnh mực nước chưa hợp lệ. Các giá trị phải là số hữu hạn.";
     case "invalid-site-model":
       return "Mô hình đất chưa hợp lệ: PWP phải nhỏ hơn FC và mọi giá trị phải là số.";
+    case "export-invalid-range":
+      return "Khoảng ngày xuất dữ liệu chưa hợp lệ. Chọn lại ngày bắt đầu và ngày kết thúc.";
+    case "export-failed":
+      return "Không xuất được dữ liệu. Chưa có tệp nào được tạo; thử lại hoặc kiểm tra kết nối cơ sở dữ liệu.";
     default:
       return null;
   }
@@ -631,19 +397,20 @@ function adminErrorMessage(error?: string): string | null {
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ error?: string; status?: string }>;
+  searchParams?: Promise<{ error?: string; status?: string; report_status?: string; report_page?: string }>;
 }) {
   const params = searchParams ? await searchParams : {};
   const { profile, scope } = await requireAdmin();
+  const reportQuery = parseReportQuery(params.report_status, params.report_page);
   const { dict } = await getI18n();
 
   const supabase = createServiceClient();
   const repos = supabase ? createRepositories(supabase) : null;
-  const [{ stations, demo: stationsAreDemo, unavailable: stationsUnavailable }, metrics, runtimeConfigs, reports, allowedEmailEntries] = await Promise.all([
+  const [{ stations, demo: stationsAreDemo, unavailable: stationsUnavailable }, metrics, runtimeConfigs, reportPage, allowedEmailEntries] = await Promise.all([
     loadAdminStations(repos, scope),
     loadAdminMetrics(repos, scope),
     loadRuntimeConfigs(),
-    loadCommunityReports(),
+    loadCommunityReports(reportQuery),
     loadAdminAllowedEmailEntries(),
   ]);
   const snapshots = await loadAdminSnapshots(repos, scope, stations);
@@ -668,7 +435,10 @@ export default async function AdminPage({
         .catch(() => null)
     : null;
   const ingestionHealth = await loadIngestionHealth();
-  const unreadReports = reports.filter((report) => !report.viewed_at).length;
+  const reports = reportPage.reports;
+  const totalReportPages = reportPage.total === null ? null : Math.max(1, Math.ceil(reportPage.total / ADMIN_REPORT_PAGE_SIZE));
+  const reportHref = (status: AdminReportStatusFilter, page: number) => `/admin?${new URLSearchParams({ ...(status !== "all" ? { report_status: status } : {}), ...(page > 1 ? { report_page: String(page) } : {}) }).toString()}#reports`.replace("?#", "#");
+  const unreadReports = reports.filter((report) => !report.viewed_at && report.status === "new").length;
   const errorMessage = adminErrorMessage(params.error);
   const isDemoMode = stationsAreDemo || metrics.demo;
   const operationalDataUnavailable = stationsUnavailable || metrics.unavailable;
@@ -677,15 +447,30 @@ export default async function AdminPage({
       <div className="admin-report-queue">
         <div className="mb-3 flex items-center justify-between gap-3">
           <p className="font-semibold">Báo cáo hiện trường</p>
-          <p className="text-xs text-muted">{unreadReports} chưa xem</p>
+          <p className="text-xs text-muted">{unreadReports} chưa xem trên trang này</p>
         </div>
+        <nav aria-label="Lọc báo cáo theo trạng thái" className="mb-3 flex flex-wrap gap-2 text-sm">
+          {(["all", "new", "reviewing", "resolved"] as const).map((status) => (
+            <a
+              key={status}
+              href={reportHref(status, 1)}
+              aria-current={reportQuery.status === status ? "page" : undefined}
+              className={`inline-flex min-h-11 items-center border px-3 ${reportQuery.status === status ? "border-foreground font-semibold" : "border-border text-muted"}`}
+            >
+              {status === "all" ? "Tất cả" : status === "new" ? "Mới" : status === "reviewing" ? "Đã xem" : "Đã xử lý"}
+            </a>
+          ))}
+        </nav>
         <div className="space-y-3">
-          {reports.length === 0 ? (
-            <p className="p-4 text-sm text-muted">Chưa có báo cáo nào.</p>
+          {!reportPage.ok ? (
+            <p role="alert" className="p-4 text-sm text-critical">Không đọc được danh sách báo cáo từ cơ sở dữ liệu. Đây không có nghĩa là chưa có báo cáo; tải lại trang hoặc kiểm tra kết nối.</p>
+          ) : reports.length === 0 ? (
+            <p className="p-4 text-sm text-muted">{reportQuery.status === "all" ? "Chưa có báo cáo nào." : "Không có báo cáo nào ở trạng thái này."}</p>
           ) : (
             <div className="border-t border-border/60">
               {reports.map((report) => {
-                const unread = !report.viewed_at;
+                const unread = !report.viewed_at && report.status === "new";
+                const resolved = report.status === "resolved";
                 return (
                   <div
                     key={report.id}
@@ -698,7 +483,7 @@ export default async function AdminPage({
                         </div>
                         <p className="mt-1 text-xs text-muted">{formatReportTime(report.timestamp)}</p>
                       </div>
-                      {unread ? <Badge variant="risk">Mới</Badge> : <Badge>Đã xem</Badge>}
+                      {resolved ? <Badge>Đã xử lý</Badge> : unread ? <Badge variant="risk">Mới</Badge> : <Badge>Đã xem</Badge>}
                     </div>
                     <p className="text-sm leading-relaxed text-muted">{cleanReportDescription(report.description)}</p>
                     <p className="text-xs text-muted">
@@ -712,22 +497,40 @@ export default async function AdminPage({
                               // eslint-disable-next-line @next/next/no-img-element -- expiring private Storage URL
                               <img src={media.signed_url} alt="Bằng chứng ảnh của báo cáo" className="aspect-video w-full object-cover" />
                             ) : null}
-                            {media.signed_url && media.media_type === "video" ? <video src={media.signed_url} controls className="aspect-video w-full" /> : null}
-                            {media.signed_url && media.media_type === "audio" ? <audio src={media.signed_url} controls className="w-full pt-4" /> : null}
+                            {media.signed_url && media.media_type === "video" ? <video src={media.signed_url} controls playsInline preload="metadata" className="aspect-video w-full" /> : null}
+                            {media.signed_url && media.media_type === "audio" ? <audio src={media.signed_url} controls preload="metadata" className="w-full pt-4" /> : null}
+                            {!media.signed_url ? <p role="alert" className="text-xs text-critical">Không tạo được liên kết xem tệp này. Tải lại trang để thử lại.</p> : null}
                             <p className="mt-2 text-[10px] uppercase tracking-[0.1em] text-muted">
-                              {media.media_type} · {Math.ceil(media.file_size / 1024)} KB
+                              {media.media_type} · {formatFileSize(media.file_size)}
                             </p>
+                            {/* MOV from iPhones only plays in Safari; the download link is the
+                                fallback that always works. The signed URL expires in 30 minutes. */}
+                            {media.signed_url ? (
+                              <a href={media.signed_url} download target="_blank" rel="noreferrer" className="mt-1 inline-flex min-h-11 items-center text-xs text-accent underline-offset-4 hover:underline">
+                                Mở / tải tệp gốc ({media.mime_type})
+                              </a>
+                            ) : null}
                           </div>
                         ))}
                       </div>
                     ) : null}
-                    {unread ? (
-                      <form action={markReportViewed}>
-                        <input type="hidden" name="report_id" value={report.id} />
-                        <Button type="submit" size="sm" variant="outline">
-                          Đánh dấu đã xem
-                        </Button>
-                      </form>
+                    {!resolved ? (
+                      <div className="flex flex-wrap gap-2">
+                        {unread ? (
+                          <form action={markReportViewed}>
+                            <input type="hidden" name="report_id" value={report.id} />
+                            <Button type="submit" size="sm" variant="outline">
+                              Đánh dấu đã xem
+                            </Button>
+                          </form>
+                        ) : null}
+                        <form action={resolveReport}>
+                          <input type="hidden" name="report_id" value={report.id} />
+                          <Button type="submit" size="sm" variant="outline">
+                            Đánh dấu đã xử lý
+                          </Button>
+                        </form>
+                      </div>
                     ) : null}
                   </div>
                 );
@@ -735,6 +538,13 @@ export default async function AdminPage({
             </div>
           )}
         </div>
+        {reportPage.ok && (reportQuery.page > 1 || (totalReportPages ?? 1) > reportQuery.page) ? (
+          <nav aria-label="Phân trang báo cáo" className="mt-3 flex items-center justify-between gap-3 text-sm">
+            {reportQuery.page > 1 ? <a href={reportHref(reportQuery.status, reportQuery.page - 1)} rel="prev" className="inline-flex min-h-11 items-center border border-border px-3">← Mới hơn</a> : <span />}
+            <span className="text-xs text-muted">Trang {reportQuery.page}{totalReportPages ? ` / ${totalReportPages}` : ""}{reportPage.total !== null ? ` · ${reportPage.total} báo cáo` : ""}</span>
+            {(totalReportPages ?? reportQuery.page + (reports.length === ADMIN_REPORT_PAGE_SIZE ? 1 : 0)) > reportQuery.page ? <a href={reportHref(reportQuery.status, reportQuery.page + 1)} rel="next" className="inline-flex min-h-11 items-center border border-border px-3">Cũ hơn →</a> : <span />}
+          </nav>
+        ) : null}
       </div>
   );
   const reportBell = <a href="#reports" className="inline-flex min-h-11 items-center gap-2 border border-border px-3 text-sm"><Bell className="h-4 w-4" aria-hidden />{dict.admin.navigation.reports}{unreadReports ? <span>{unreadReports}</span> : null}</a>;
@@ -767,7 +577,7 @@ export default async function AdminPage({
         </div>
         <div className="admin-board-links">
           <a href="#network"><span className="admin-keyword">{dict.admin.navigation.devices}</span><strong>{stations.length}</strong><ArrowUpRight aria-hidden /></a>
-          <a href="#reports"><span className="admin-keyword">{dict.admin.navigation.reports}</span><strong>{reports.length}</strong><ArrowUpRight aria-hidden /></a>
+          <a href="#reports"><span className="admin-keyword">{dict.admin.navigation.reports}</span><strong>{reportPage.ok ? (reportPage.total ?? reports.length) : "—"}</strong><ArrowUpRight aria-hidden /></a>
           <a href="#thresholds"><span className="admin-keyword">{dict.admin.navigation.thresholds}</span><strong>{thresholds.length}</strong><ArrowUpRight aria-hidden /></a>
         </div>
       </section>
@@ -791,7 +601,7 @@ export default async function AdminPage({
       {/* The operator's first question — is the network up, and which node is
           not? Above the settings forms, because "what is wrong right now" is
           needed before "what can I configure". */}
-      <div id="network" className="scroll-mt-36"><NetworkOverview snapshots={snapshots} soilTimestamp={soilTimestamp} gatewayReceivedAt={ingestionHealth.gatewayReceivedAt} /><IngestionHealthPanel data={ingestionHealth} /></div>
+      <div id="network" className="scroll-mt-36"><NetworkOverview snapshots={snapshots} soilTimestamp={soilTimestamp} /><IngestionHealthPanel data={ingestionHealth} /></div>
       <section id="reports" className="scroll-mt-36">{reportQueue}</section>
 
       {/* Operator workflows, all persisted by migration 022. Each panel states

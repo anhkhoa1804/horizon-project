@@ -32,10 +32,10 @@ const NODES = [
 type Level = "ok" | "warn" | "critical" | "none";
 
 const LEVEL_LABEL: Record<Level, string> = {
-  ok: "Đang gửi dữ liệu",
-  warn: "Dữ liệu chậm",
-  critical: "Chưa có dữ liệu mới",
-  none: "Chưa có dữ liệu",
+  ok: "Dữ liệu mới",
+  warn: "Dữ liệu gần đây",
+  critical: "Dữ liệu đã cũ",
+  none: "Chưa có bằng chứng hiện tại",
 };
 
 /** Maps the shared freshness vocabulary onto this panel's four states. */
@@ -78,12 +78,10 @@ const SURFACE: Record<Level, string> = {
 export function NetworkOverview({
   snapshots,
   soilTimestamp,
-  gatewayReceivedAt,
 }: {
   snapshots: StationReadingSnapshot[];
   /** STATION_02 keeps its time on soil_readings, not environmental_readings. */
   soilTimestamp: string | null;
-  gatewayReceivedAt?: string | null;
 }) {
   const rows = NODES.map((node) => {
     const snapshot = snapshots.find((s) => s.station.id === node.id);
@@ -91,8 +89,8 @@ export function NetworkOverview({
       node.id === "STATION_02"
         ? soilTimestamp
         : node.id === "STATION_03"
-          ? gatewayReceivedAt ?? snapshot?.health?.timestamp ?? null
-          : snapshot?.reading?.timestamp ?? snapshot?.health?.timestamp ?? null;
+          ? null
+          : snapshot?.reading?.timestamp ?? null;
     return { ...node, timestamp, level: levelFor(timestamp) };
   });
 

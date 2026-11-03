@@ -47,7 +47,7 @@ create table if not exists public.alert_configs (
 );
 
 comment on table public.alert_configs is
-  'Operator-configured alert thresholds. NOT scientific recommendations - see docs/SCIENTIFIC_REFERENCES.md for published guidance. No device acknowledgement exists; these are evaluated server-side.';
+  'Stored operator alert intent only. Not evaluated and not device-executable. NOT scientific recommendations - see docs/SCIENTIFIC_REFERENCES.md for published guidance.';
 
 create index if not exists idx_alert_configs_station on public.alert_configs (station_id);
 

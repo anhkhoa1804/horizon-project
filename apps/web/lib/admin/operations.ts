@@ -128,6 +128,32 @@ export async function recordAuditEvent(event: {
   }
 }
 
+export type AdminWriteOutcome = "saved" | "write_failed" | "not_found" | "audit_failed";
+
+/**
+ * Run a server-side Admin mutation and its audit append, exposing both failure
+ * boundaries to the caller. The write and audit are not one transaction, so
+ * `audit_failed` explicitly means the row may already have been saved.
+ */
+export async function runAuditedAdminWrite(
+  write: () => Promise<{ error?: unknown | null; count?: number }>,
+  event: Parameters<typeof recordAuditEvent>[0],
+  audit: typeof recordAuditEvent = recordAuditEvent,
+): Promise<AdminWriteOutcome> {
+  try {
+    const result = await write();
+    if (result.error) return "write_failed";
+    if (result.count === 0) return "not_found";
+  } catch {
+    return "write_failed";
+  }
+  try {
+    return (await audit(event)) ? "saved" : "audit_failed";
+  } catch {
+    return "audit_failed";
+  }
+}
+
 export async function loadAlertConfigs(): Promise<AlertConfig[]> {
   const supabase = createServiceClient();
   if (!supabase) return [];

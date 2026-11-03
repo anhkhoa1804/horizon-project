@@ -1,6 +1,6 @@
 # HORIZON — Current product status
 
-Last audited: 2026-09-21
+Last audited: 2026-10-19 (code audit; application not run — see AUDIT_ISSUES.md#audit-limits)
 
 This is the current operational reading of the repository. It is not a
 historical redesign record and must be updated when a field or production
@@ -17,6 +17,13 @@ claim changes.
 - Explicit dashboard demo mode (`?mode=demo`) for design review; production
   monitoring does not silently select it.
 - Report media validation and private, signed-URL delivery for Admin.
+- Report evidence upload (2026-10-19): the report POST is small JSON; files go
+  browser → Supabase Storage on server-signed URLs and are recorded only after
+  the server confirms the object exists. Partial success is shown truthfully
+  with a retry. Covered by mocked-Storage tests; **not yet confirmed against
+  real Storage** (CORS, bucket, migration 026).
+- Field Notes cards link to `/posts/[slug]`; all six notes are listed.
+- Admin CSV export columns corrected; admin can mark a report resolved.
 
 ## Deployed / configuration dependent
 
@@ -55,6 +62,11 @@ claim changes.
 4. Capture a real gateway network trace through DNS, TLS, edge ingest and
    Supabase persistence.
 5. Run Live Smoke after its production secrets are configured.
+
+6. Confirm a real ~15 MB video report end to end (see QA_FLOW_MATRIX.md #27),
+   run `npm run test:web`, `npm run build` and `npm run qa:public-browser`.
+7. Open findings: AUDIT_ISSUES.md I-09 (live reading quality defaults to
+   valid), I-10 (0,0 marker fallback), I-11 (login throttle/enumeration).
 
 ## Historical documentation
 

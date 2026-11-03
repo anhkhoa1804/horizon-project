@@ -108,6 +108,64 @@ const CHAPTER_EN: Record<string, string> = {
   "Theo dõi quan trắc, gửi ghi nhận hiện trường, hoặc liên hệ với nhóm dự án.": "Follow the observations, record a field finding, or contact the project team."
 };
 
+
+/**
+ * English overlay for the Vietnamese copy that the home page renders as literals.
+ * Source language is Vietnamese (the project's primary audience); under the EN locale each string is looked up
+ * here and falls back to the Vietnamese original, so a missing entry degrades visibly rather than breaking.
+ */
+const HOME_EN: Record<string, string> = {
+  "Cảm biến siêu âm A02YYUW của trạm nước": "A02YYUW ultrasonic sensor of the water station",
+  "Đầu dò đo độ ẩm, EC và nhiệt độ đất": "Probe measuring soil moisture, EC and temperature",
+  "Bo mạch gateway với ESP32-S3, module LoRa và module 4G": "Gateway board with an ESP32-S3, a LoRa module and a 4G module",
+  "Đường đi của dữ liệu HORIZON": "How HORIZON data travels",
+  "Đầu dò đọc nước và đất tại vị trí đặt trạm.": "The probes read the water and the soil where the station stands.",
+  "Vi điều khiển đóng gói từng lần đo.": "The microcontroller packages each measurement.",
+  "Gửi từ trạm về gateway bằng liên kết tầm xa.": "Sent from the station to the gateway over a long-range link.",
+  "Gom gói tin và kiểm tra đường truyền.": "The gateway collects the packets and checks the link.",
+  "Đưa dữ liệu rời cồn lên internet.": "Carries the data off the islet and onto the internet.",
+  "Lưu giá trị, thời điểm và nguồn dữ liệu.": "Stores the value, the time and the source of the data.",
+  "Đọc chuỗi số liệu cùng ngưỡng và giới hạn.": "Reads the series together with its thresholds and limits.",
+  "Vườn cây giá trị cao": "High-value orchard",
+  "Lúa AWD + MRV": "AWD rice + MRV",
+  "Vườn cây giá trị cao tại vùng canh tác": "High-value orchard in the growing area",
+  "Mô hình canh tác lúa tôm": "Rice–shrimp farming system",
+  "Lúa – Tôm": "Rice – Shrimp",
+  "Ruộng lúa cho thực hành AWD và MRV": "Rice field for AWD and MRV practice",
+  "Đất": "Soil",
+  "Nước": "Water",
+  "Thời tiết": "Weather",
+  "Tưới": "Irrigation",
+  "Mùa": "Season",
+  "Mặn ↔ ngọt": "Saline ↔ fresh",
+  "Mực nước": "Water level",
+  "Thời gian": "Time",
+  "Khô / ướt": "Dry / wet",
+  "Độ ẩm, EC, pH, nhiệt độ đất; nước và mực nước.": "Soil moisture, EC, pH and temperature; water and water level.",
+  "FC / PWP / MAD, ET0, Kc và hiệu chuẩn tại chỗ.": "FC / PWP / MAD, ET0, Kc and on-site calibration.",
+  "Quan trắc nước, đất và chuỗi thời gian có thời điểm.": "Water and soil observations and time-stamped series.",
+  "Mô hình mùa, so sánh nguồn nước và phân vùng.": "Season models, water-source comparison and zoning.",
+  "Mực nước siêu âm và lịch sử telemetry.": "Ultrasonic water level and telemetry history.",
+  "Hình học ống đo, phương pháp AWD và quy trình thẩm tra.": "Gauge-tube geometry, the AWD method and a verification process.",
+  "Hiện tại · ": "Now · ",
+  "Tiếp theo · ": "Next · ",
+  "Cồn Hô ở Vĩnh Long là một môi trường canh tác nhỏ, nơi nước, đất và không khí có thể đổi khác theo từng vị trí trong ngày.": "Cồn Hô in Vĩnh Long is a small growing environment where water, soil and air can change from one place to the next within a single day.",
+  "Ở một cù lao, thay đổi không luôn đến cùng lúc. Nước ngoài vườn, vùng rễ và đường truyền dữ liệu có những nhịp riêng — và đó là lý do phép đo cần ở gần nơi sản xuất.": "On an islet, change does not arrive everywhere at once. The water outside the orchard, the root zone and the data link each keep their own rhythm — which is why measurement has to sit close to where the crop is grown.",
+  "HORIZON bắt đầu bằng việc giữ lại những thay đổi đó theo thời điểm, vị trí và nguồn đo để người làm vườn, nhà nghiên cứu và cộng đồng có thể cùng đọc lại.": "HORIZON starts by keeping those changes with their time, place and source, so growers, researchers and the community can read them back together.",
+  "Chiều dài": "Length",
+  "Chiều ngang": "Width",
+  "Diện tích": "Area",
+  "Nước ngoài vườn đang thay đổi thế nào?": "How is the water outside the orchard changing?",
+  "Vùng rễ đang giữ nước và thay đổi ra sao?": "How is the root zone holding water and changing?",
+  "Dữ liệu có đi được từ cồn về hệ thống không?": "Can the data make it from the islet to the system?",
+  "Minh họa Cồn Hô với ba điểm quan trắc: Nước (quan trắc nước), Đất (quan trắc đất) và Gateway (truyền dữ liệu)": "Illustration of Cồn Hô with its three observation points: Water (water monitoring), Soil (soil monitoring) and Gateway (data transmission)",
+  "Minh họa ba điểm quan trắc tại Cồn Hô": "Illustration of the three observation points at Cồn Hô",
+  "Minh họa dự án: ba điểm đo, không phải bản đồ vận hành. Bản đồ và trạng thái trạm nằm tại Quan trắc.": "Project illustration: three measuring points, not an operational map. The map and station status are on the Observatory page.",
+};
+function tx(locale: string, text: string): string {
+  return locale === "en" ? HOME_EN[text] ?? text : text;
+}
+
 /** Shared eyebrow+title block. Widths vary per chapter — the heading rhythm does not. */
 async function ChapterHeading({
   title,
@@ -159,7 +217,10 @@ const ISLAND_STATS = [
  * observatory shows better, so `/s/:id` now redirects there.
  */
 const STATION_METRICS: Record<PilotStationId, readonly string[]> = {
-  STATION_01: ["Độ mặn", "Mực nước"],
+  // EC and salinity are separate firmware fields with different meanings
+  // (docs/SENSOR_CAPABILITY_MATRIX.md); listing only "Độ mặn" implied the
+  // conductivity probe measures salinity directly.
+  STATION_01: ["Mực nước", "EC nước", "Nhiệt độ nước", "Độ mặn"],
   STATION_02: ["Độ ẩm đất", "EC đất", "Độ pH đất", "Nhiệt độ đất", "Nhiệt độ không khí", "Độ ẩm không khí"],
   STATION_03: [],
 };
@@ -182,7 +243,7 @@ async function NetworkChapter() {
               <ul className={`atlas-status-metrics ${id === "STATION_02" ? "atlas-status-metrics--soil" : ""}`}>
                 {(STATION_METRICS[id].length ? STATION_METRICS[id] : ["LoRa → 4G"]).map((metric) => (
                   <li key={metric} className={id === "STATION_02" ? "network-metric-full" : undefined}>
-                    {locale === "en" ? ({ "Độ mặn": "Salinity", "Mực nước": "Water level", "Độ ẩm đất": "Soil moisture", "EC đất": "Soil EC", "Độ pH đất": "Soil pH", "Nhiệt độ đất": "Soil temperature", "Nhiệt độ không khí": "Air temperature", "Độ ẩm không khí": "Air humidity" } as Record<string,string>)[metric] ?? metric : metric}
+                    {locale === "en" ? ({ "Độ mặn": "Salinity", "Mực nước": "Water level", "EC nước": "Water EC", "Nhiệt độ nước": "Water temperature", "Độ ẩm đất": "Soil moisture", "EC đất": "Soil EC", "Độ pH đất": "Soil pH", "Nhiệt độ đất": "Soil temperature", "Nhiệt độ không khí": "Air temperature", "Độ ẩm không khí": "Air humidity" } as Record<string,string>)[metric] ?? metric : metric}
                   </li>
                 ))}
               </ul>
@@ -285,16 +346,17 @@ const WORKFLOW = [
   { step: "Observatory", text: "Đọc chuỗi số liệu cùng ngưỡng và giới hạn." },
 ] as const;
 
-function WorkflowChapter() {
+async function WorkflowChapter() {
+  const { locale } = await getI18n();
   return (
-    <ol className="atlas-data-path" aria-label="Đường đi của dữ liệu HORIZON">
+    <ol className="atlas-data-path" aria-label={tx(locale, "Đường đi của dữ liệu HORIZON")}>
       {WORKFLOW.map(({ step, text }, index) => (
         <li key={step} className="atlas-data-node">
           <span className="atlas-data-index">
             {String(index + 1).padStart(2, "0")}
           </span>
           <h3>{step}</h3>
-          <p>{text}</p>
+          <p>{tx(locale, text)}</p>
           {index < WORKFLOW.length - 1 ? <ArrowRight className="atlas-data-arrow" aria-hidden /> : null}
         </li>
       ))}
@@ -308,21 +370,22 @@ const APPLICATION_PROFILES = [
   { index: "03", title: "Lúa AWD + MRV", image: "/assets/awd.webp", alt: "Ruộng lúa cho thực hành AWD và MRV", flow: ["Mực nước", "Thời gian", "Khô / ướt"], current: "Mực nước siêu âm và lịch sử telemetry.", next: "Hình học ống đo, phương pháp AWD và quy trình thẩm tra." },
 ] as const;
 
-function ApplicationProfilesChapter() {
+async function ApplicationProfilesChapter() {
+  const { locale } = await getI18n();
   return (
     <div className="atlas-use-cases h-media">
       {APPLICATION_PROFILES.map((profile) => (
         <article key={profile.index} className="atlas-use-case">
           <div className="atlas-use-case__image">
-            <Image src={profile.image} alt={profile.alt} fill sizes="(min-width:1024px) 31vw, 100vw" className="object-cover" />
+            <Image src={profile.image} alt={tx(locale, profile.alt)} fill sizes="(min-width:1024px) 31vw, 100vw" className="object-cover" />
           </div>
           <div className="atlas-use-case__body"><span className="chapter-number">{profile.index}</span>
-            <h3>{profile.title}</h3>
+            <h3>{tx(locale, profile.title)}</h3>
             <div className="atlas-use-case__flow">
-            {profile.flow.map((item, flowIndex) => <span key={item} className="contents"><span>{item}</span>{flowIndex < profile.flow.length - 1 ? <ArrowRight className="h-3 w-3 text-accent" aria-hidden /> : null}</span>)}
+            {profile.flow.map((item, flowIndex) => <span key={item} className="contents"><span>{tx(locale, item)}</span>{flowIndex < profile.flow.length - 1 ? <ArrowRight className="h-3 w-3 text-accent" aria-hidden /> : null}</span>)}
             </div>
-            <p><span>Hiện tại · </span>{profile.current}</p>
-            <p><span>Tiếp theo · </span>{profile.next}</p>
+            <p><span>{tx(locale, "Hiện tại · ")}</span>{tx(locale, profile.current)}</p>
+            <p><span>{tx(locale, "Tiếp theo · ")}</span>{tx(locale, profile.next)}</p>
           </div>
         </article>
       ))}
@@ -340,15 +403,16 @@ const FIELD_STORY_VIDEO = {
   title: "[HORIZON] HÀNH TRÌNH ĐẾN CỒN HÔ 2026",
 } as const;
 
-function FieldStoryVideo() {
+async function FieldStoryVideo() {
+  const { locale } = await getI18n();
   const captionId = `field-video-${FIELD_STORY_VIDEO.id}`;
 
   return (
-    <section aria-label="Từ hiện trường" className="atlas-field-story">
+    <section aria-label={locale === "en" ? "From the field" : "Từ hiện trường"} className="atlas-field-story">
       <ChapterHeading number="02" title="Từ hiện trường." />
       <figure className="h-media mt-8 space-y-3">
         <AutoPlayVideo {...FIELD_STORY_VIDEO} captionId={captionId} />
-        <figcaption id={captionId} className="text-sm text-muted">
+        <figcaption id={captionId} lang="vi" className="text-sm text-muted">
           {FIELD_STORY_VIDEO.title}
         </figcaption>
       </figure>
@@ -361,7 +425,10 @@ function FieldStoryVideo() {
 // ---------------------------------------------------------------------------
 
 export default async function HomePage() {
-  const posts = getRecentPosts(5);
+  // All notes, not a slice: the standalone journal list was retired with /about,
+  // so the carousel is the only index and a sliced list left older posts
+  // with no entry point except the related rail.
+  const posts = getRecentPosts(24);
   const gallery = getGalleryItems();
   const { dict, locale } = await getI18n();
 
@@ -383,12 +450,12 @@ export default async function HomePage() {
             <div className="atlas-introduction">
               <ChapterHeading number="01" title="Cồn Hô giữa dòng sông." />
               <Prose>
-                <p>Cồn Hô ở Vĩnh Long là một môi trường canh tác nhỏ, nơi nước, đất và không khí có thể đổi khác theo từng vị trí trong ngày.</p>
-                <p>Ở một cù lao, thay đổi không luôn đến cùng lúc. Nước ngoài vườn, vùng rễ và đường truyền dữ liệu có những nhịp riêng — và đó là lý do phép đo cần ở gần nơi sản xuất.</p>
-                <p>HORIZON bắt đầu bằng việc giữ lại những thay đổi đó theo thời điểm, vị trí và nguồn đo để người làm vườn, nhà nghiên cứu và cộng đồng có thể cùng đọc lại.</p>
+                <p>{tx(locale, "Cồn Hô ở Vĩnh Long là một môi trường canh tác nhỏ, nơi nước, đất và không khí có thể đổi khác theo từng vị trí trong ngày.")}</p>
+                <p>{tx(locale, "Ở một cù lao, thay đổi không luôn đến cùng lúc. Nước ngoài vườn, vùng rễ và đường truyền dữ liệu có những nhịp riêng — và đó là lý do phép đo cần ở gần nơi sản xuất.")}</p>
+                <p>{tx(locale, "HORIZON bắt đầu bằng việc giữ lại những thay đổi đó theo thời điểm, vị trí và nguồn đo để người làm vườn, nhà nghiên cứu và cộng đồng có thể cùng đọc lại.")}</p>
               </Prose>
               <div className="mt-8 flex flex-wrap gap-x-5 gap-y-2 border-t border-border pt-4 text-xs text-foreground-subtle">
-                <span>Vĩnh Long</span>{ISLAND_STATS.map((stat) => <span key={stat.label}>{stat.label} {stat.value}</span>)}
+                <span>Vĩnh Long</span>{ISLAND_STATS.map((stat) => <span key={stat.label}>{tx(locale, stat.label)} {stat.value}</span>)}
               </div>
             </div>
           </Reveal>
@@ -398,17 +465,17 @@ export default async function HomePage() {
           <Reveal stagger as="section" id="field-system" className="atlas-system scroll-mt-28">
             <ChapterHeading number="03" title="Ba nút. Ba vai trò." lead="Hai trạm đo môi trường và một gateway. Mỗi nút trả lời một câu hỏi khác nhau — không phải ba trạm cảm biến." />
             <div className="atlas-node-grid h-media">
-              {HARDWARE_GROUPS.map((group, index) => <article key={group.station} className={`atlas-node atlas-node--${group.station.toLowerCase()}`}><div className="atlas-node__image"><Image src={group.image} alt={group.imageAlt} fill sizes="(min-width:900px) 40vw,100vw" className="object-cover" /></div><div className="atlas-node__text"><p><span>{String(index + 1).padStart(2, "0")}</span> {stationDeviceCode(group.station)}</p><h3>{locale === "vi" ? group.domain : group.station === "STATION_01" ? "Water" : group.station === "STATION_02" ? "Soil & air" : "Data transmission"}</h3><span>{group.station === "STATION_01" ? "Nước ngoài vườn đang thay đổi thế nào?" : group.station === "STATION_02" ? "Vùng rễ đang giữ nước và thay đổi ra sao?" : "Dữ liệu có đi được từ cồn về hệ thống không?"}</span></div></article>)}
+              {HARDWARE_GROUPS.map((group, index) => <article key={group.station} className={`atlas-node atlas-node--${group.station.toLowerCase()}`}><div className="atlas-node__image"><Image src={group.image} alt={tx(locale, group.imageAlt)} fill sizes="(min-width:900px) 40vw,100vw" className="object-cover" /></div><div className="atlas-node__text"><p><span>{String(index + 1).padStart(2, "0")}</span> {stationDeviceCode(group.station)}</p><h3>{locale === "vi" ? group.domain : group.station === "STATION_01" ? "Water" : group.station === "STATION_02" ? "Soil & air" : "Data transmission"}</h3><span>{tx(locale, group.station === "STATION_01" ? "Nước ngoài vườn đang thay đổi thế nào?" : group.station === "STATION_02" ? "Vùng rễ đang giữ nước và thay đổi ra sao?" : "Dữ liệu có đi được từ cồn về hệ thống không?")}</span></div></article>)}
             </div>
           </Reveal>
 
-          <Reveal as="section" aria-labelledby="project-illustration-heading">
+          <Reveal as="section" aria-labelledby="chapter-04">
             <div className="atlas-introduction">
               <ChapterHeading number="04" title="Bản đồ Cồn Hô." />
             </div>
             <div className="full-bleed mt-8">
               <div className="h-spatial">
-                <figure className="space-y-4" aria-label="Minh họa ba điểm quan trắc tại Cồn Hô">
+                <figure className="space-y-4" aria-label={tx(locale, "Minh họa ba điểm quan trắc tại Cồn Hô")}>
                   {/* THE BRANDED NETWORK ILLUSTRATION.
                       Replaces con-ho-station-map.png, which had "TRẠM 1 / TRẠM 2
                       / TRẠM 3" baked into its pixels — obsolete station-number
@@ -424,13 +491,13 @@ export default async function HomePage() {
                   {/* eslint-disable-next-line @next/next/no-img-element -- local static asset with known aspect ratio; next/image has previously failed to resolve in this project (see wordmark.tsx) */}
                   <img
                     src="/assets/map/con-ho-network-illustration.png"
-                    alt="Minh họa Cồn Hô với ba điểm quan trắc: Nước (quan trắc nước), Đất (quan trắc đất) và Gateway (truyền dữ liệu)"
+                    alt={tx(locale, "Minh họa Cồn Hô với ba điểm quan trắc: Nước (quan trắc nước), Đất (quan trắc đất) và Gateway (truyền dữ liệu)")}
                     width={2000}
                     height={1414}
                     loading="lazy"
                     className="w-full"
                   />
-                  <figcaption className="text-sm text-muted">Minh họa dự án: ba điểm đo, không phải bản đồ vận hành. Bản đồ và trạng thái trạm nằm tại Quan trắc.</figcaption>
+                  <figcaption className="text-sm text-muted">{tx(locale, "Minh họa dự án: ba điểm đo, không phải bản đồ vận hành. Bản đồ và trạng thái trạm nằm tại Quan trắc.")}</figcaption>
                 </figure>
               </div>
             </div>

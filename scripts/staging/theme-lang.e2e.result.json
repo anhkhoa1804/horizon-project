@@ -1,0 +1,151 @@
+{
+  "at": "2026-10-22T08:40:43.978Z",
+  "base": "http://127.0.0.1:3100",
+  "results": [
+    {
+      "name": "new visitor, OS=dark: no explicit choice stored, follows the OS",
+      "ok": true,
+      "detail": "{\"attr\":null,\"stored\":null,\"canvas\":\"#242e38\"}"
+    },
+    {
+      "name": "OS=dark: the button offers the opposite theme",
+      "ok": true,
+      "detail": "Switch to light theme"
+    },
+    {
+      "name": "OS=dark: canvas matches the OS",
+      "ok": true,
+      "detail": "#242e38"
+    },
+    {
+      "name": "OS=dark: no System option anywhere in the header",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "OS=dark: no hydration errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "new visitor, OS=light: no explicit choice stored, follows the OS",
+      "ok": true,
+      "detail": "{\"attr\":null,\"stored\":null,\"canvas\":\"#f3f4ee\"}"
+    },
+    {
+      "name": "OS=light: the button offers the opposite theme",
+      "ok": true,
+      "detail": "Switch to dark theme"
+    },
+    {
+      "name": "OS=light: canvas matches the OS",
+      "ok": true,
+      "detail": "#f3f4ee"
+    },
+    {
+      "name": "OS=light: no System option anywhere in the header",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "OS=light: no hydration errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "one press on a light OS switches to dark, stored explicitly",
+      "ok": true,
+      "detail": "{\"attr\":\"dark\",\"stored\":\"dark\",\"canvas\":\"#242e38\"}"
+    },
+    {
+      "name": "after the press the button now offers light",
+      "ok": true,
+      "detail": "Switch to light theme"
+    },
+    {
+      "name": "after reload the explicit theme is applied before first paint",
+      "ok": true,
+      "detail": "dark"
+    },
+    {
+      "name": "second press returns to light and stores it",
+      "ok": true,
+      "detail": "{\"attr\":\"light\",\"stored\":\"light\",\"canvas\":\"#f3f4ee\"}"
+    },
+    {
+      "name": "explicit light is NOT overridden when the OS changes to dark",
+      "ok": true,
+      "detail": "{\"attr\":\"light\",\"stored\":\"light\",\"canvas\":\"#f3f4ee\"}"
+    },
+    {
+      "name": "theme interactions raise no page errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no OS preference available, local hour 7: light",
+      "ok": true,
+      "detail": "light"
+    },
+    {
+      "name": "no OS preference available, local hour 17: light",
+      "ok": true,
+      "detail": "light"
+    },
+    {
+      "name": "no OS preference available, local hour 18: dark",
+      "ok": true,
+      "detail": "dark"
+    },
+    {
+      "name": "no OS preference available, local hour 3: dark",
+      "ok": true,
+      "detail": "dark"
+    },
+    {
+      "name": "no cookie + browser English -> English",
+      "ok": true,
+      "detail": "en"
+    },
+    {
+      "name": "no cookie + browser Vietnamese -> Vietnamese",
+      "ok": true,
+      "detail": "vi"
+    },
+    {
+      "name": "no cookie + unsupported language -> documented fallback (Vietnamese)",
+      "ok": true,
+      "detail": "vi"
+    },
+    {
+      "name": "explicit cookie (vi) beats a browser that prefers English",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the language button shows the CURRENT language (VI)",
+      "ok": true,
+      "detail": "VI"
+    },
+    {
+      "name": "one press switches to English and keeps the route",
+      "ok": true,
+      "detail": "http://127.0.0.1:3100/dashboard"
+    },
+    {
+      "name": "the button now shows EN",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the choice is remembered in the cookie",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Cồn Hô is never translated",
+      "ok": true,
+      "detail": "This is Cồn Hô. This is HORIZON."
+    }
+  ]
+}

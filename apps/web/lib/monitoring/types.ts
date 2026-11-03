@@ -87,8 +87,13 @@ export interface ObservatoryStation {
   kind: StationKind;
   name: string;
   location: string;
-  lat: number;
-  lng: number;
+  /**
+   * Surveyed position, or null when the station has none. Never 0,0: that is a
+   * real place in the Gulf of Guinea, so "unknown" must not be expressible as a
+   * coordinate. Rendering reads lib/geo.ts; this is informational.
+   */
+  lat: number | null;
+  lng: number | null;
   freshness: FreshnessState;
   quality: QualityState | null;
   needsAttention: boolean;

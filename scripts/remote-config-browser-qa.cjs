@@ -284,8 +284,11 @@ const { chromium } = require(
     await db.close();
   }
 })().catch((e) => {
-  console.error(
-    "Remote configuration browser QA failed; credentials and session values are withheld.",
-  );
+  const message = String(e?.message ?? "unexpected failure")
+    .replace(/(token|secret|password|authorization|api[_-]?key)(\s*[:=]\s*)\S+/gi, "$1$2[redacted]")
+    .replace(/\b(?:sb_secret_|sb_publishable_)[A-Za-z0-9_-]+/g, "[redacted]")
+    .replace(/\beyJ[A-Za-z0-9_-]{20,}/g, "[redacted]")
+    .replace(/\b[A-Za-z0-9_-]{32,}\b/g, "[redacted]");
+  console.error(`Remote configuration browser QA failed (${e?.name ?? "Error"}): ${message}`);
   process.exitCode = 1;
 });

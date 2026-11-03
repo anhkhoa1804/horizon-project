@@ -79,7 +79,7 @@ function assertTiling(placements: Placement[], cols: number, rows: number, label
 }
 
 describe("observatory Bento grid", () => {
-  it("places ten grouped boxes by explicit coordinates, not a computed algorithm", () => {
+  it("places ten boxes (two 2x1 soil cards: conditions, chemistry) by explicit coordinates, not a computed algorithm", () => {
     const src = source();
     assert.match(src, /function ObservatoryBento/, "the grid composition component is gone");
     assert.match(src, /lg:grid-cols-6/, "the 6-column track is missing");
@@ -92,9 +92,9 @@ describe("observatory Bento grid", () => {
     // regions stop being whole multiples of it.
     assert.match(src, /grid-cols-4/, "the 4-column track for <lg is missing");
     assert.match(src, /repeat\(19,minmax\(0,1fr\)\)/, "the 21-row track for <md is missing");
-    assert.match(src, /repeat\(8,minmax\(0,1fr\)\)/, "the 10-row track for md is missing");
+    assert.match(src, /repeat\(9,minmax\(0,1fr\)\)/, "the 9-row track for md is missing");
     assert.match(src, /aspect-\[4\/19\]/, "the <md container must be 4:21 to keep the base cell square");
-    assert.match(src, /md:aspect-\[1\/2\]/, "the md container must be 2:5 to keep the base cell square");
+    assert.match(src, /md:aspect-\[4\/9\]/, "the md container must be 4:9 to keep the base cell square");
 
     // Neither earlier approach may quietly return.
     assert.ok(!/buildCanvasMetrics/.test(src), "the computed per-metric footprint system is back");
@@ -123,24 +123,14 @@ describe("observatory Bento grid", () => {
     );
   });
 
-  it("states network state once — in the box that already answers the question", () => {
-    // "MẠNG LƯỚI · 2/3 ĐANG GỬI DỮ LIỆU" used to be its own band above the
-    // Bento. It now titles the infrastructure box, which already holds the
-    // network's signal and battery, so the fact sits where a reader goes
-    // looking for it instead of in a strip they scroll past.
+  it("keeps single-figure cards free of explanatory sentences and network fractions", () => {
+    // The soil EC / soil temperature cards used to be one wide box that printed "n/3 sending data"
+    // plus a per-value "no threshold" line. A glance card shows label, value, unit and — only when the
+    // threshold registry supplies one — a status word + glyph. Nothing else.
     const src = source();
     assert.ok(!/function SystemSummary/.test(src), "the standalone network line is back above the Bento");
-    assert.match(
-      src,
-      /network\.live > 0\s*\?\s*`\$\{network\.live\}\/\$\{network\.total\}/,
-      "the infrastructure box must be titled by the reporting fraction",
-    );
-    assert.ok(
-      !/title=\{dict\.monitoring\.groupInfrastructure\}/.test(src),
-      'the infrastructure box reverted to the static "Hạ tầng" label',
-    );
-
-    // The three heavier things this lineage replaced must all stay gone.
+    assert.ok(!/dict\.monitoring\.noThreshold|dict\.monitoring\.soilSignals/.test(src), "per-card explanatory text is back");
+    assert.ok(!/network\.live/.test(src), "the network fraction is back inside a card");
     assert.ok(!/function NetworkHeader/.test(src), "the full-width network header is back");
     assert.ok(!/function AlertsPanel/.test(src), "the full-width alert card is back");
     assert.ok(!/status-rail/.test(src), "the continuously-moving status marquee is back");
@@ -154,7 +144,7 @@ describe("observatory Bento grid", () => {
     const src = source();
     assert.match(src, /function RegionHeader/, "the region header is gone");
     const renders = (src.match(/<RegionHeader\b/g) || []).length;
-    assert.equal(renders, 3, "expected primary, infrastructure, water and soil region headers");
+    assert.equal(renders, 2, "expected the primary header and the shared soil-pair card header (single-figure cards use MetricCell)");
     assert.ok(!/<RegionStatus\b/.test(src), "the separate status line is back below the values");
   });
 
@@ -251,7 +241,7 @@ describe("observatory Bento grid", () => {
   it("tiles all three arrangements exactly once per cell, with no gap and no overlap", () => {
     const src = source();
     assertTiling(extractPlacements(src, ""), 4, 19, "<md (4×19)");
-    assertTiling(extractPlacements(src, "md:"), 4, 8, "md (4×8)");
+    assertTiling(extractPlacements(src, "md:"), 4, 9, "md (4×9)");
     assertTiling(extractPlacements(src, "lg:"), 6, 4, "lg (6×4)");
   });
 
@@ -264,7 +254,7 @@ describe("observatory Bento grid", () => {
     const src = source();
     for (const [label, prefix, cols, rows] of [
       ["<md", "", 4, 19],
-      ["md", "md:", 4, 8],
+      ["md", "md:", 4, 9],
       ["lg", "lg:", 6, 4],
     ] as const) {
       for (const p of extractPlacements(src, prefix)) {
@@ -278,41 +268,40 @@ describe("observatory Bento grid", () => {
     }
   });
 
-  it("keeps the four regional readings equal to each other at every width", () => {
-    // The invariant is EQUALITY and whole-unit sizing, not a fixed
-    // arrangement. 1×4 from md up (one unit each, 148–193px); 2×2 below it
-    // (two units square, 171px at 390) because a 1×4 row at 390 gives each
-    // cell ~81px, which forced 9px labels that wrapped mid-word and left no
-    // room for the interpretation line. Readability wins over arrangement
-    // purity — what must never happen is cells sized by their text rather
-    // than by the unit, which is what the old content-driven reflow did.
+  it("builds the four weather cards from ONE component and the two soil cards from ONE 2x1 component", () => {
     const src = source();
+    assert.match(src, /function MetricCell/, "the shared single-figure card is gone");
+    assert.match(src, /function SoilPairCard/, "the shared soil pair card is gone");
     const weatherBoxes = (src.match(/\{ icon: \w+, label: dict\.metricLabels\.\w+, key: "\w+", cell:/g) || []).length;
     assert.equal(weatherBoxes, 4, "expected four regional readings (temperature, humidity, wind, precipitation)");
+    assert.equal((src.match(/<MetricCell\b/g) || []).length, 1, "the weather map must render <MetricCell>");
+    assert.equal((src.match(/<SoilPairCard\b/g) || []).length, 2, "expected exactly two soil cards");
+    assert.match(src, /soil-card-conditions/);
+    assert.match(src, /soil-card-chemistry/);
+    // Soil EC is not a headline reading any more but is still never mislabelled as salinity.
+    assert.ok(!/label=\{dict\.metricLabels\.salinity\}[^]{0,80}soil/i.test(src), "soil must not borrow the water salinity label");
 
     for (const [label, prefix, unitSpan] of [
       ["<md", "", 2],
       ["md", "md:", 1],
       ["lg", "lg:", 1],
     ] as const) {
-      const context = extractPlacements(src, prefix).slice(3, 7);
-      assert.equal(context.length, 4, `${label}: expected four context placements`);
-      for (const p of context) {
-        assert.equal(p.colEnd - p.colStart, unitSpan, `${label}: a context cell is not ${unitSpan} unit(s) wide`);
-        assert.equal(p.rowEnd - p.rowStart, unitSpan, `${label}: a context cell is not ${unitSpan} unit(s) tall`);
+      const all = extractPlacements(src, prefix);
+      const pairs = [all[2], all[7]];
+      const weather = all.slice(3, 7);
+      for (const p of pairs) {
+        const w = label === "<md" ? 4 : 2;
+        assert.equal(p.colEnd - p.colStart, w, `${label}: a soil card has the wrong width`);
+        assert.equal(p.rowEnd - p.rowStart, label === "<md" ? 2 : 1, `${label}: a soil card has the wrong height`);
       }
-      const shapes = new Set(context.map((p) => `${p.colEnd - p.colStart}x${p.rowEnd - p.rowStart}`));
-      assert.equal(shapes.size, 1, `${label}: the four context cells are not all the same size`);
-      const origins = new Set(context.map((p) => `${p.rowStart},${p.colStart}`));
-      assert.equal(origins.size, 4, `${label}: two context cells share an origin`);
-    }
-
-    // At md and above they must still be ONE row of four columns.
-    for (const [label, prefix] of [["md", "md:"] , ["lg", "lg:"]] as const) {
-      const context = extractPlacements(src, prefix).slice(3, 7);
-      if (label === "md") {
-        assert.equal(new Set(context.map((p) => p.rowStart)).size, 1, "md: context cells must share one row");
-        assert.equal(new Set(context.map((p) => p.colStart)).size, 4, "md: context cells must span four columns");
+      assert.deepEqual(
+        [pairs[0].colEnd - pairs[0].colStart, pairs[0].rowEnd - pairs[0].rowStart],
+        [pairs[1].colEnd - pairs[1].colStart, pairs[1].rowEnd - pairs[1].rowStart],
+        `${label}: the two soil cards differ in size`,
+      );
+      for (const p of weather) {
+        assert.equal(p.colEnd - p.colStart, unitSpan, `${label}: a card is not ${unitSpan} unit(s) wide`);
+        assert.equal(p.rowEnd - p.rowStart, unitSpan, `${label}: a card is not ${unitSpan} unit(s) tall`);
       }
     }
   });

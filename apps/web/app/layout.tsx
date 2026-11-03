@@ -6,6 +6,7 @@ import { BackgroundAtmosphere } from "@/components/layout/background-atmosphere"
 import { Analytics } from "@vercel/analytics/next";
 import { isIndexable, siteUrl } from "@/lib/siteUrl";
 import { LocaleProvider } from "@/lib/i18n/client";
+import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 import { HTML_LANG } from "@/lib/i18n/config";
 import { getI18n, getLocale } from "@/lib/i18n/server";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
@@ -124,7 +125,7 @@ export const viewport: Viewport = {
   ],
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // No maximumScale / userScalable=no: locking zoom fails WCAG 1.4.4 (axe meta-viewport).
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
@@ -163,6 +164,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             component re-reads the cookie and risks a hydration mismatch. */}
         <LocaleProvider locale={locale}>
           <QueryProvider>{children}<FloatingContactLinks /></QueryProvider>
+          <ServiceWorkerRegister />
         </LocaleProvider>
       </body>
     </html>

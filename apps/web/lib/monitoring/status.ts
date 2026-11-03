@@ -150,7 +150,7 @@ export const STATUS_TEXT: Record<StatusLevel, string> = {
  */
 export const STATUS_SURFACE: Record<StatusLevel, string> = {
   ok: "bg-status-normal",
-  watch: "bg-status-warning",
+  watch: "bg-status-watch",
   warn: "bg-status-warning",
   critical: "bg-status-critical",
 };

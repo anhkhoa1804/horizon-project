@@ -1,0 +1,5 @@
+# Vietnamese YAI 2026 deck: visual QA
+Rounds: 2 renders at 1920x1080; final off-canvas probe 0; PDF 11 pages (10 + appendix). Vietnamese diacritics render correctly in Be Vietnam Pro at weights 200-700 (checked on every slide).
+Critique: the first render was already photo/illustration-led. Changes: dark chips behind the grid labels, caption spacing above the progress marker. Slide to slide the dominant visual changes: aerial, island with grid, day illustration with people, three hardware photos, night illustration with one huge number, three photo slots, one large photo slot, probe photo, dusk photo, night illustration with people.
+Honest status: slides 6 and 7 are mostly labelled photo slots and bracketed prompts, and slide 4 shows bench photos, not installation photos, because no field or community photos were supplied. The deck is not presentation-ready until the team fills these. Only numbers with a source appear (appendix lists each).
+Five-second test: passes on slides 1-5 and 8-10; 6 and 7 depend on the real photos.

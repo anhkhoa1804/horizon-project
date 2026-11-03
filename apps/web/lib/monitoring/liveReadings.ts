@@ -1,5 +1,6 @@
 import { freshnessStatus } from "@/components/ui/status-indicator";
 import { resolveTelemetryOrigin } from "@/lib/dataState";
+import { waterQuality } from "@/lib/stationProfile";
 import type { ObservationPoint, ObservatoryMetric, ObservatoryViewModel, TrendMetric } from "./types";
 
 export interface LiveReading {
@@ -23,6 +24,12 @@ const WATER = { salinity: ["salinity", 2], waterLevel: ["water_level", 0], water
 const SOIL = { moisture: ["soil_moisture_pct", 1], ec: ["soil_ec_ms_cm", 2], ph: ["soil_ph", 1], temperature: ["soil_temp_c", 1], humidity: ["air_humidity_pct", 1] } as const;
 const number = (value: unknown): number | null => typeof value === "number" && Number.isFinite(value) ? value : null;
 
+/** Soil: a reported numeric fault count is the only evidence; absence asserts nothing. */
+function soilQuality(faultFlags: unknown): "valid" | "error" | null {
+  const flags = number(faultFlags);
+  return flags === null ? null : flags > 0 ? "error" : "valid";
+}
+
 export function applyLiveReading(model: ObservatoryViewModel, row: LiveReading): ObservatoryViewModel {
   if (model.mode !== "real") return model;
   const target = model.stations.find((s) => s.id === row.station_id);
@@ -39,11 +46,13 @@ export function applyLiveReading(model: ObservatoryViewModel, row: LiveReading):
     if (value === null && (field === "water_ec_ms_cm" || field === "water_temp_c") && metric.value !== null) return metric;
     return { ...metric, value: value?.toFixed(spec[1]) ?? null, provenance: { origin: resolveTelemetryOrigin(freshness, value !== null), source: row.kind === "water" ? "environmental_readings" : "soil_readings", observedAt: row.timestamp } };
   };
-  const faults = number(row.measurements.fault_flags) ?? 0;
-  const failed = faults > 0 || row.measurements.ec_probe_status === "fault" || row.measurements.ultrasonic_status === "fault";
+  // Missing fault evidence is "not asserted" (null), never "valid".
+  const quality = row.kind === "water"
+    ? waterQuality(row.measurements.fault_flags, row.measurements.ec_probe_status, row.measurements.ultrasonic_status)
+    : soilQuality(row.measurements.fault_flags);
   const stations = model.stations.map((station) => station.id !== row.station_id ? station : {
     ...station, timestamp: row.timestamp, freshness,
-    quality: failed ? "error" as const : row.measurements.ec_probe_status === "unknown" || row.measurements.ultrasonic_status === "unknown" ? "estimated" as const : "valid" as const,
+    quality,
     primary: updateMetric(station.primary), environment: station.environment.map((group) => ({ ...group, metrics: group.metrics.map((metric) => updateMetric(metric, group.domain)) })),
   });
   const point: ObservationPoint = {

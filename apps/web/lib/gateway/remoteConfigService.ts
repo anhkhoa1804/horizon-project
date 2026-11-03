@@ -71,19 +71,23 @@ export async function saveRemoteConfig(
     const code = e instanceof RemoteDbError ? e.code : "unknown";
     return {
       kind:
-        code === "40001"
+        isRevisionConflict(code)
           ? "conflict"
           : code === "P0002"
             ? "audit_error"
             : "database_error",
       message:
-        code === "40001"
+        isRevisionConflict(code)
           ? "Cấu hình đã được cập nhật ở nơi khác. Tải lại trước khi lưu."
           : code === "P0002"
             ? "Nhật ký chưa lưu được; giao dịch cấu hình đã được hoàn tác."
             : "Không lưu được cấu hình. Không có xác nhận áp dụng.",
     };
   }
+}
+/** 40001 = older databases; P0409 = migration 036 (40001 makes PostgREST retry the call in a loop). */
+function isRevisionConflict(code: string): boolean {
+  return code === "40001" || code === "P0409";
 }
 const headers = { "Cache-Control": "no-store, private" };
 function response(body: unknown, status = 200) {
@@ -113,7 +117,7 @@ function failure(error: unknown) {
     {
       ok: false,
       error:
-        code === "40001"
+        isRevisionConflict(code)
           ? "revision_conflict"
           : code === "P0001"
             ? "not_found"
@@ -121,7 +125,7 @@ function failure(error: unknown) {
               ? "invalid_event"
               : "database_unavailable",
     },
-    code === "40001"
+    isRevisionConflict(code)
       ? 409
       : code === "P0001"
         ? 404

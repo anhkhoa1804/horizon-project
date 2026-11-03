@@ -1,8 +1,10 @@
 # Remote configuration software verification — 6 October 2026
 
+**Deployment status update — 7 October 2026:** migrations `027–032` and `034` have since been applied to the configured Supabase database (migration `033` was already applied). Runtime rows exist at `STORED` revision 1 for STATION_01 and STATION_02; neither has an APPLIED revision. This is a schema deployment, not a hardware/configuration deployment. See [ADMIN_DATA_FLOW_AUDIT.md](ADMIN_DATA_FLOW_AUDIT.md) for the current full-system audit, live database observations and remaining integration coverage.
+
 ## Result
 
-The code now implements the complete versioned runtime-configuration chain. **SOFTWARE VERIFIED for the checks below. HARDWARE NOT VERIFIED.** No ESP32 was flashed or physically tested. No desired configuration, simulated ACK/APPLIED or telemetry was written to production. Remote polling remains disabled. Migration 034 and matching deployment keys still need provisioning before release.
+The code implements the versioned runtime-configuration chain. **SOFTWARE VERIFIED for the checks below. HARDWARE NOT VERIFIED.** No ESP32 was flashed or physically tested. Production migrations seeded the initial STORED intent rows, but no simulated ACK/APPLIED or telemetry was written to production. Remote polling remains disabled. Matching hosted/gateway/station keys and field validation remain release requirements.
 
 ## Changes
 
@@ -32,7 +34,7 @@ Desired writes and STORED evidence are atomic. Applied revision/configuration ar
 | --- | --- |
 | npm run check | Web, test and edge TypeScript passed |
 | npm run lint | Passed, no ESLint warnings/errors |
-| npm run test:web | **288 tests passed**, zero failed; includes the new remote suite |
+| npm run test:web | **295 tests passed**, zero failed; includes Admin freshness and isolated telemetry readback regression tests |
 | npm run test:remote-config | **13 tests passed**, zero failed; production C++ hosts compiled with -Wall -Wextra -Werror |
 | npm run test:remote-config:browser | Passed: real authenticated Next server action and GET/POST routes, Supabase SDK, real PostgreSQL functions, compiled gateway/station handlers, APPLIED Admin readback |
 | npm run test:all | **37 ingestion contract tests passed**; live Edge integration suite skipped because live integration configuration was unavailable |
@@ -43,7 +45,7 @@ Desired writes and STORED evidence are atomic. Applied revision/configuration ar
 | npm run db:validate-migrations | Passed: 36 migration filenames; historical duplicate 024/025 prefixes reported, deterministic order preserved |
 | npm run build:edge | Passed |
 | npm run build -w @eco-sense/web | Passed; both configuration routes included |
-| PlatformIO station1 / station2 / gateway | **All three ESP32 targets compiled successfully** using pinned platform/ArduinoJson and explicit C++17 entry points |
+| PlatformIO station1 / station2 / gateway | **Not verified in the final release gate.** The local environment has no runnable `pio` command; CI is configured but has not run. Do not claim a current target-build pass. |
 | git diff --check | Passed |
 
 No skipped live test is counted as deployed-service verification. PGlite executes real PostgreSQL SQL/RPCs in isolated memory. The HTTP facade supports the exercised Supabase SDK/PostgREST requests; it is not a deployed PostgREST/Supabase validation. Native shims replace physical transport/storage while importing the production configuration handlers.
@@ -69,9 +71,9 @@ Two station forms were present. Admin had no page-level horizontal overflow at 3
 
 ## Remaining release requirements
 
-1. Apply migration **034** through the migration runner in the target database. It was tested in isolation and has **not** been applied to production. Until deployed, Admin explicitly reports an unavailable runtime schema/read instead of silently presenting a working control form.
-2. Provision matching unique ≥32-character station keys on the server, the gateway, and each station's separately selected secret header. Current example values are empty and fail closed. Do not provision the committed synthetic test key.
+1. Migration **034 is applied** to the configured Supabase database through the migration runner. The live row state is STORED only; no production station retrieval, ACK or APPLIED evidence was generated.
+2. Provision matching unique ≥32-character station keys on the server, the gateway, and each station's separately selected secret header. Current example values are empty and fail closed. Do not provision the committed synthetic test key. See the [deployment credential contract](DEPLOYMENT_CREDENTIAL_CONTRACT.md) for exact source locations and matching rules.
 3. Confirm deployed HTTPS endpoints, gateway token, Supabase service credentials and function/database permissions in the actual deployment. Live Edge/PostgREST/RLS behavior was not established by isolated tests.
 4. Validate the real board/pin map, radio/module framing and duplex timing, cellular HTTPREAD/HTTPS behavior, NVS power-loss behavior, watchdog/reboot/deep-sleep persistence, sensor behavior, interference/range and power budget. Then enable polling only in a controlled validated release.
 
-No software-path blocker remains in the executed isolated chain. Deployment provisioning and physical validation remain explicit requirements; production readiness on real equipment is not claimed.
+The isolated remote-configuration software chain passed. The telemetry-to-Admin test now starts from production-compiled S1/S2 parser and Gateway mapping code, and the nine legacy Admin mutation bodies have individual isolated write/audit/readback coverage. Local PlatformIO target builds remain unavailable; CI target build steps are configured but await a runner result. Deployment provisioning and physical validation remain explicit requirements; production readiness on real equipment is not claimed. See [ADMIN_DATA_FLOW_AUDIT.md](ADMIN_DATA_FLOW_AUDIT.md) and [DEPLOYMENT_CREDENTIAL_CONTRACT.md](DEPLOYMENT_CREDENTIAL_CONTRACT.md).

@@ -1,7 +1,7 @@
 import "server-only";
 
-import { cookies } from "next/headers";
-import { getDictionary, LOCALE_COOKIE, normalizeLocale, type Dictionary, type Locale } from "./index";
+import { cookies, headers } from "next/headers";
+import { getDictionary, isLocale, LOCALE_COOKIE, negotiateLocale, type Dictionary, type Locale } from "./index";
 
 /**
  * Server-side locale resolution.
@@ -18,8 +18,9 @@ import { getDictionary, LOCALE_COOKIE, normalizeLocale, type Dictionary, type Lo
  * not duplicating the route tree under a `[locale]` segment.
  */
 export async function getLocale(): Promise<Locale> {
-  const store = await cookies();
-  return normalizeLocale(store.get(LOCALE_COOKIE)?.value);
+  const stored = (await cookies()).get(LOCALE_COOKIE)?.value;
+  if (isLocale(stored)) return stored; // 1. explicit choice
+  return negotiateLocale((await headers()).get("accept-language")); // 2. browser, 3. fallback
 }
 
 /** The resolved locale and its dictionary — the usual entry point for a page. */
