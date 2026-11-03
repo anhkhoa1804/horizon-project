@@ -1,0 +1,20 @@
+# Keep text files LF in the repository. Windows checkouts with core.autocrlf
+# would otherwise write CRLF into generated files whose contract checks compare
+# raw bytes (scripts/generate-remote-config.mjs --check).
+* text=auto eol=lf
+
+# Binary assets: never line-ending-convert or diff.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.heic binary
+*.heif binary
+*.woff2 binary
+*.ttf binary
+*.pdf binary
+*.pptx binary
+*.docx binary
+*.xlsx binary
+*.mp4 binary
