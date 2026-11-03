@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -16,7 +17,7 @@ test("station 1 never derives salinity from EC (I-22)", () => {
 
 test("host build of the salinity semantics passes", (t) => {
   const bin = path.join(tmpdir(), `water_salinity_host_${process.pid}`);
-  const cpp = new URL("./water_salinity_host.cpp", import.meta.url).pathname;
+  const cpp = fileURLToPath(new URL("./water_salinity_host.cpp", import.meta.url));
   try {
     execFileSync(process.env.CXX || "g++", ["-std=c++17", "-Wall", "-Wextra", "-o", bin, cpp]);
   } catch (error) {
