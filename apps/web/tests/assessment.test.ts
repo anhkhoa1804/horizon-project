@@ -98,22 +98,28 @@ describe("threshold assessment never equates 'no threshold' with 'safe'", () => 
 describe("historical anomaly (median / MAD)", () => {
   const policy = { evaluate: true };
   it("needs enough samples AND enough time coverage", () => {
-    assert.equal(assessAnomaly({ value: 10, observedAtMs: NOW, baseline: baseline(20, 14 * DAY), policy }).level, "INSUFFICIENT_BASELINE");
+    assert.equal(assessAnomaly({ value: 10, observedAtMs: NOW, baseline: baseline(10, 20 * DAY), policy }).level, "INSUFFICIENT_BASELINE");
     assert.equal(assessAnomaly({ value: 10, observedAtMs: NOW, baseline: baseline(500, 2 * DAY), policy }).reason, "short_coverage");
-    assert.equal(assessAnomaly({ value: 10, observedAtMs: NOW, baseline: baseline(200, 14 * DAY), policy }).level, "WITHIN_HISTORICAL_VARIATION");
+    assert.equal(assessAnomaly({ value: 10, observedAtMs: NOW, baseline: baseline(20, 20 * DAY), policy }).level, "WITHIN_HISTORICAL_VARIATION");
   });
   it("calls a clear outlier STATISTICALLY_UNUSUAL only when confirmed", () => {
-    const b = baseline(300, 14 * DAY);
-    assert.equal(assessAnomaly({ value: 25, observedAtMs: NOW, baseline: b, policy, recent: [10, 25] }).level, "WITHIN_HISTORICAL_VARIATION"); // single spike
+    const b = baseline(300, 20 * DAY);
+    const single = assessAnomaly({ value: 25, observedAtMs: NOW, baseline: b, policy, recent: [10, 25] });
+    assert.equal(single.level, "WITHIN_HISTORICAL_VARIATION"); // single spike
+    assert.equal(single.confirmedZ, 0);
     const confirmed = assessAnomaly({ value: 25, observedAtMs: NOW, baseline: b, policy, recent: [24, 25] });
     assert.equal(confirmed.level, "STATISTICALLY_UNUSUAL");
-    assert.ok(confirmed.robustZ! > 3.5);
+    assert.ok(confirmed.robustZ! > 3.5 && confirmed.confirmedZ! > 3.5);
+  });
+  it("keeps the sign: below the usual range is negative", () => {
+    const low = assessAnomaly({ value: 2, observedAtMs: NOW, baseline: baseline(300, 20 * DAY), policy, recent: [2, 2] });
+    assert.ok(low.confirmedZ! < -3.5);
   });
   it("excludes invalid, null, demo and FUTURE samples from the baseline", () => {
-    const good = baseline(200, 14 * DAY);
+    const good = baseline(200, 20 * DAY);
     const poisoned: BaselineSample[] = [
       ...good,
-      ...baseline(500, 14 * DAY, () => 999, false),                      // faulty readings
+      ...baseline(500, 20 * DAY, () => 999, false),                      // faulty readings
       ...Array.from({ length: 300 }, (_, i) => ({ t: NOW - i * 1000 - 1, value: 777, valid: true, isDemo: true })),
       ...Array.from({ length: 300 }, (_, i) => ({ t: NOW - i * 1000 - 1, value: null, valid: true })),
       ...Array.from({ length: 300 }, (_, i) => ({ t: NOW + (i + 1) * 60_000, value: 888, valid: true })), // the future
@@ -124,14 +130,22 @@ describe("historical anomaly (median / MAD)", () => {
     assert.equal(withJunk.samples, clean.samples);
   });
   it("treats unknown quality as ineligible, so thin trust means no verdict", () => {
-    const unknown = baseline(300, 14 * DAY, undefined, false);
+    const unknown = baseline(300, 20 * DAY, undefined, false);
     assert.equal(assessAnomaly({ value: 10, observedAtMs: NOW, baseline: unknown, policy }).level, "INSUFFICIENT_BASELINE");
   });
-  it("says INSUFFICIENT for a constant history instead of dividing by zero", () => {
-    const r = assessAnomaly({ value: 11, observedAtMs: NOW, baseline: baseline(300, 14 * DAY, () => 10), policy });
+  it("says INSUFFICIENT for an all-zero history instead of dividing by zero", () => {
+    const r = assessAnomaly({ value: 1, observedAtMs: NOW, baseline: baseline(300, 20 * DAY, () => 0), policy });
     assert.deepEqual([r.level, r.reason], ["INSUFFICIENT_BASELINE", "zero_variance"]);
   });
-  it("compares like with like for diurnal metrics", () => {
+  it("a flat history still allows natural spread, so small moves stay inside the usual range", () => {
+    const flat = baseline(300, 20 * DAY, () => 10);
+    assert.equal(assessAnomaly({ value: 10.8, observedAtMs: NOW, baseline: flat, policy, recent: [10.8, 10.8] }).confirmedZ! < 3, true);
+    assert.ok(assessAnomaly({ value: 14, observedAtMs: NOW, baseline: flat, policy, recent: [14, 14] }).confirmedZ! >= 5);
+    // per-quantity floor: 0.1 per mille of salinity is not news
+    const sal = baseline(300, 20 * DAY, () => 0.05);
+    assert.ok(Math.abs(assessAnomaly({ value: 0.1, observedAtMs: NOW, baseline: sal, policy: ANOMALY_POLICY.water_salinity, recent: [0.1, 0.1] }).confirmedZ!) < 3);
+  });
+  it("compares like with like for diurnal metrics (when a policy asks for it)", () => {
     // Warm afternoons vs cool nights: 30 C at 14:00 is normal, 30 C at 03:00 is not.
     const mk = (hourVn: number, base: number) => Array.from({ length: 12 * 10 }, (_, d) => {
       const day = Math.floor(d / 10);
@@ -139,50 +153,54 @@ describe("historical anomaly (median / MAD)", () => {
     });
     const history: BaselineSample[] = [...mk(14, 30), ...mk(3, 24)];
     const at = (hourVn: number) => Date.parse("2026-10-25T00:00:00Z") - 7 * HOUR + hourVn * HOUR;
-    const diurnal = { evaluate: true, diurnal: true, minSamples: 60, minCoverageMs: 5 * DAY };
+    const diurnal = { evaluate: true, diurnal: true, minSamples: 60, minCoverageMs: 5 * DAY, zThreshold: 3 };
     assert.equal(assessAnomaly({ value: 30, observedAtMs: at(14), baseline: history, policy: diurnal }).level, "WITHIN_HISTORICAL_VARIATION");
     assert.equal(assessAnomaly({ value: 30, observedAtMs: at(3), baseline: history, policy: diurnal, recent: [30, 30] }).level, "STATISTICALLY_UNUSUAL");
   });
-  it("is NOT_EVALUATED for tide-driven metrics", () => {
-    for (const q of ["water_level", "water_salinity", "water_ec"]) {
-      assert.equal(assessAnomaly({ value: 1, observedAtMs: NOW, baseline: baseline(300, 14 * DAY), policy: ANOMALY_POLICY[q] }).level, "NOT_EVALUATED", q);
+  it("evaluates every quantity against daily history; tidal ones carry a caveat in the UI", () => {
+    for (const q of ["water_level", "water_salinity", "water_ec", "soil_moisture", "soil_ph"]) {
+      assert.equal(ANOMALY_POLICY[q].evaluate, true, q);
+      assert.equal(assessAnomaly({ value: 10, observedAtMs: NOW, baseline: baseline(300, 20 * DAY), policy: ANOMALY_POLICY[q] }).level, "WITHIN_HISTORICAL_VARIATION", q);
     }
   });
 });
 
-describe("display resolution (B3) - green is earned, never defaulted", () => {
-  const ok = (over: Partial<MetricAssessment> = {}): MetricAssessment => ({
-    freshness: "FRESH", quality: "VALID",
-    threshold: { level: "WITHIN_REFERENCE_THRESHOLD", severity: null, pendingConfirmation: false, blockedBy: null, source: null },
-    anomaly: { level: "NOT_EVALUATED", reason: "policy", robustZ: null, median: null, samples: 0, coverageMs: 0 }, ...over,
-  });
+describe("display resolution - green / white / red by distribution and threshold, gray without a basis", () => {
+  const anom = (z: number | null, over = {}) => ({ level: "WITHIN_HISTORICAL_VARIATION" as const, reason: "ok" as const, robustZ: z, confirmedZ: z, median: 1, samples: 300, coverageMs: 14 * DAY, ...over });
+  const none = { level: "NOT_EVALUATED" as const, reason: "policy" as const, robustZ: null, confirmedZ: null, median: null, samples: 0, coverageMs: 0 };
   const thr = (level: MetricAssessment["threshold"]["level"], extra = {}) => ({ level, severity: null, pendingConfirmation: false, blockedBy: null, source: null, ...extra });
-  const unusual = { level: "STATISTICALLY_UNUSUAL", reason: "ok", robustZ: 5, median: 1, samples: 300, coverageMs: 14 * DAY } as const;
-  const inRange = { ...unusual, level: "WITHIN_HISTORICAL_VARIATION" } as const;
+  const ok = (over: Partial<MetricAssessment> = {}): MetricAssessment => ({
+    freshness: "FRESH", quality: "VALID", threshold: thr("WITHIN_REFERENCE_THRESHOLD"), anomaly: none, ...over,
+  });
 
-  it("green only with threshold + valid + fresh", () => {
-    assert.equal(resolveDisplay(ok()).tone, "green");
-    assert.equal(resolveDisplay(ok({ freshness: "STALE" })).tone, "gray");
+  it("old, missing or faulty data is gray whatever the number says", () => {
+    assert.equal(resolveDisplay(ok({ freshness: "STALE", anomaly: anom(5) })).tone, "gray");
     assert.equal(resolveDisplay(ok({ freshness: "OFFLINE" })).key, "offline");
     assert.equal(resolveDisplay(ok({ quality: "SENSOR_FAULT" })).tone, "gray");
     assert.equal(resolveDisplay(ok({ quality: "UNKNOWN" })).tone, "gray");
     assert.equal(resolveDisplay(ok({ quality: "MISSING" })).key, "missing");
   });
-  it("red only for a confirmed configured exceedance", () => {
-    assert.deepEqual(resolveDisplay(ok({ threshold: thr("THRESHOLD_EXCEEDED", { severity: "critical" }) })), { tone: "red", key: "thresholdExceeded", basis: "threshold" });
-    assert.equal(resolveDisplay(ok({ threshold: thr("APPROACHING_THRESHOLD", { pendingConfirmation: true }) })).tone, "yellow");
-    assert.equal(resolveDisplay(ok({ anomaly: unusual })).tone, "yellow");
-    assert.notEqual(resolveDisplay(ok({ anomaly: unusual, threshold: thr("NOT_CONFIGURED") })).tone, "red");
+  it("white inside the usual range", () => {
+    assert.deepEqual(resolveDisplay(ok({ anomaly: anom(0.4) })), { tone: "white", key: "withinHistoricalRange", basis: "history", strength: 0 });
   });
-  it("an outlier inside a configured band is yellow, never green", () => {
-    assert.deepEqual(resolveDisplay(ok({ anomaly: unusual })), { tone: "yellow", key: "unusualVsHistory", basis: "history" });
+  it("green below, red above, light at |z| >= 3 and strong at |z| >= 5", () => {
+    assert.deepEqual(resolveDisplay(ok({ anomaly: anom(-3.4) })), { tone: "green", key: "lowerThanUsual", basis: "history", strength: 1 });
+    assert.deepEqual(resolveDisplay(ok({ anomaly: anom(-5.5) })), { tone: "green", key: "unusuallyLow", basis: "history", strength: 2 });
+    assert.deepEqual(resolveDisplay(ok({ anomaly: anom(3.4) })), { tone: "red", key: "higherThanUsual", basis: "history", strength: 1 });
+    assert.deepEqual(resolveDisplay(ok({ anomaly: anom(6) })), { tone: "red", key: "unusuallyHigh", basis: "history", strength: 2 });
   });
-  it("an exceedance that is not an outlier is still red", () => {
-    assert.equal(resolveDisplay(ok({ threshold: thr("THRESHOLD_EXCEEDED", { severity: "warning" }), anomaly: inRange })).tone, "red");
+  it("an unconfirmed spike (confirmed z = 0) stays white", () => {
+    assert.equal(resolveDisplay(ok({ anomaly: anom(0, { robustZ: 6, reason: "unconfirmed" }) })).tone, "white");
   });
-  it("history alone yields gray with its own wording, never green and never 'safe'", () => {
-    const v = resolveDisplay(ok({ threshold: thr("NOT_CONFIGURED"), anomaly: inRange }));
-    assert.deepEqual(v, { tone: "gray", key: "withinHistoricalRange", basis: "history" });
+  it("a confirmed configured exceedance is always red, even when history says usual", () => {
+    assert.deepEqual(resolveDisplay(ok({ threshold: thr("THRESHOLD_EXCEEDED", { severity: "critical" }), anomaly: anom(-3) })), { tone: "red", key: "thresholdExceeded", basis: "threshold", strength: 2 });
+  });
+  it("approaching a threshold is a light red; the first exceeding sample says 'confirming'", () => {
+    assert.deepEqual(resolveDisplay(ok({ threshold: thr("APPROACHING_THRESHOLD") })), { tone: "red", key: "approachingThreshold", basis: "threshold", strength: 1 });
+    assert.equal(resolveDisplay(ok({ threshold: thr("APPROACHING_THRESHOLD", { pendingConfirmation: true }) })).key, "confirming");
+  });
+  it("no history: inside a configured band is white; no threshold at all is gray with its own wording", () => {
+    assert.equal(resolveDisplay(ok()).tone, "white");
     assert.equal(resolveDisplay(ok({ threshold: thr("NOT_CONFIGURED") })).key, "noThreshold");
     assert.equal(resolveDisplay(ok({ threshold: thr("NOT_APPLICABLE") })).key, "insufficient");
   });
@@ -190,10 +208,15 @@ describe("display resolution (B3) - green is earned, never defaulted", () => {
 
 describe("assessMetric end to end", () => {
   const args = { quantity: "water_salinity", observedAt: iso(2 * MIN), nowMs: NOW, rows: salinityRows, stationQuality: "valid" as const };
-  it("green for a fresh, valid value inside configured bands", () => {
-    assert.equal(resolveDisplay(assessMetric({ ...args, value: 0.4 })).tone, "green");
+  it("white for a fresh, valid value inside configured bands", () => {
+    assert.equal(resolveDisplay(assessMetric({ ...args, value: 0.4 })).tone, "white");
   });
-  it("the same value an hour later renders gray, not green", () => {
+  it("soil data stays fresh for a day: 20 h old is still coloured, 2 days old is gray", () => {
+    const soil = { quantity: "soil_moisture", value: 30, nowMs: NOW, rows: [] as typeof salinityRows, stationQuality: "valid" as const };
+    assert.equal(resolveDisplay(assessMetric({ ...soil, observedAt: iso(20 * HOUR), expectedIntervalMs: 8 * HOUR })).key, "noThreshold");
+    assert.equal(resolveDisplay(assessMetric({ ...soil, observedAt: iso(2 * DAY), expectedIntervalMs: 8 * HOUR })).key, "stale");
+  });
+  it("the same salinity value an hour later renders gray, not white", () => {
     assert.equal(resolveDisplay(assessMetric({ ...args, value: 0.4, observedAt: iso(70 * MIN) })).tone, "gray");
   });
   it("a faulted sensor beats a pretty number", () => {

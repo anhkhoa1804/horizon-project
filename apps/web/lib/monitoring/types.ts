@@ -96,6 +96,8 @@ export interface ObservatoryStation {
   lng: number | null;
   freshness: FreshnessState;
   quality: QualityState | null;
+  /** Raw fault bitmask of the latest packet (soil: one bit per missing field). Null when not reported. */
+  faultFlags?: number | null;
   needsAttention: boolean;
   timestamp: string | null;
   /** The station's headline instrument reading. */

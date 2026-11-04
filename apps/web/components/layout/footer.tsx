@@ -51,7 +51,7 @@ export function Footer() {
               </ul>
             </nav>
 
-            <p className="shrink-0 text-[13px] text-foreground-muted [font-family:var(--font-data)]">
+            <p className="shrink-0 text-[13px] text-foreground-muted">
               {dict.footer.copyright}
             </p>
           </div>

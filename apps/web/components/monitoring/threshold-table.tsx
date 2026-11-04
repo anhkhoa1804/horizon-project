@@ -68,7 +68,7 @@ export function ThresholdTable({
         ];
 
         return (
-          <details key={quantity} className="group py-4">
+          <details key={quantity} name="observatory-disclosure" className="group py-4">
             <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-accent">
               <ChevronDown
                 className="h-4 w-4 shrink-0 text-foreground-subtle transition-transform duration-[var(--motion-base)] group-open:rotate-180"
@@ -139,7 +139,7 @@ export function ThresholdTable({
           is where a reader finds out why. Same disclosure grammar as every
           group above, so the section reads as one list rather than a table
           followed by an essay. */}
-      <details className="group py-4">
+      <details name="observatory-disclosure" className="group py-4">
         <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-accent">
           <ChevronDown
             className="h-4 w-4 shrink-0 text-foreground-subtle transition-transform duration-[var(--motion-base)] group-open:rotate-180"

@@ -27,23 +27,33 @@ const pt = (ageMs: number, salinity: number | null): ObservationPoint => ({
 });
 const ctx = (over = {}) => ({ rows, nowMs: NOW, stationQuality: "valid" as const, ...over });
 
-describe("display status: the four layers decide the colour", () => {
+const DAYMS = 86_400_000;
+/** 30 daily points ending 2 days ago, salinity 0.40 .. 0.48 (a quiet history). */
+const history = Array.from({ length: 30 }, (_, i) => pt(2 * DAYMS + i * DAYMS, 0.4 + (i % 5) * 0.02));
+
+describe("display status: freshness, quality, threshold and history decide the colour", () => {
   it("is neutral before the browser knows the time", () => {
     assert.equal(verdictFor(metric("0.4", MIN), "water_salinity", ctx({ nowMs: null })), null);
   });
-  it("green only for a fresh, valid value inside a configured threshold", () => {
+  it("white for a fresh, valid value inside a configured threshold", () => {
     const v = verdictFor(metric("0.4", MIN), "water_salinity", ctx())!;
-    assert.equal(v.display.tone, "green");
+    assert.equal(v.display.tone, "white");
     assert.equal(toMetricStatus(v)?.level, "ok");
   });
-  it("NEVER green from a stale reading, even when the number is inside the band", () => {
+  it("NEVER coloured from a stale reading, even when the number is inside the band", () => {
     const v = verdictFor(metric("0.4", 30 * MIN), "water_salinity", ctx())!;
     assert.equal(v.display.tone, "gray");
     assert.equal(v.display.key, "stale");
     assert.equal(toMetricStatus(v), null);
     assert.equal(verdictFor(metric("0.4", 3 * 60 * MIN), "water_salinity", ctx())!.display.key, "offline");
   });
-  it("no configured threshold is gray 'noThreshold', never green", () => {
+  it("soil is stale only after a day, not after 30 minutes", () => {
+    const soil = (ageMs: number) => verdictFor(metric("30", ageMs), "soil_moisture", ctx({ rows: [] }))!;
+    assert.notEqual(soil(30 * MIN).display.key, "stale");
+    assert.notEqual(soil(20 * 60 * MIN).display.key, "stale");
+    assert.equal(soil(30 * 60 * MIN).display.key, "stale");
+  });
+  it("no configured threshold and no history is gray 'noThreshold'", () => {
     const v = verdictFor(metric("0.4", MIN), "water_salinity", ctx({ rows: [] }))!;
     assert.equal(v.display.tone, "gray");
     assert.equal(v.display.key, "noThreshold");
@@ -54,8 +64,7 @@ describe("display status: the four layers decide the colour", () => {
     assert.equal(v.display.key, "sensorFault");
   });
   it("missing value is 'missing', never 0", () => {
-    const v = verdictFor(metric(null, MIN), "water_salinity", ctx())!;
-    assert.equal(v.display.key, "missing");
+    assert.equal(verdictFor(metric(null, MIN), "water_salinity", ctx())!.display.key, "missing");
   });
   it("no quality evidence is gray", () => {
     assert.equal(verdictFor(metric("0.4", MIN), "water_salinity", ctx({ stationQuality: null }))!.display.key, "unknownQuality");
@@ -64,26 +73,36 @@ describe("display status: the four layers decide the colour", () => {
     assert.equal(verdictFor(metric("30", MIN, "external"), "water_salinity", ctx()), null);
     assert.equal(verdictFor(metric("30", MIN, "reference"), "water_salinity", ctx()), null);
   });
-  it("one exceeding sample is 'confirming' (yellow); two consecutive are red", () => {
+  it("one exceeding sample is a light red 'confirming'; two consecutive are a strong red", () => {
     const one = verdictFor(metric("2.4", MIN), "water_salinity", ctx({ series: [] }))!;
-    assert.equal(one.display.tone, "yellow");
-    assert.equal(one.display.key, "confirming");
+    assert.deepEqual([one.display.tone, one.display.key, one.display.strength], ["red", "confirming", 1]);
     const two = verdictFor(metric("2.4", MIN), "water_salinity", ctx({ series: [pt(3 * MIN, 2.3)] }))!;
-    assert.equal(two.display.tone, "red");
+    assert.deepEqual([two.display.tone, two.display.strength], ["red", 2]);
     assert.equal(toMetricStatus(two)?.level, "critical");
   });
-  it("a spike between two normal samples does not alarm", () => {
+  it("a spike between two normal samples does not reach the strong red", () => {
     const v = verdictFor(metric("2.4", MIN), "water_salinity", ctx({ series: [pt(3 * MIN, 0.5)] }))!;
-    assert.notEqual(v.display.tone, "red");
+    assert.notEqual(v.display.strength, 2);
   });
-  it("history alone cannot colour: with no baseline the anomaly layer is insufficient", () => {
-    const v = verdictFor(metric("0.4", MIN), "soil_moisture", ctx({ rows: [] }))!;
+  it("history colours by z-score: usual = white, lower = green, higher = red", () => {
+    const base = { rows: [], history };
+    const usual = verdictFor(metric("0.44", MIN), "water_salinity", ctx({ ...base, series: [pt(3 * MIN, 0.44)] }))!;
+    assert.equal(usual.display.tone, "white");
+    const high = verdictFor(metric("0.9", MIN), "water_salinity", ctx({ ...base, series: [pt(3 * MIN, 0.9)] }))!;
+    assert.deepEqual([high.display.tone, high.display.basis], ["red", "history"]);
+    const low = verdictFor(metric("0.05", MIN), "water_salinity", ctx({ ...base, series: [pt(3 * MIN, 0.05)] }))!;
+    assert.deepEqual([low.display.tone, low.display.basis], ["green", "history"]);
+    const spike = verdictFor(metric("0.9", MIN), "water_salinity", ctx({ ...base, series: [pt(3 * MIN, 0.44)] }))!;
+    assert.equal(spike.display.tone, "white");
+  });
+  it("too little history cannot colour: the anomaly layer is insufficient", () => {
+    const v = verdictFor(metric("0.4", MIN), "soil_moisture", ctx({ rows: [], history: history.slice(0, 5) }))!;
     assert.equal(v.assessment.anomaly.level, "INSUFFICIENT_BASELINE");
     assert.equal(v.display.tone, "gray");
   });
-  it("tide-driven metrics are not compared with history", () => {
+  it("tide-driven metrics are compared with history too (the panel carries a caveat)", () => {
     const v = verdictFor(metric("0.4", MIN), "water_level", ctx())!;
-    assert.equal(v.assessment.anomaly.reason, "policy");
+    assert.notEqual(v.assessment.anomaly.reason, "policy");
   });
 });
 
@@ -98,20 +117,20 @@ describe("recent samples used for confirmation", () => {
   });
 });
 
-describe("a region is never greener than its data", () => {
-  const green = verdictFor(metric("0.4", MIN), "water_salinity", ctx())!;
+describe("a region never hides a data problem", () => {
+  const white = verdictFor(metric("0.4", MIN), "water_salinity", ctx())!;
   const stale = verdictFor(metric("0.4", 30 * MIN), "water_level", ctx({ rows: [row({ quantity: "water_level" })] }))!;
   const red = verdictFor(metric("2.4", MIN), "water_salinity", ctx({ series: [pt(3 * MIN, 2.3)] }))!;
-  it("one stale reading keeps a region from showing green", () => {
-    const r = regionVerdict([green, stale]);
+  it("one stale reading keeps a white region from looking fine", () => {
+    const r = regionVerdict([white, stale]);
     assert.equal(r.status, null);
     assert.equal(r.grayReason, "stale");
   });
   it("red outranks everything", () => {
-    assert.equal(regionVerdict([green, stale, red]).status?.level, "critical");
+    assert.equal(regionVerdict([white, stale, red]).status?.level, "critical");
   });
-  it("all-green region is green; empty region is neutral", () => {
-    assert.equal(regionVerdict([green]).status?.level, "ok");
+  it("all-white region is white; empty region is neutral", () => {
+    assert.equal(regionVerdict([white]).status?.tone, "white");
     assert.equal(regionVerdict([null, null]).status, null);
   });
 });
@@ -128,13 +147,14 @@ describe("copy and components", () => {
       const all = JSON.stringify(d.dataScope) + JSON.stringify(d.assessment);
       assert.doesNotMatch(all, /an toàn tuyệt đối|absolutely safe|đã được chứng nhận|officially certified/i);
     }
-    assert.match(vi.dataScope.items.reference.body, /Không thay thế/);
+    assert.match(vi.dataScope.items.reference.body, /không thay thế/i);
     assert.match(en.dataScope.items.reference.body, /not replace/i);
   });
   it("the scope statement sits directly under the observatory, with no scrolling ticker or separate page", () => {
     const canvas = fs.readFileSync("components/monitoring/observatory-canvas.tsx", "utf8");
     assert.match(canvas, /<DataScopeSection dict=\{dict\} \/>/);
-    assert.ok(canvas.indexOf("DataScopeSection dict") < canvas.indexOf("<ProvenancePanel"));
+    assert.doesNotMatch(canvas, /ProvenancePanel/);
+    assert.equal(fs.existsSync("components/monitoring/provenance-panel.tsx"), false);
     assert.equal(fs.existsSync("components/monitoring/scope-ticker.tsx"), false);
     assert.equal(fs.existsSync("app/data-scope"), false);
     const css = fs.readFileSync("app/globals.css", "utf8");
@@ -154,5 +174,22 @@ describe("copy and components", () => {
     const src = fs.readFileSync("components/monitoring/observatory-canvas.tsx", "utf8");
     assert.doesNotMatch(src, /resolveSeverity\(applicable/);
     assert.match(src, /verdictFor/);
+  });
+});
+
+describe("soil faults are read per field", () => {
+  it("a missing salinity/TDS bit does not make moisture, temperature, EC or pH faulty", () => {
+    const flags = 32 | 64;
+    for (const q of ["soil_moisture", "soil_temp", "soil_ec_bulk", "soil_ph", "air_temp"]) {
+      const v = verdictFor(metric("30", MIN), q, ctx({ rows: [], stationQuality: "error", faultFlags: flags }))!;
+      assert.notEqual(v.display.key, "sensorFault", q);
+    }
+  });
+  it("a set bit for the metric's own field is a sensor fault", () => {
+    assert.equal(verdictFor(metric("30", MIN), "soil_ph", ctx({ rows: [], stationQuality: "error", faultFlags: 128 }))!.display.key, "sensorFault");
+    assert.equal(verdictFor(metric("30", MIN), "soil_moisture", ctx({ rows: [], stationQuality: "error", faultFlags: 8 }))!.display.key, "sensorFault");
+  });
+  it("without a bitmask the station-level quality still decides", () => {
+    assert.equal(verdictFor(metric("30", MIN), "soil_ph", ctx({ rows: [], stationQuality: "error" }))!.display.key, "sensorFault");
   });
 });

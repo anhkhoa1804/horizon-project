@@ -1,6 +1,6 @@
 import "server-only";
 
-import { freshnessStatus } from "@/components/ui/status-indicator";
+import { freshnessStatus, SOIL_FRESHNESS_THRESHOLDS } from "@/components/ui/status-indicator";
 import type { DataProvenance } from "@/lib/dataState";
 import { resolveTelemetryOrigin } from "@/lib/dataState";
 import {
@@ -302,7 +302,7 @@ function buildRealStation(
   const profile = stationProfiles[id];
   const snapshot = snapshots.find((s) => s.station.id === id);
   const timestamp = latestPilotTimestamp(id, snapshot, soilReading);
-  const freshness = freshnessStatus(timestamp);
+  const freshness = freshnessStatus(timestamp, profile.kind === "soil" ? { thresholds: SOIL_FRESHNESS_THRESHOLDS } : {});
   const provenance: DataProvenance = {
     origin: resolveTelemetryOrigin(freshness, timestamp !== null),
     source: "Quan trắc trực tiếp",
@@ -332,6 +332,7 @@ function buildRealStation(
       ...base,
       kind: "soil",
       quality: soilReading ? (soilReading.fault_flags > 0 ? "error" : "valid") : null,
+      faultFlags: soilReading ? soilReading.fault_flags : null,
       primary: metric("Độ ẩm đất", soilReading?.soil_moisture_pct, 1, "%", provenance, "moisture"),
       environment: [
         {

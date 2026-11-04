@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { PublicRealtimeConfig } from "@/lib/monitoring/publicRealtime";
 import { applyLiveReading, parseLiveReading } from "@/lib/monitoring/liveReadings";
 import type { ObservatoryViewModel } from "@/lib/monitoring/types";
-import { freshnessStatus } from "@/components/ui/status-indicator";
+import { freshnessStatus, SOIL_FRESHNESS_THRESHOLDS } from "@/components/ui/status-indicator";
 
 export function useLiveObservatory(initial: ObservatoryViewModel, config: PublicRealtimeConfig | null) {
   const [model, setModel] = useState(initial);
@@ -35,7 +35,7 @@ export function useLiveObservatory(initial: ObservatoryViewModel, config: Public
     if (initial.mode !== "real") return;
     // Derive observation age locally. This never requests telemetry or refreshes a page.
     const timer = window.setInterval(() => setModel((current) => {
-      const stations = current.stations.map((s) => ({ ...s, freshness: freshnessStatus(s.timestamp) }));
+      const stations = current.stations.map((s) => ({ ...s, freshness: freshnessStatus(s.timestamp, s.kind === "soil" ? { thresholds: SOIL_FRESHNESS_THRESHOLDS } : {}) }));
       return { ...current, stations, network: { ...current.network,
         live: stations.filter((s) => ["live", "recent"].includes(s.freshness)).length,
         offline: stations.filter((s) => ["stale", "offline"].includes(s.freshness)).length,

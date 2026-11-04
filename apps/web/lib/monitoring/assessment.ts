@@ -184,6 +184,8 @@ export interface AnomalyPolicy {
   diurnal?: boolean;
   minSamples?: number;
   minCoverageMs?: number;
+  /** Smallest spread (in the quantity's own unit) a history may be treated as having. */
+  minScale?: number;
   /** |robust z| at or above this is "unusual". 3.5 is the Iglewicz-Hoaglin convention. */
   zThreshold?: number;
 }
@@ -200,7 +202,14 @@ export interface AnomalyInput {
 
 export interface AnomalyAssessment {
   level: AnomalyLevel;
+  /** Robust z of the current value (signed: negative = below the usual range). */
   robustZ: number | null;
+  /**
+   * The z that survived the confirmation rule: the smallest-magnitude z among the
+   * last `confirmations` samples, and 0 unless all of them lie on the same side.
+   * This - not `robustZ` - decides colour, so one noisy sample cannot tint a box.
+   */
+  confirmedZ: number | null;
   median: number | null;
   samples: number;
   coverageMs: number;
@@ -209,8 +218,13 @@ export interface AnomalyAssessment {
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
-export const DEFAULT_MIN_SAMPLES = 72;
-export const DEFAULT_MIN_COVERAGE_MS = 7 * DAY_MS;
+export const DEFAULT_MIN_SAMPLES = 14;
+export const DEFAULT_MIN_COVERAGE_MS = 14 * DAY_MS;
+/** |confirmed z| thresholds for the two colour strengths. Wider than the textbook 2 / 3.5 because site data barely moves. */
+export const Z_NOTABLE = 3;
+export const Z_OUTLIER = 5;
+/** Even a perfectly flat history is allowed this much natural spread (5 % of the median), so noise cannot colour a box. */
+export const MIN_RELATIVE_SCALE = 0.05;
 
 function median(sorted: number[]): number {
   const n = sorted.length;
@@ -236,13 +250,13 @@ function hourOfDayVn(t: number): number {
  */
 export function assessAnomaly(input: AnomalyInput): AnomalyAssessment {
   const none = (level: AnomalyLevel, reason: AnomalyAssessment["reason"], samples = 0, coverageMs = 0): AnomalyAssessment =>
-    ({ level, reason, robustZ: null, median: null, samples, coverageMs });
+    ({ level, reason, robustZ: null, confirmedZ: null, median: null, samples, coverageMs });
   if (!input.policy.evaluate) return none("NOT_EVALUATED", "policy");
   if (input.value === null || input.value === undefined || !Number.isFinite(input.value)) return none("NOT_EVALUATED", "no_value");
 
   const minSamples = input.policy.minSamples ?? DEFAULT_MIN_SAMPLES;
   const minCoverage = input.policy.minCoverageMs ?? DEFAULT_MIN_COVERAGE_MS;
-  const z = input.policy.zThreshold ?? 3.5;
+  const z = input.policy.zThreshold ?? Z_OUTLIER;
   const hour = hourOfDayVn(input.observedAtMs);
 
   const eligible = input.baseline.filter(
@@ -264,38 +278,48 @@ export function assessAnomaly(input: AnomalyInput): AnomalyAssessment {
     const q3 = median(values.slice(Math.ceil(values.length / 2)));
     scale = (q3 - q1) / 1.349;
   }
+  // Floor the spread: a station whose history is nearly flat would otherwise turn every tiny change into a huge z.
+  scale = Math.max(scale, input.policy.minScale ?? 0, MIN_RELATIVE_SCALE * Math.abs(med));
   if (!(scale > 0)) return { ...none("INSUFFICIENT_BASELINE", "zero_variance", eligible.length, coverage), median: med };
 
   const score = (input.value - med) / scale;
-  const unusual = Math.abs(score) >= z;
   const need = Math.max(1, input.confirmations ?? 2);
-  if (unusual) {
-    const window = (input.recent ?? [input.value]).filter((v) => Number.isFinite(v)).slice(-need);
-    const confirmed = window.length >= need && window.every((v) => Math.abs((v - med) / scale) >= z);
-    // One odd sample is noise, not a finding.
-    if (!confirmed) return { level: "WITHIN_HISTORICAL_VARIATION", reason: "unconfirmed", robustZ: score, median: med, samples: eligible.length, coverageMs: coverage };
-  }
-  return { level: unusual ? "STATISTICALLY_UNUSUAL" : "WITHIN_HISTORICAL_VARIATION", reason: "ok", robustZ: score, median: med, samples: eligible.length, coverageMs: coverage };
+  const window = (input.recent ?? [input.value]).filter((v) => Number.isFinite(v)).slice(-need);
+  const zs = window.map((v) => (v - med) / scale);
+  const sameSide = zs.length >= need && (zs.every((v) => v > 0) || zs.every((v) => v < 0));
+  // Smallest magnitude on the shared side; 0 when the window disagrees or is too short.
+  const confirmed = sameSide ? zs.reduce((m, v) => (Math.abs(v) < Math.abs(m) ? v : m), zs[0]) : 0;
+  const unusual = Math.abs(confirmed) >= z;
+  const base = { robustZ: score, confirmedZ: confirmed, median: med, samples: eligible.length, coverageMs: coverage };
+  if (Math.abs(score) >= z && !unusual) return { level: "WITHIN_HISTORICAL_VARIATION", reason: "unconfirmed", ...base };
+  return { level: unusual ? "STATISTICALLY_UNUSUAL" : "WITHIN_HISTORICAL_VARIATION", reason: "ok", ...base };
 }
 
 /**
- * Which metrics may be compared with history at all. Water level and
- * salinity at Cồn Hô are tide-driven; an hour-of-day or day-level baseline
- * would call every spring tide "unusual", so they are NOT_EVALUATED until a
- * tide-aware method exists. Rainfall is event-driven, not distributional.
+ * Which metrics are compared with history, and how.
+ *
+ * The browser receives DAILY buckets (see seriesFromDaily), so the baseline is
+ * "the distribution of previous days", not of raw samples: 14 days and 14 days of
+ * coverage are the floor, and diurnal stratification is impossible. Water level and
+ * salinity follow the tide; comparing today's reading with daily means is therefore
+ * only an indication of where the value sits, and the UI says so (notes.tidal).
+ * Rainfall is event-driven, not distributional, and is left out.
  */
 export const ANOMALY_POLICY: Record<string, AnomalyPolicy> = {
-  water_level: { evaluate: false },
-  water_salinity: { evaluate: false },
-  water_ec: { evaluate: false },
-  water_temp: { evaluate: true, diurnal: true },
-  soil_moisture: { evaluate: true },
-  soil_temp: { evaluate: true, diurnal: true },
-  soil_ec_bulk: { evaluate: true },
-  soil_ph: { evaluate: true },
-  air_temp: { evaluate: true, diurnal: true },
-  air_humidity: { evaluate: true, diurnal: true },
+  water_level: { evaluate: true, minScale: 5 },      // cm
+  water_salinity: { evaluate: true, minScale: 0.05 }, // per mille
+  water_ec: { evaluate: true, minScale: 0.1 },        // mS/cm
+  water_temp: { evaluate: true, minScale: 1 },        // deg C
+  soil_moisture: { evaluate: true, minScale: 3 },     // %
+  soil_temp: { evaluate: true, minScale: 1 },
+  soil_ec_bulk: { evaluate: true, minScale: 0.05 },   // mS/cm
+  soil_ph: { evaluate: true, minScale: 0.15 },
+  air_temp: { evaluate: true, minScale: 1.5 },
+  air_humidity: { evaluate: true, minScale: 5 },
 };
+
+/** Quantities whose natural variation is tidal: history is shown, with a caveat. */
+export const TIDAL_QUANTITIES: ReadonlySet<string> = new Set(["water_level", "water_salinity", "water_ec"]);
 
 // ---------------------------------------------------------------- combination
 
@@ -306,13 +330,24 @@ export interface MetricAssessment {
   anomaly: AnomalyAssessment;
 }
 
-export type DisplayTone = "green" | "yellow" | "red" | "gray";
+/**
+ * green = lower than this station's usual range     (diverging scale: green - white - red)
+ * white = inside the usual range / inside a configured reference band
+ * red   = higher than usual, OR a configured alert threshold exceeded/approached
+ * gray  = no basis: old or missing data, fault, nothing to compare with
+ *
+ * `strength` 1 = notable (|z| >= 2), 2 = outlier (|z| >= 3.5) or a confirmed threshold exceedance.
+ */
+export type DisplayTone = "green" | "white" | "red" | "gray";
 export type DisplayKey =
   | "withinReference"
   | "approachingThreshold"
   | "confirming"
   | "thresholdExceeded"
-  | "unusualVsHistory"
+  | "lowerThanUsual"
+  | "higherThanUsual"
+  | "unusuallyLow"
+  | "unusuallyHigh"
   | "withinHistoricalRange"
   | "stale"
   | "offline"
@@ -327,19 +362,23 @@ export type DisplayKey =
 export interface DisplayVerdict {
   tone: DisplayTone;
   key: DisplayKey;
-  /** The threshold that justified a green/red, when there is one. */
+  /** What justified the colour. */
   basis: "threshold" | "history" | "none";
+  strength: 0 | 1 | 2;
 }
 
 /**
- * Green requires a configured threshold, a valid value and fresh data.
- * Red requires a configured threshold exceeded AND confirmed.
- * Yellow is "worth watching": approaching/confirming a configured line, or
- * unusual against history. History alone can never make anything green or red.
- * Gray is everything we cannot support: stale, missing, faulty, unconfigured.
+ * Precedence, each step only ever more cautious than the next:
+ *  1. Old / missing / faulty / unvetted data is gray, whatever the number says.
+ *  2. A configured, sourced threshold that is exceeded (and confirmed) is red - always.
+ *     Approaching one is a light red. Thresholds and their sources are unchanged.
+ *  3. Otherwise colour is the position against the station's own history:
+ *     |z| >= 3.5 strong, |z| >= 2 light, green below / red above, white inside.
+ *  4. No usable history: inside a configured band is white; anything else is gray.
+ * Position against history is not a statement about safety, and the labels never say it is.
  */
 export function resolveDisplay(a: MetricAssessment): DisplayVerdict {
-  const gray = (key: DisplayKey): DisplayVerdict => ({ tone: "gray", key, basis: "none" });
+  const gray = (key: DisplayKey): DisplayVerdict => ({ tone: "gray", key, basis: "none", strength: 0 });
   if (a.freshness === "OFFLINE") return gray("offline");
   if (a.freshness === "STALE") return gray("stale");
   if (a.freshness === "UNKNOWN") return gray("unknownFreshness");
@@ -349,11 +388,18 @@ export function resolveDisplay(a: MetricAssessment): DisplayVerdict {
   if (a.quality === "UNKNOWN") return gray("unknownQuality");
 
   const t = a.threshold;
-  if (t.level === "THRESHOLD_EXCEEDED") return { tone: "red", key: "thresholdExceeded", basis: "threshold" };
-  if (t.level === "APPROACHING_THRESHOLD") return { tone: "yellow", key: t.pendingConfirmation ? "confirming" : "approachingThreshold", basis: "threshold" };
-  if (a.anomaly.level === "STATISTICALLY_UNUSUAL") return { tone: "yellow", key: "unusualVsHistory", basis: "history" };
-  if (t.level === "WITHIN_REFERENCE_THRESHOLD") return { tone: "green", key: "withinReference", basis: "threshold" };
-  if (a.anomaly.level === "WITHIN_HISTORICAL_VARIATION") return { tone: "gray", key: "withinHistoricalRange", basis: "history" };
+  if (t.level === "THRESHOLD_EXCEEDED") return { tone: "red", key: "thresholdExceeded", basis: "threshold", strength: 2 };
+  if (t.level === "APPROACHING_THRESHOLD") return { tone: "red", key: t.pendingConfirmation ? "confirming" : "approachingThreshold", basis: "threshold", strength: 1 };
+
+  const z = a.anomaly.confirmedZ;
+  const usable = a.anomaly.reason === "ok" || a.anomaly.reason === "unconfirmed";
+  if (usable && z !== null) {
+    const mag = Math.abs(z);
+    if (mag >= Z_OUTLIER) return { tone: z < 0 ? "green" : "red", key: z < 0 ? "unusuallyLow" : "unusuallyHigh", basis: "history", strength: 2 };
+    if (mag >= Z_NOTABLE) return { tone: z < 0 ? "green" : "red", key: z < 0 ? "lowerThanUsual" : "higherThanUsual", basis: "history", strength: 1 };
+    return { tone: "white", key: "withinHistoricalRange", basis: "history", strength: 0 };
+  }
+  if (t.level === "WITHIN_REFERENCE_THRESHOLD") return { tone: "white", key: "withinReference", basis: "threshold", strength: 0 };
   if (t.level === "NOT_CONFIGURED") return gray("noThreshold");
   return gray("insufficient");
 }
@@ -384,6 +430,6 @@ export function assessMetric(input: {
   const policy = ANOMALY_POLICY[input.quantity] ?? { evaluate: false };
   const anomaly = Number.isFinite(observedAtMs) && freshness === "FRESH" && quality === "VALID"
     ? assessAnomaly({ value: input.value, observedAtMs, baseline: input.baseline ?? [], policy, recent: input.recent })
-    : ({ level: "NOT_EVALUATED", reason: "no_value", robustZ: null, median: null, samples: 0, coverageMs: 0 } as AnomalyAssessment);
+    : ({ level: "NOT_EVALUATED", reason: "no_value", robustZ: null, confirmedZ: null, median: null, samples: 0, coverageMs: 0 } as AnomalyAssessment);
   return { freshness, quality, threshold, anomaly };
 }

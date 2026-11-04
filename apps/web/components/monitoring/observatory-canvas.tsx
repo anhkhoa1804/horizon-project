@@ -19,10 +19,10 @@ import { resolveSeverity, type ThresholdRow, type SoilWaterModel } from "@/lib/m
 import { STATION_COORDS } from "@/lib/geo";
 import type { PilotStationId } from "@/lib/publicStations";
 import { statusFor, worstStatus, STATUS_SURFACE, type MetricStatus } from "@/lib/monitoring/status";
+import type { DisplayTone } from "@/lib/monitoring/assessment";
 import { regionVerdict, toMetricStatus, verdictFor, type MetricVerdict } from "@/lib/monitoring/displayStatus";
 import type { DisplayKey } from "@/lib/monitoring/assessment";
 import { DataScopeSection } from "@/components/monitoring/data-scope-section";
-import { ProvenancePanel } from "@/components/monitoring/provenance-panel";
 import { useNowMs } from "@/lib/monitoring/useNowMs";
 import { cn } from "@/lib/utils";
 import type {
@@ -120,6 +120,8 @@ import type {
  * surface uses a readable 2×2 internal arrangement rather than four tiny
  * cards.
  */
+
+type ToneStatus = MetricStatus & { labelKey?: DisplayKey; tone?: DisplayTone; strength?: number };
 
 const STATUS_LABEL: Record<MetricStatus["level"], keyof Dictionary["alerts"]> = {
   ok: "normal",
@@ -311,7 +313,7 @@ function RegionHeader({
 }: {
   icon: typeof Waves;
   title: string;
-  status: (MetricStatus & { labelKey?: DisplayKey }) | null;
+  status: ToneStatus | null;
   /** Why the region is neutral when that is a data problem (old data, sensor fault ...). */
   grayReason?: DisplayKey | null;
   dict: Dictionary;
@@ -322,7 +324,7 @@ function RegionHeader({
     <div className="region-heading flex min-w-0 items-center gap-1.5 text-foreground-muted">
       <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
       <span className="region-heading-title text-[11px] font-medium uppercase tracking-[0.06em]">{title}</span><LiveSignalIndicator />
-      {status ? (
+      {status && !status.tone ? (
         <>
           <span aria-hidden className="shrink-0 text-[11px] opacity-50">
             ·
@@ -332,6 +334,9 @@ function RegionHeader({
             {statusText}
           </span>
         </>
+      ) : status?.tone ? (
+        // Assessed statuses are carried by the tint; the words stay available to assistive technology.
+        <span className="sr-only">{statusText}</span>
       ) : grayReason ? (
         <>
           <span aria-hidden className="shrink-0 text-[11px] opacity-50">
@@ -375,7 +380,7 @@ function MetricCell({
   note?: string | null;
 }) {
   return (
-    <div data-status={status?.level ?? "none"} className={cn("status-card rounded-xl border border-border", "flex flex-col justify-between p-[var(--bento-pad)]", "gap-1", status ? regionSurface(status) : tone, placement)}>
+    <div data-status={status?.level ?? "none"} data-tone={(status as ToneStatus | null | undefined)?.tone} data-strength={(status as ToneStatus | null | undefined)?.strength} className={cn("status-card rounded-xl border border-border", "flex flex-col justify-between p-[var(--bento-pad)]", "gap-1", status ? regionSurface(status) : tone, placement)}>
       <div className="flex min-w-0 items-start gap-1.5 text-foreground-subtle">
         <Icon className="h-3.5 w-3.5 shrink-0 translate-y-px" aria-hidden />
         <span className="min-w-0 text-[11px] font-semibold uppercase leading-[1.3] tracking-[0.1em]">{label}</span>
@@ -411,7 +416,7 @@ function SoilPairCard({
   icon: typeof Waves;
   title: string;
   readings: { label: string; metric: ObservatoryMetric | null | undefined; status: MetricStatus | null; reason?: DisplayKey | null }[];
-  status: (MetricStatus & { labelKey?: DisplayKey }) | null;
+  status: ToneStatus | null;
   grayReason?: DisplayKey | null;
   dict: Dictionary;
   placement: string;
@@ -420,7 +425,7 @@ function SoilPairCard({
   return (
     <div
       data-testid={testId}
-      data-status={status?.level ?? "none"}
+      data-status={status?.level ?? "none"} data-tone={(status as ToneStatus | null | undefined)?.tone} data-strength={(status as ToneStatus | null | undefined)?.strength}
       className={cn("status-card rounded-xl border border-border", "flex flex-col justify-between gap-2 p-[var(--bento-pad)]", status ? regionSurface(status) : "bg-[var(--h-domain-soil)]", placement)}
     >
       <RegionHeader icon={Icon} title={title} status={status} grayReason={grayReason} dict={dict} />
@@ -484,7 +489,7 @@ function ObservatoryBento({
   // is coloured: guessing freshness would be the very claim this layer exists to avoid.
   const nowMs = useNowMs();
   const verdictOf = (metric: ObservatoryMetric | null | undefined, quantity: string, group: SignalGroup | undefined): MetricVerdict | null =>
-    isDemo ? null : verdictFor(metric, quantity, { rows: thresholds, nowMs, stationQuality: group?.station?.quality ?? null, series: series["24h"]?.points });
+    isDemo ? null : verdictFor(metric, quantity, { rows: thresholds, nowMs, stationQuality: group?.station?.quality ?? null, series: series["24h"]?.points, history: series.year?.points ?? series["30d"]?.points });
   const advisoryStatus = (metric: ObservatoryMetric | null | undefined, quantity: string, group?: SignalGroup): MetricStatus | null =>
     toMetricStatus(verdictOf(metric, quantity, group));
 
@@ -530,7 +535,7 @@ function ObservatoryBento({
       {/* BOX 0 — primary. Salinity and water level side by side, no divider,
           no nested card: one region, one surface, one status. */}
       <div
-        data-status={primaryStatus?.level ?? "none"}
+        data-status={primaryStatus?.level ?? "none"} data-tone={(primaryStatus as ToneStatus | null | undefined)?.tone} data-strength={(primaryStatus as ToneStatus | null | undefined)?.strength}
         className={cn(
           cell,
           "status-card",
@@ -838,12 +843,10 @@ export function ObservatoryCanvas({
           series={series}
           mapStations={mapStations}
         />
-        <p className="observatory-source-line">STATION_01 · STATION_02 <span>Open-Meteo · {dict.monitoring.regionalContextLabel}</span></p>
       </section>
 
-      {/* Scope and limits sit directly under the instrument, then the per-figure provenance. */}
+      {/* Scope and limits sit directly under the instrument, */}
       <DataScopeSection dict={dict} />
-      <ProvenancePanel groups={signalGroups} thresholds={thresholds} series={series} isDemo={model.mode === "demo"} />
 
       <section className="instrument-in-2 space-y-6">
         <div>

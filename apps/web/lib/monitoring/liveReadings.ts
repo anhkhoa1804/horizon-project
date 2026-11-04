@@ -1,4 +1,4 @@
-import { freshnessStatus } from "@/components/ui/status-indicator";
+import { freshnessStatus, SOIL_FRESHNESS_THRESHOLDS } from "@/components/ui/status-indicator";
 import { resolveTelemetryOrigin } from "@/lib/dataState";
 import { waterQuality } from "@/lib/stationProfile";
 import type { ObservationPoint, ObservatoryMetric, ObservatoryViewModel, TrendMetric } from "./types";
@@ -35,7 +35,7 @@ export function applyLiveReading(model: ObservatoryViewModel, row: LiveReading):
   const target = model.stations.find((s) => s.id === row.station_id);
   // Reconnect snapshots and late packets must not roll an instrument backwards.
   if (!target || (target.timestamp && Date.parse(row.timestamp) < Date.parse(target.timestamp))) return model;
-  const freshness = freshnessStatus(row.timestamp);
+  const freshness = freshnessStatus(row.timestamp, target.kind === "soil" ? { thresholds: SOIL_FRESHNESS_THRESHOLDS } : {});
   const updateMetric = (metric: ObservatoryMetric, domain?: string): ObservatoryMetric => {
     const mapping = row.kind === "water" ? WATER : SOIL;
     const spec = metric.labelKey ? mapping[metric.labelKey as keyof typeof mapping] as readonly [string, number] | undefined : undefined;
@@ -53,6 +53,7 @@ export function applyLiveReading(model: ObservatoryViewModel, row: LiveReading):
   const stations = model.stations.map((station) => station.id !== row.station_id ? station : {
     ...station, timestamp: row.timestamp, freshness,
     quality,
+    faultFlags: row.kind === "soil" ? number(row.measurements.fault_flags) : station.faultFlags,
     primary: updateMetric(station.primary), environment: station.environment.map((group) => ({ ...group, metrics: group.metrics.map((metric) => updateMetric(metric, group.domain)) })),
   });
   const point: ObservationPoint = {
