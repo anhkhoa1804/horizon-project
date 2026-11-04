@@ -1,3 +1,4 @@
+import { fieldQuality, type WaterProbeStatus } from "./soilFaults";
 import type { ObservationPoint, ObservatoryMetric, TrendMetric } from "./types";
 import type { QualityState } from "@/components/ui/status-indicator";
 import type { ThresholdRow } from "./thresholdTypes";
@@ -45,6 +46,8 @@ export interface VerdictContext {
   history?: readonly ObservationPoint[];
   /** Raw fault bitmask of the station's latest packet; soil metrics read only their own bit. */
   faultFlags?: number | null;
+  /** Water station probe statuses; each water metric reads only its own probe. */
+  probeStatus?: WaterProbeStatus | null;
   expectedIntervalMs?: number;
   /** Consecutive agreeing samples before red. */
   confirmations?: number;
@@ -120,22 +123,10 @@ export function baselineFromSeries(
   return out;
 }
 
-/**
- * The soil node sets one bit per field it could not read (see simple_telemetry.h): air temperature 1,
- * air humidity 2, soil temperature 4, moisture 8, bulk EC 16, salinity 32, TDS 64, pH 128. A box must
- * only be called faulty for ITS OWN bit: a missing salinity or TDS field (not shown on the site) used to
- * mark every soil reading "sensor fault" although each displayed value had arrived.
- */
-export const SOIL_FAULT_BIT: Readonly<Record<string, number>> = {
-  air_temp: 1, air_humidity: 2, soil_temp: 4, soil_moisture: 8, soil_ec_bulk: 16, soil_ph: 128,
-};
+export { SOIL_FAULT_BIT } from "./soilFaults";
 
 function qualityContext(quantity: string, ctx: VerdictContext): QualityState | null | undefined {
-  const bit = SOIL_FAULT_BIT[quantity];
-  if (bit !== undefined && typeof ctx.faultFlags === "number" && Number.isFinite(ctx.faultFlags)) {
-    return (ctx.faultFlags & bit) !== 0 ? "error" : "valid";
-  }
-  return ctx.stationQuality;
+  return fieldQuality(quantity, ctx.faultFlags, ctx.probeStatus) ?? ctx.stationQuality;
 }
 
 /**

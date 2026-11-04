@@ -1,4 +1,5 @@
 import { freshnessStatus, SOIL_FRESHNESS_THRESHOLDS } from "@/components/ui/status-indicator";
+import { soilQualityFromFlags } from "./soilFaults";
 import { resolveTelemetryOrigin } from "@/lib/dataState";
 import { waterQuality } from "@/lib/stationProfile";
 import type { ObservationPoint, ObservatoryMetric, ObservatoryViewModel, TrendMetric } from "./types";
@@ -24,11 +25,6 @@ const WATER = { salinity: ["salinity", 2], waterLevel: ["water_level", 0], water
 const SOIL = { moisture: ["soil_moisture_pct", 1], ec: ["soil_ec_ms_cm", 2], ph: ["soil_ph", 1], temperature: ["soil_temp_c", 1], humidity: ["air_humidity_pct", 1] } as const;
 const number = (value: unknown): number | null => typeof value === "number" && Number.isFinite(value) ? value : null;
 
-/** Soil: a reported numeric fault count is the only evidence; absence asserts nothing. */
-function soilQuality(faultFlags: unknown): "valid" | "error" | null {
-  const flags = number(faultFlags);
-  return flags === null ? null : flags > 0 ? "error" : "valid";
-}
 
 export function applyLiveReading(model: ObservatoryViewModel, row: LiveReading): ObservatoryViewModel {
   if (model.mode !== "real") return model;
@@ -49,11 +45,12 @@ export function applyLiveReading(model: ObservatoryViewModel, row: LiveReading):
   // Missing fault evidence is "not asserted" (null), never "valid".
   const quality = row.kind === "water"
     ? waterQuality(row.measurements.fault_flags, row.measurements.ec_probe_status, row.measurements.ultrasonic_status)
-    : soilQuality(row.measurements.fault_flags);
+    : soilQualityFromFlags(row.measurements.fault_flags);
   const stations = model.stations.map((station) => station.id !== row.station_id ? station : {
     ...station, timestamp: row.timestamp, freshness,
     quality,
-    faultFlags: row.kind === "soil" ? number(row.measurements.fault_flags) : station.faultFlags,
+    faultFlags: number(row.measurements.fault_flags),
+    probeStatus: row.kind === "water" ? { ec: (row.measurements.ec_probe_status as string | null | undefined) ?? null, ultrasonic: (row.measurements.ultrasonic_status as string | null | undefined) ?? null } : station.probeStatus,
     primary: updateMetric(station.primary), environment: station.environment.map((group) => ({ ...group, metrics: group.metrics.map((metric) => updateMetric(metric, group.domain)) })),
   });
   const point: ObservationPoint = {

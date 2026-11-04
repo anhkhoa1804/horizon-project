@@ -2520,8 +2520,9 @@ body:has(.hero-canvas) .horizon-atmosphere { background: var(--h-canvas); }
 @media (max-width: 767px) {
   .heatmap-legend { gap: .2rem .6rem; }
   .heatmap-legend .heatmap-legend-label { white-space: nowrap; }
-  .heatmap-heading { flex-wrap: wrap; }
-  .heatmap-heading .heatmap-legend { order: 3; width: 100%; }
+  .heatmap-heading { flex-wrap: wrap !important; }
+  .heatmap-heading .heatmap-legend { order: 3; width: 100%; flex-wrap: wrap !important; margin-left: 0 !important; justify-content: flex-start; row-gap: .25rem; }
+  .heatmap-heading .heatmap-year { margin-left: auto; }
 }
 
 /* Chapter eyebrow: the topic word that replaced the chapter number (same voice as the Observatory's section labels). */
@@ -2602,3 +2603,31 @@ body:has(.hero-canvas) .horizon-atmosphere { background: var(--h-canvas); }
 /* LINE BREAKS — no one-word last lines in body copy, balanced headings and quotes. */
 p, li, dd, figcaption, .chapter-heading > p { text-wrap: pretty; }
 h1, h2, h3, .chapter-heading__title, .story-quote p, .post-hero h1 { text-wrap: balance; }
+
+/* OBSERVATORY — loading: the real canvas, figures replaced by a soft shimmer. */
+.obs-loading { display: inline-block; width: 3.2em; max-width: 100%; height: .82em; border-radius: .2em; vertical-align: middle;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--h-foreground) 7%, transparent) 0%, color-mix(in srgb, var(--h-foreground) 13%, transparent) 50%, color-mix(in srgb, var(--h-foreground) 7%, transparent) 100%) 0 0 / 200% 100%;
+  animation: obs-shimmer 1.4s ease-in-out infinite; }
+.obs-loading--chart { display: block; flex: 1; width: 100%; height: auto; min-height: 140px; border-radius: 10px; }
+@keyframes obs-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .obs-loading { animation: none; } }
+
+/* History calendar: a diverging scale against each channel's usual range (green low - white usual - red high).
+   A day with data is never blank: "usual" is a visible white cell with a hairline, "no data" stays an empty cell.
+   (Restored: this block had been dropped by accident together with an old story block.) */
+.heatmap-day--none { background: transparent; border: 1px dashed color-mix(in srgb, var(--h-foreground) 14%, transparent); }
+.heatmap-day--data { background: var(--h-surface); border: 1px solid color-mix(in srgb, var(--h-foreground) 20%, transparent); }
+.heatmap-day--neg { background: color-mix(in srgb, var(--tone-green, #2f9e5b) calc(var(--a, .5) * 100%), var(--h-surface)); border: 1px solid transparent; }
+.heatmap-day--pos { background: color-mix(in srgb, var(--tone-red, #d6323f) calc(var(--a, .5) * 100%), var(--h-surface)); border: 1px solid transparent; }
+.heatmap-day--future { background: transparent; }
+.danger-heatmap { --tone-green: #2f9e5b; --tone-red: #d6323f; }
+:root[data-theme="dark"] .danger-heatmap { --tone-green: #4fd98a; --tone-red: #ff6b73; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .danger-heatmap { --tone-green: #4fd98a; --tone-red: #ff6b73; } }
+
+/* HOME — media a step smaller than the page (restored). */
+.field-atlas-flow { --width-media: 1040px; }
+.video-caption-link { font-size: .8rem; letter-spacing: .01em; }
+@media (max-width: 899px) {
+  .post-tile:not(.post-tile--large) .post-tile__meta { display: none; }
+  .post-tile:not(.post-tile--large) .post-tile__title { font-size: .92rem; }
+}

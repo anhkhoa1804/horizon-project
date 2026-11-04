@@ -1,5 +1,6 @@
 import "server-only";
 
+import { soilQualityFromFlags } from "./soilFaults";
 import { freshnessStatus, SOIL_FRESHNESS_THRESHOLDS } from "@/components/ui/status-indicator";
 import type { DataProvenance } from "@/lib/dataState";
 import { resolveTelemetryOrigin } from "@/lib/dataState";
@@ -331,7 +332,7 @@ function buildRealStation(
     return {
       ...base,
       kind: "soil",
-      quality: soilReading ? (soilReading.fault_flags > 0 ? "error" : "valid") : null,
+      quality: soilReading ? soilQualityFromFlags(soilReading.fault_flags) : null,
       faultFlags: soilReading ? soilReading.fault_flags : null,
       primary: metric("Độ ẩm đất", soilReading?.soil_moisture_pct, 1, "%", provenance, "moisture"),
       environment: [
@@ -385,6 +386,8 @@ function buildRealStation(
     ...base,
     kind: "water",
     quality: reading ? qualityFor(profile, reading) : null,
+    faultFlags: reading && typeof reading.fault_flags === "number" ? reading.fault_flags : null,
+    probeStatus: reading ? { ec: reading.ec_probe_status ?? null, ultrasonic: reading.ultrasonic_status ?? null } : null,
     primary: metric("Độ mặn", reading?.salinity, 2, "‰", provenance, "salinity"),
     environment: [
       {
@@ -621,6 +624,11 @@ function toObservatoryAlert(alert: EnvironmentalEvent, dict: Dictionary): Observ
     timestamp: alert.timestamp,
     provenance: TELEMETRY,
   };
+}
+
+/** The real layout with no figures yet: what the observatory shows while its data streams in. */
+export function getLoadingObservatoryViewModel(dict: Dictionary): ObservatoryViewModel {
+  return emptyRealObservatory(dict);
 }
 
 export async function getObservatoryViewModel(

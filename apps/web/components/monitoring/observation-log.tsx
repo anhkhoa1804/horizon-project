@@ -1,5 +1,6 @@
 "use client";
 
+import { useObservatoryLoading } from "./loading-context";
 import { useMemo, useState } from "react";
 import { Activity, ChevronDown } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -117,6 +118,8 @@ function ControlSelect<T extends string>({
  */
 function EmptyRange({ range }: { range: TrendRange }) {
   const dict = useDict();
+  const loading = useObservatoryLoading();
+  if (loading) return <span className="obs-loading obs-loading--chart" aria-hidden />;
   const dictKey = RANGES.find((r) => r.key === range)?.dictKey;
   const label = (dictKey ? dict.chart[dictKey] : dict.chart.thisRange).toLowerCase();
   return (

@@ -9,7 +9,7 @@ import { Check, CloudRain, Droplets, Eye, OctagonAlert, Sprout, Thermometer, Tri
 import { MapStation, StationNetworkMap } from "@/components/dashboard/station-network-map";
 import { ObservationLog } from "@/components/monitoring/observation-log";
 import type { ExternalWeather } from "@/lib/external/weather";
-import { useDict } from "@/lib/i18n/client";
+import { useDict, useLocale } from "@/lib/i18n/client";
 import type { Dictionary } from "@/lib/i18n/vi";
 import { buildSignalGroups, type SignalGroup } from "@/lib/monitoring/signals";
 import { contextLine, type ContextMetricKey } from "@/lib/monitoring/context";
@@ -22,8 +22,10 @@ import { statusFor, worstStatus, STATUS_SURFACE, type MetricStatus } from "@/lib
 import type { DisplayTone } from "@/lib/monitoring/assessment";
 import { regionVerdict, toMetricStatus, verdictFor, type MetricVerdict } from "@/lib/monitoring/displayStatus";
 import type { DisplayKey } from "@/lib/monitoring/assessment";
+import { LoadingFigure, ObservatoryLoadingContext, useObservatoryLoading } from "@/components/monitoring/loading-context";
 import { DataScopeSection } from "@/components/monitoring/data-scope-section";
 import { useNowMs } from "@/lib/monitoring/useNowMs";
+import { relativeTime } from "@/components/ui/status-indicator";
 import { cn } from "@/lib/utils";
 import type {
   ObservationSeries,
@@ -187,6 +189,15 @@ function Value({
   note?: string | null;
 }) {
   const hasValue = !!metric && metric.value !== null;
+  const loading = useObservatoryLoading();
+  if (loading) {
+    return (
+      <div className="min-w-0">
+        <p className="whitespace-nowrap text-xs font-medium uppercase tracking-[0.1em] text-foreground-subtle">{label}</p>
+        <p className={cn("mt-1 leading-none", VALUE_SIZE[size])}><LoadingFigure /></p>
+      </div>
+    );
+  }
   return (
     <div className="min-w-0">
       <p className="whitespace-nowrap text-xs font-medium uppercase tracking-[0.1em] text-foreground-subtle">{label}</p>
@@ -255,6 +266,8 @@ function ContextValue({
   note?: string | null;
 }) {
   const hasValue = !!metric && metric.value !== null;
+  const loading = useObservatoryLoading();
+  if (loading) return <div className="min-w-0"><p className={cn("leading-none", VALUE_SIZE.context)}><LoadingFigure /></p></div>;
   return (
     <div className="min-w-0">
     <p
@@ -320,6 +333,8 @@ function RegionHeader({
 }) {
   // Assessed statuses name their own reason; demo/device statuses fall back to the alert word.
   const statusText = status ? (status.labelKey ? dict.assessment[status.labelKey] : dict.alerts[STATUS_LABEL[status.level]]) : null;
+  const loading = useObservatoryLoading();
+  if (loading) { status = null; grayReason = null; }
   return (
     <div className="region-heading flex min-w-0 items-center gap-1.5 text-foreground-muted">
       <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -422,6 +437,9 @@ function SoilPairCard({
   placement: string;
   testId: string;
 }) {
+  const loading = useObservatoryLoading();
+  const nowMs = useNowMs();
+  const locale = useLocale();
   return (
     <div
       data-testid={testId}
@@ -432,6 +450,14 @@ function SoilPairCard({
       <div className="grid grid-cols-2 gap-x-6 md:gap-x-10">
         {readings.map((r, i) => {
           const has = !!r.metric && r.metric.value !== null;
+          if (loading) {
+            return (
+              <div key={r.label} className="min-w-0">
+                <p className="truncate text-[11px] font-semibold uppercase leading-[1.3] tracking-[0.08em] text-foreground-subtle">{r.label}</p>
+                <p className="status-value mt-1.5 leading-none text-3xl md:text-4xl"><LoadingFigure /></p>
+              </div>
+            );
+          }
           const stale = has && r.metric!.provenance.origin === "historical";
           return (
             <div key={r.label} className="min-w-0" data-status={r.status?.level ?? "none"}>
@@ -445,7 +471,14 @@ function SoilPairCard({
                 ) : "—"}
               </p>
               <p className="mt-1.5 truncate text-[11px] text-foreground-subtle">
-                {!has ? dict.common.noData : r.reason && PER_READING_REASONS.has(r.reason) ? dict.assessment[r.reason] : stale ? dict.freshness.stale : null}
+                {(() => {
+                  if (!has) return dict.common.noData;
+                  const reason = r.reason && PER_READING_REASONS.has(r.reason) ? dict.assessment[r.reason] : stale ? dict.freshness.stale : null;
+                  // Old data says HOW old ("Dữ liệu cũ · 1 ngày trước"), so a reader can judge it rather than guess.
+                  const old = r.reason === "stale" || r.reason === "offline" || (!r.reason && stale);
+                  const at = r.metric!.provenance.observedAt;
+                  return reason && old && at && nowMs !== null ? `${reason} · ${relativeTime(at, locale)}` : reason;
+                })()}
               </p>
             </div>
           );
@@ -489,7 +522,7 @@ function ObservatoryBento({
   // is coloured: guessing freshness would be the very claim this layer exists to avoid.
   const nowMs = useNowMs();
   const verdictOf = (metric: ObservatoryMetric | null | undefined, quantity: string, group: SignalGroup | undefined): MetricVerdict | null =>
-    isDemo ? null : verdictFor(metric, quantity, { rows: thresholds, nowMs, stationQuality: group?.station?.quality ?? null, series: series["24h"]?.points, history: series.year?.points ?? series["30d"]?.points });
+    isDemo ? null : verdictFor(metric, quantity, { rows: thresholds, nowMs, stationQuality: group?.station?.quality ?? null, faultFlags: group?.station?.faultFlags ?? null, probeStatus: group?.station?.probeStatus ?? null, series: series["24h"]?.points, history: series.year?.points ?? series["30d"]?.points });
   const advisoryStatus = (metric: ObservatoryMetric | null | undefined, quantity: string, group?: SignalGroup): MetricStatus | null =>
     toMetricStatus(verdictOf(metric, quantity, group));
 
@@ -707,7 +740,10 @@ export function ObservatoryCanvas({
   weather: initialWeather = null,
   thresholds = [],
   soilModels = [],
+  loading = false,
 }: {
+  /** Placeholder render while the data streams in: real layout, shimmering figures. */
+  loading?: boolean;
   model: ObservatoryViewModel;
   realtime?: PublicRealtimeConfig | null;
   /** The threshold registry (migration 023), loaded on the server. */
@@ -737,12 +773,13 @@ export function ObservatoryCanvas({
       }
     }
 
+    if (loading) return () => { active = false; };
     const id = window.setInterval(refreshWeatherHistory, WEATHER_REFRESH_MS);
     return () => {
       active = false;
       window.clearInterval(id);
     };
-  }, []);
+  }, [loading]);
 
   const series = useMemo(() => {
     if (!weatherSeries24h) return model.series;
@@ -771,12 +808,13 @@ export function ObservatoryCanvas({
       }
     }
 
+    if (loading) return () => { active = false; };
     const id = window.setInterval(refreshWeather, WEATHER_REFRESH_MS);
     return () => {
       active = false;
       window.clearInterval(id);
     };
-  }, []);
+  }, [loading]);
 
   // Domain-grouped, not station-grouped — see lib/monitoring/signals.ts for
   // why this is the information architecture rather than a layout choice.
@@ -819,7 +857,7 @@ export function ObservatoryCanvas({
   );
 
   return (
-    <LiveSignalContext.Provider value={{ connected, demo: model.mode === "demo" }}><div className="space-y-10 md:space-y-14">
+    <ObservatoryLoadingContext.Provider value={loading}><LiveSignalContext.Provider value={{ connected, demo: model.mode === "demo" }}><div className={cn("space-y-10 md:space-y-14", loading && "observatory-is-loading")} aria-busy={loading || undefined}>
       {/* The observatory: the Bento, and nothing above it.
           Two bands used to sit here — a demo notice explaining the `*` and
           `~` markers, and a "MẠNG LƯỚI · 2/3 ĐANG GỬI DỮ LIỆU" summary. The
@@ -864,6 +902,6 @@ export function ObservatoryCanvas({
           <ThresholdTable rows={thresholds} soilModels={soilModels} />
         ) : null}
       </section>
-    </div></LiveSignalContext.Provider>
+    </div></LiveSignalContext.Provider></ObservatoryLoadingContext.Provider>
   );
 }

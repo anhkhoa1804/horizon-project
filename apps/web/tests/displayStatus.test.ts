@@ -193,3 +193,15 @@ describe("soil faults are read per field", () => {
     assert.equal(verdictFor(metric("30", MIN), "soil_ph", ctx({ rows: [], stationQuality: "error" }))!.display.key, "sensorFault");
   });
 });
+
+describe("water faults are read per source", () => {
+  it("a missing level field does not make salinity faulty, and vice versa", () => {
+    assert.notEqual(verdictFor(metric("0.4", MIN), "water_salinity", ctx({ stationQuality: "error", faultFlags: 2, probeStatus: { ec: "ok", ultrasonic: "ok" } }))!.display.key, "sensorFault");
+    assert.notEqual(verdictFor(metric("290", MIN), "water_level", ctx({ rows: [], stationQuality: "error", faultFlags: 1, probeStatus: { ec: "ok", ultrasonic: "ok" } }))!.display.key, "sensorFault");
+  });
+  it("an explicit probe fault marks only that probe's metrics", () => {
+    const c = ctx({ rows: [], stationQuality: "error", faultFlags: 0, probeStatus: { ec: "fault", ultrasonic: "ok" } });
+    assert.equal(verdictFor(metric("0.4", MIN), "water_salinity", c)!.display.key, "sensorFault");
+    assert.notEqual(verdictFor(metric("290", MIN), "water_level", c)!.display.key, "sensorFault");
+  });
+});

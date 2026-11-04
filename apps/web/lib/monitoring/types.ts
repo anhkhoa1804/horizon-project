@@ -98,6 +98,8 @@ export interface ObservatoryStation {
   quality: QualityState | null;
   /** Raw fault bitmask of the latest packet (soil: one bit per missing field). Null when not reported. */
   faultFlags?: number | null;
+  /** Water station only: the probe statuses of the latest packet. */
+  probeStatus?: { ec?: string | null; ultrasonic?: string | null } | null;
   needsAttention: boolean;
   timestamp: string | null;
   /** The station's headline instrument reading. */
