@@ -10,6 +10,12 @@ what's live vs. not yet deployed, whether GCP is required — see
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).** This file is a short
 front door only; it is not the source of truth for architecture claims.
 
+## Slides
+
+The project presentation is a 20-slide Canva deck, *HORIZON - FROGSLEAP VIETNAM*,
+shared alongside the website:
+[canva.link/frbq9egh4e8uuu7](https://canva.link/frbq9egh4e8uuu7).
+
 ## What this is
 
 Three physical field devices (a water station, a soil station, and a
