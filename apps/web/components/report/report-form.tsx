@@ -1,5 +1,4 @@
 "use client";
-import { KeywordTitle } from "@/components/ui/keyword-title";
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -7,8 +6,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
   Check,
+  Construction,
   Crosshair,
+  Droplets,
   Mic,
+  Mountain,
+  MoreHorizontal,
+  RadioTower,
   Send,
   Sprout,
   Trash2,
@@ -248,6 +252,17 @@ function SuccessView({
 // ---------------------------------------------------------------------------
 // Form
 // ---------------------------------------------------------------------------
+
+
+/** One plain glyph per condition, so the six choices read at a glance outdoors. */
+const CATEGORY_ICON: Record<string, typeof Waves> = {
+  erosion: Mountain,
+  flooding: Waves,
+  pollution: Droplets,
+  infrastructure: Construction,
+  sensor: RadioTower,
+  other: MoreHorizontal,
+};
 
 export function ReportForm() {
   const dict = useDict();
@@ -612,7 +627,7 @@ export function ReportForm() {
 
           {/* 02 — Observation */}
           {(
-            <><section id="report-observation" className="report-entry-section space-y-8"><h2 className="report-section-title"><span><KeywordTitle text={f.conditionType} keyword={f.conditionType} /></span></h2>
+            <><section id="report-observation" className="report-entry-section space-y-8"><h2 className="report-section-title"><span>{f.conditionType}</span></h2>
               <fieldset>
                 <legend className="sr-only">{f.conditionType}</legend>
                 {/* Selectable tiles, not a radio list. Same reasoning as the
@@ -621,20 +636,12 @@ export function ReportForm() {
                     rows with a small ring on the right made the selected one
                     hard to see at a glance — especially outdoors, which is
                     where this form is actually filled in. */}
-                <div className="report-observation-choices grid gap-2.5 sm:grid-cols-2">
+                <div className="report-choices">
                   {REPORT_CATEGORIES.map((item) => {
                     const active = category === item.value;
+                    const Icon = CATEGORY_ICON[item.value] ?? MoreHorizontal;
                     return (
-                      <label
-                        key={item.value}
-                        className={cn(
-                          "flex cursor-pointer items-center gap-3 rounded-lg border bg-surface px-4 py-3.5 transition-all duration-[var(--motion-base)]",
-                          "focus-within:ring-2 focus-within:ring-accent",
-                          active
-                            ? "border-accent bg-[var(--h-selection-surface)] shadow-[inset_0_0_0_1px_var(--color-accent)]"
-                            : "border-border hover:border-foreground-subtle hover:bg-wash-hover",
-                        )}
-                      >
+                      <label key={item.value} className="report-choice" data-active={active || undefined}>
                         <input
                           type="radio"
                           name="category"
@@ -643,18 +650,9 @@ export function ReportForm() {
                           onChange={() => setCategory(item.value)}
                           className="sr-only"
                         />
-                        <span
-                          className={cn(
-                            "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors duration-[var(--motion-base)]",
-                            active ? "border-accent bg-accent" : "border-border-strong",
-                          )}
-                          aria-hidden
-                        >
-                          {active ? <Check className="h-3 w-3 text-background" /> : null}
-                        </span>
-                        <span className={cn("text-base leading-snug", active ? "font-semibold text-accent" : "text-foreground")}>
-                          {dict.reportCategories[item.value]}
-                        </span>
+                        <Icon className="report-choice__icon" aria-hidden />
+                        <span className="report-choice__label">{dict.reportCategories[item.value]}</span>
+                        <span className="report-choice__check" aria-hidden>{active ? <Check /> : null}</span>
                       </label>
                     );
                   })}
@@ -668,6 +666,7 @@ export function ReportForm() {
                 >
                   {f.description}
                                 </label>
+                <div className="report-description-box">
                 <Textarea
                   id="description"
                   rows={6}
@@ -675,14 +674,15 @@ export function ReportForm() {
                   onChange={(e) => setDescription(e.target.value)}
                   maxLength={DESCRIPTION_MAX}
                   placeholder={f.descPlaceholder}
-                  className="min-h-[160px] rounded-lg bg-background text-base"
+                  className="report-description-input"
                   aria-describedby="description-hint"
                 />
-                <p id="description-hint" className="text-xs text-muted">
+                <p id="description-hint" className="report-description-hint" data-ok={trimmed.length >= DESCRIPTION_MIN || undefined}>
                   {trimmed.length < DESCRIPTION_MIN
                     ? fmt(f.charsNeeded, { min: DESCRIPTION_MIN, n: trimmed.length })
                     : fmt(f.charsOf, { n: trimmed.length, max: DESCRIPTION_MAX })}
                 </p>
+                </div>
               </section></>
            )}
 
@@ -690,7 +690,7 @@ export function ReportForm() {
           {(
             <div className="space-y-8">
               <section className="report-evidence-section report-entry-section space-y-6" aria-labelledby="report-evidence-title">
-                <h2 id="report-evidence-title" className="report-section-title"><span><KeywordTitle text={f.evidence} /></span></h2>
+                <h2 id="report-evidence-title" className="report-section-title"><span>{f.evidence}</span></h2>
                 <div className="report-evidence report-evidence-panel space-y-4">
                 <div>
                   

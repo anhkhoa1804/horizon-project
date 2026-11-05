@@ -52,7 +52,51 @@ export const vi = {
 
   footer: {
     place: "Cồn Hô · Vĩnh Long",
-    copyright: "© Magnus",
+    copyright: "© 2026 Magnus · HORIZON",
+  },
+
+  /**
+   * Scope and limits of the data, and how each reading is assessed.
+   * LEGAL REVIEW PENDING: `dataScope.items.*` is the project's draft wording and must be
+   * reviewed before official release (see docs/DATA_ASSESSMENT.md).
+   */
+  dataScope: {
+    eyebrow: "Thông tin dữ liệu",
+    title: "Phạm vi và giới hạn sử dụng dữ liệu",
+    items: {
+      pilot: { title: "Thí điểm cộng đồng", body: "Mô hình quan trắc môi trường do thanh niên triển khai tại Cồn Hô, xã Nhị Long, tỉnh Vĩnh Long (Frogsleap Vietnam × YNet, chương trình YAI 2026), phục vụ sinh kế, đời sống và nhận thức thích ứng khí hậu của người dân trên cồn.\nMạng lưới gồm hai trạm và một gateway: Trạm Nước ven sông đo mực nước (cảm biến siêu âm), độ dẫn điện và nhiệt độ nước, độ mặn được tính từ độ dẫn điện; Trạm Đất trong vườn đo độ ẩm, độ dẫn điện, nhiệt độ và pH của đất cùng nhiệt độ, độ ẩm không khí. Dữ liệu đi qua LoRa về gateway rồi lên internet bằng 4G." },
+      place: { title: "Đúng nơi, đúng lúc", body: "Mỗi con số chỉ đại diện cho đúng điểm đặt cảm biến, không phải cho cả cồn hay cả con sông. Trạm Nước gửi số liệu khoảng 3 phút một lần, Trạm Đất khoảng 8 giờ một lần; thời điểm hiển thị là lúc gateway nhận gói tin, không phải lúc cảm biến đo.\nSố liệu có thể lệch do bùn hoặc rong bám đầu dò, thiết bị bị xê dịch, pin yếu hay mất sóng 4G (khi đó sẽ có khoảng trống). Nhiệt độ, độ ẩm không khí, gió và mưa trong bốn ô thời tiết lấy từ dự báo Open-Meteo cho vùng Vĩnh Long, không đo tại trạm." },
+      reference: { title: "Tham khảo, không thay thế", body: "Đây là số liệu tham khảo của một mô hình cộng đồng. Nó không thay thế quan trắc chính thức hay thông báo của cơ quan khí tượng thủy văn, ngành nông nghiệp và chính quyền địa phương.\nKhông dùng làm căn cứ duy nhất cho các quyết định về an toàn, lấy nước tưới, sản xuất, đầu tư hoặc pháp lý; hãy đối chiếu với thông báo chính thức khi có. Các ngưỡng cảnh báo và nguồn của chúng được ghi rõ trong mục Tham chiếu và ngưỡng ngay bên dưới." },
+      context: { title: "Đọc màu như thế nào", body: "Màu so mỗi con số với lịch sử của chính trạm đó: xanh lá là thấp hơn mức thường thấy, trắng là trong khoảng thường thấy, đỏ là cao hơn mức thường thấy hoặc đã vượt một ngưỡng cấu hình. Màu chỉ đổi khi hai lần đo liên tiếp cùng cho thấy điều đó, để một lần nhiễu không làm ô đổi màu.\nXám nghĩa là chưa đủ cơ sở đánh giá: số liệu đã cũ (nước sau khoảng 10 phút, đất sau một ngày), cảm biến báo lỗi, hoặc chưa đủ 14 ngày lịch sử. Màu chỉ cho biết vị trí của con số so với thường lệ, không tự nó nói rằng an toàn hay nguy hiểm." },
+    },
+    legendLabel: "Chú giải màu",
+    legend: {
+      green: "Xanh lá · thấp hơn mức thường thấy",
+      white: "Trắng · trong khoảng thường thấy",
+      red: "Đỏ · cao hơn thường thấy hoặc vượt ngưỡng",
+      gray: "Xám · chưa đủ cơ sở đánh giá",
+    },
+  },
+
+  assessment: {
+    withinReference: "Trong ngưỡng tham chiếu",
+    approachingThreshold: "Gần ngưỡng cảnh báo",
+    confirming: "Đang xác nhận",
+    thresholdExceeded: "Vượt ngưỡng cảnh báo",
+    lowerThanUsual: "Thấp hơn mức thường thấy",
+    higherThanUsual: "Cao hơn mức thường thấy",
+    unusuallyLow: "Thấp bất thường so với lịch sử",
+    unusuallyHigh: "Cao bất thường so với lịch sử",
+    withinHistoricalRange: "Trong khoảng biến động lịch sử",
+    stale: "Dữ liệu cũ",
+    offline: "Không có dữ liệu gần đây",
+    unknownFreshness: "Chưa rõ thời điểm đo",
+    sensorFault: "Cảm biến có lỗi",
+    missing: "Thiếu dữ liệu",
+    suspect: "Giá trị đáng ngờ",
+    unknownQuality: "Chưa rõ chất lượng đo",
+    noThreshold: "Chưa có ngưỡng để đánh giá",
+    insufficient: "Chưa đủ cơ sở đánh giá",
   },
 
   common: {
@@ -189,7 +233,7 @@ export const vi = {
     spaceTitle: "Vị trí các trạm",
 
     referenceEyebrow: "Tham chiếu",
-    referenceTitle: "THAM CHIẾU & NGƯỠNG",
+    referenceTitle: "Tham chiếu và ngưỡng",
     statusBasis: {
       configured: "Đang áp dụng",
       device: "Thiết bị",
@@ -475,6 +519,13 @@ export const vi = {
     draft: "Bản nháp — ghi chép trong quá trình phát triển dự án, chưa phải tài liệu công bố.",
     demo: "Nội dung minh họa, dùng để trình bày giao diện.",
     placeholder: "Nội dung giữ chỗ.",
+    indexEyebrow: "Ghi chép từ Cồn Hô",
+    indexTitle: "Nhật ký dự án.",
+    indexKeyword: "Nhật ký",
+    indexLead: "Cách chúng tôi chọn vị trí, thiết kế trạm đo, đọc dữ liệu và học từ người dân — viết lại trong lúc làm.",
+    allNotes: "Tất cả ghi chép",
+    readNext: "Đọc tiếp",
+    openOriginal: "Mở ảnh gốc",
   },
 
   errors: {
@@ -515,7 +566,7 @@ export const vi = {
 
   video: {
     play: "Phát video",
-    openOnYoutube: "Xem trên YouTube ↗",
+    openOnYoutube: "Xem trên YouTube",
   },
 
   notes: {
@@ -699,6 +750,7 @@ export const vi = {
     channelWebsite: "Website",
     reportEyebrow: "Ghi nhận hiện trường",
     reportTitle: "Bạn quan sát thấy điều gì trên cồn?",
+    reportKeyword: "quan sát thấy",
     reportLead:
       "Nước lên bất thường, cây có dấu hiệu lạ, hay một thiết bị trông không ổn. Mỗi ghi nhận được lưu lại kèm thời điểm và vị trí.",
   },

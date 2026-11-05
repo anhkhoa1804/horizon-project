@@ -9,7 +9,7 @@ import { Check, CloudRain, Droplets, Eye, OctagonAlert, Sprout, Thermometer, Tri
 import { MapStation, StationNetworkMap } from "@/components/dashboard/station-network-map";
 import { ObservationLog } from "@/components/monitoring/observation-log";
 import type { ExternalWeather } from "@/lib/external/weather";
-import { useDict } from "@/lib/i18n/client";
+import { useDict, useLocale } from "@/lib/i18n/client";
 import type { Dictionary } from "@/lib/i18n/vi";
 import { buildSignalGroups, type SignalGroup } from "@/lib/monitoring/signals";
 import { contextLine, type ContextMetricKey } from "@/lib/monitoring/context";
@@ -19,6 +19,13 @@ import { resolveSeverity, type ThresholdRow, type SoilWaterModel } from "@/lib/m
 import { STATION_COORDS } from "@/lib/geo";
 import type { PilotStationId } from "@/lib/publicStations";
 import { statusFor, worstStatus, STATUS_SURFACE, type MetricStatus } from "@/lib/monitoring/status";
+import type { DisplayTone } from "@/lib/monitoring/assessment";
+import { regionVerdict, toMetricStatus, verdictFor, type MetricVerdict } from "@/lib/monitoring/displayStatus";
+import type { DisplayKey } from "@/lib/monitoring/assessment";
+import { LoadingFigure, ObservatoryLoadingContext, useObservatoryLoading } from "@/components/monitoring/loading-context";
+import { DataScopeSection } from "@/components/monitoring/data-scope-section";
+import { useNowMs } from "@/lib/monitoring/useNowMs";
+import { relativeTime } from "@/components/ui/status-indicator";
 import { cn } from "@/lib/utils";
 import type {
   ObservationSeries,
@@ -116,6 +123,8 @@ import type {
  * cards.
  */
 
+type ToneStatus = MetricStatus & { labelKey?: DisplayKey; tone?: DisplayTone; strength?: number };
+
 const STATUS_LABEL: Record<MetricStatus["level"], keyof Dictionary["alerts"]> = {
   ok: "normal",
   watch: "warning",
@@ -130,6 +139,9 @@ const STATUS_ICON: Record<MetricStatus["level"], typeof Check> = {
   warn: TriangleAlert,
   critical: OctagonAlert,
 };
+
+/** Reasons worth printing under a single reading (the data itself is the problem). */
+const PER_READING_REASONS: ReadonlySet<DisplayKey> = new Set<DisplayKey>(["stale", "offline", "unknownFreshness", "sensorFault", "suspect", "unknownQuality"]);
 
 const WEATHER_REFRESH_MS = 15 * 60 * 1000;
 
@@ -177,6 +189,15 @@ function Value({
   note?: string | null;
 }) {
   const hasValue = !!metric && metric.value !== null;
+  const loading = useObservatoryLoading();
+  if (loading) {
+    return (
+      <div className="min-w-0">
+        <p className="whitespace-nowrap text-xs font-medium uppercase tracking-[0.1em] text-foreground-subtle">{label}</p>
+        <p className={cn("mt-1 leading-none", VALUE_SIZE[size])}><LoadingFigure /></p>
+      </div>
+    );
+  }
   return (
     <div className="min-w-0">
       <p className="whitespace-nowrap text-xs font-medium uppercase tracking-[0.1em] text-foreground-subtle">{label}</p>
@@ -245,6 +266,8 @@ function ContextValue({
   note?: string | null;
 }) {
   const hasValue = !!metric && metric.value !== null;
+  const loading = useObservatoryLoading();
+  if (loading) return <div className="min-w-0"><p className={cn("leading-none", VALUE_SIZE.context)}><LoadingFigure /></p></div>;
   return (
     <div className="min-w-0">
     <p
@@ -298,25 +321,44 @@ function RegionHeader({
   icon: Icon,
   title,
   status,
+  grayReason = null,
   dict,
 }: {
   icon: typeof Waves;
   title: string;
-  status: MetricStatus | null;
+  status: ToneStatus | null;
+  /** Why the region is neutral when that is a data problem (old data, sensor fault ...). */
+  grayReason?: DisplayKey | null;
   dict: Dictionary;
 }) {
+  // Assessed statuses name their own reason; demo/device statuses fall back to the alert word.
+  const statusText = status ? (status.labelKey ? dict.assessment[status.labelKey] : dict.alerts[STATUS_LABEL[status.level]]) : null;
+  const loading = useObservatoryLoading();
+  if (loading) { status = null; grayReason = null; }
   return (
     <div className="region-heading flex min-w-0 items-center gap-1.5 text-foreground-muted">
       <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
       <span className="region-heading-title text-[11px] font-medium uppercase tracking-[0.06em]">{title}</span><LiveSignalIndicator />
-      {status ? (
+      {status && !status.tone ? (
         <>
           <span aria-hidden className="shrink-0 text-[11px] opacity-50">
             ·
           </span>
           {(() => { const StatusIcon = STATUS_ICON[status.level]; return <StatusIcon className="h-3 w-3 shrink-0" aria-hidden />; })()}
-          <span title={`${dict.alerts[STATUS_LABEL[status.level]]} · ${dict.monitoring.statusBasis[status.basis]}`} aria-label={`${dict.alerts[STATUS_LABEL[status.level]]} · ${dict.monitoring.statusBasis[status.basis]}`} className="region-heading-status text-[10px] font-medium text-foreground">
-            {dict.alerts[STATUS_LABEL[status.level]]}
+          <span title={`${statusText} · ${dict.monitoring.statusBasis[status.basis]}`} aria-label={`${statusText} · ${dict.monitoring.statusBasis[status.basis]}`} className="region-heading-status text-[10px] font-medium text-foreground">
+            {statusText}
+          </span>
+        </>
+      ) : status?.tone ? (
+        // Assessed statuses are carried by the tint; the words stay available to assistive technology.
+        <span className="sr-only">{statusText}</span>
+      ) : grayReason ? (
+        <>
+          <span aria-hidden className="shrink-0 text-[11px] opacity-50">
+            ·
+          </span>
+          <span data-gray-reason={grayReason} className="region-heading-status text-[10px] font-medium text-foreground-subtle">
+            {dict.assessment[grayReason]}
           </span>
         </>
       ) : null}
@@ -353,7 +395,7 @@ function MetricCell({
   note?: string | null;
 }) {
   return (
-    <div data-status={status?.level ?? "none"} className={cn("status-card rounded-xl border border-border", "flex flex-col justify-between p-[var(--bento-pad)]", "gap-1", status ? regionSurface(status) : tone, placement)}>
+    <div data-status={status?.level ?? "none"} data-tone={(status as ToneStatus | null | undefined)?.tone} data-strength={(status as ToneStatus | null | undefined)?.strength} className={cn("status-card rounded-xl border border-border", "flex flex-col justify-between p-[var(--bento-pad)]", "gap-1", status ? regionSurface(status) : tone, placement)}>
       <div className="flex min-w-0 items-start gap-1.5 text-foreground-subtle">
         <Icon className="h-3.5 w-3.5 shrink-0 translate-y-px" aria-hidden />
         <span className="min-w-0 text-[11px] font-semibold uppercase leading-[1.3] tracking-[0.1em]">{label}</span>
@@ -381,28 +423,41 @@ function SoilPairCard({
   title,
   readings,
   status,
+  grayReason = null,
   dict,
   placement,
   testId,
 }: {
   icon: typeof Waves;
   title: string;
-  readings: { label: string; metric: ObservatoryMetric | null | undefined; status: MetricStatus | null }[];
-  status: MetricStatus | null;
+  readings: { label: string; metric: ObservatoryMetric | null | undefined; status: MetricStatus | null; reason?: DisplayKey | null }[];
+  status: ToneStatus | null;
+  grayReason?: DisplayKey | null;
   dict: Dictionary;
   placement: string;
   testId: string;
 }) {
+  const loading = useObservatoryLoading();
+  const nowMs = useNowMs();
+  const locale = useLocale();
   return (
     <div
       data-testid={testId}
-      data-status={status?.level ?? "none"}
+      data-status={status?.level ?? "none"} data-tone={(status as ToneStatus | null | undefined)?.tone} data-strength={(status as ToneStatus | null | undefined)?.strength}
       className={cn("status-card rounded-xl border border-border", "flex flex-col justify-between gap-2 p-[var(--bento-pad)]", status ? regionSurface(status) : "bg-[var(--h-domain-soil)]", placement)}
     >
-      <RegionHeader icon={Icon} title={title} status={status} dict={dict} />
+      <RegionHeader icon={Icon} title={title} status={status} grayReason={grayReason} dict={dict} />
       <div className="grid grid-cols-2 gap-x-6 md:gap-x-10">
         {readings.map((r, i) => {
           const has = !!r.metric && r.metric.value !== null;
+          if (loading) {
+            return (
+              <div key={r.label} className="min-w-0">
+                <p className="truncate text-[11px] font-semibold uppercase leading-[1.3] tracking-[0.08em] text-foreground-subtle">{r.label}</p>
+                <p className="status-value mt-1.5 leading-none text-3xl md:text-4xl"><LoadingFigure /></p>
+              </div>
+            );
+          }
           const stale = has && r.metric!.provenance.origin === "historical";
           return (
             <div key={r.label} className="min-w-0" data-status={r.status?.level ?? "none"}>
@@ -416,7 +471,14 @@ function SoilPairCard({
                 ) : "—"}
               </p>
               <p className="mt-1.5 truncate text-[11px] text-foreground-subtle">
-                {!has ? dict.common.noData : stale ? dict.freshness.stale : null}
+                {(() => {
+                  if (!has) return dict.common.noData;
+                  const reason = r.reason && PER_READING_REASONS.has(r.reason) ? dict.assessment[r.reason] : stale ? dict.freshness.stale : null;
+                  // Old data says HOW old ("Dữ liệu cũ · 1 ngày trước"), so a reader can judge it rather than guess.
+                  const old = r.reason === "stale" || r.reason === "offline" || (!r.reason && stale);
+                  const at = r.metric!.provenance.observedAt;
+                  return reason && old && at && nowMs !== null ? `${reason} · ${relativeTime(at, locale)}` : reason;
+                })()}
               </p>
             </div>
           );
@@ -455,18 +517,14 @@ function ObservatoryBento({
         })
       : null;
 
-  const advisoryStatus = (metric: ObservatoryMetric | null | undefined, quantity: string): MetricStatus | null => {
-    if (!metric || metric.value === null) return null;
-    const observedAt = metric.provenance.observedAt;
-    const applicable = thresholds.filter((row) => row.is_active && ["OPERATIONAL", "SITE_VALIDATED"].includes(row.validation_status) &&
-      !["SENSOR_QUALITY", "DEVICE_HEALTH"].includes(row.basis) &&
-      (!row.effective_from || (!!observedAt && Date.parse(row.effective_from) <= Date.parse(observedAt))));
-    const resolved = resolveSeverity(applicable, quantity, Number(metric.value));
-    if (!resolved) return null;
-    const level = resolved.severity === "normal" ? "ok" : resolved.severity === "critical" ? "critical" : resolved.severity === "warning" ? "warn" : "watch";
-    const basis = "configured";
-    return { level, basis };
-  };
+  // Four independent layers (freshness, quality, threshold, history) are combined in
+  // lib/monitoring/displayStatus.ts. Before the browser knows the time (first render) nothing
+  // is coloured: guessing freshness would be the very claim this layer exists to avoid.
+  const nowMs = useNowMs();
+  const verdictOf = (metric: ObservatoryMetric | null | undefined, quantity: string, group: SignalGroup | undefined): MetricVerdict | null =>
+    isDemo ? null : verdictFor(metric, quantity, { rows: thresholds, nowMs, stationQuality: group?.station?.quality ?? null, faultFlags: group?.station?.faultFlags ?? null, probeStatus: group?.station?.probeStatus ?? null, series: series["24h"]?.points, history: series.year?.points ?? series["30d"]?.points });
+  const advisoryStatus = (metric: ObservatoryMetric | null | undefined, quantity: string, group?: SignalGroup): MetricStatus | null =>
+    toMetricStatus(verdictOf(metric, quantity, group));
 
   const salinity = water?.primary;
   const waterLevel = water?.secondary[0];
@@ -481,13 +539,16 @@ function ObservatoryBento({
   const soilTemp = soil?.secondary.find((m) => m.labelKey === "temperature");
 
   // One status per region — see the note above ObservatoryBento.
-  const primaryStatus = isDemo ? worstStatus([status(salinity), status(waterLevel)]) : worstStatus([advisoryStatus(salinity, "water_salinity"), advisoryStatus(waterLevel, "water_level")]);
+  const waterRegion = regionVerdict([verdictOf(salinity, "water_salinity", water), verdictOf(waterLevel, "water_level", water)]);
+  const primaryStatus = isDemo ? worstStatus([status(salinity), status(waterLevel)]) : waterRegion.status;
+  const primaryGrayReason = isDemo ? null : waterRegion.grayReason;
   // Colour comes ONLY from the threshold registry (OPERATIONAL / SITE_VALIDATED
   // rows). No band is seeded for bulk EC or soil temperature (docs/
   // SCIENTIFIC_REFERENCES.md: bulk EC is not ECe; no sourced single-variable
   // alarm for probe-depth temperature), so until someone configures one these
   // stay neutral and say so, rather than borrowing a band that does not apply.
-  const soilStatus = isDemo ? null : worstStatus([advisoryStatus(soilMoisture, "soil_moisture"), advisoryStatus(soilTemp, "soil_temp")]);
+  const soilConditionsRegion = regionVerdict([verdictOf(soilMoisture, "soil_moisture", soil), verdictOf(soilTemp, "soil_temp", soil)]);
+  const soilChemistryRegion = regionVerdict([verdictOf(soilEc, "soil_ec_bulk", soil), verdictOf(soilPh, "soil_ph", soil)]);
 
   // Every cell, without exception: same corner, same hairline, same inset.
   // A box differs from its neighbours only in what it spans and what colour
@@ -507,7 +568,7 @@ function ObservatoryBento({
       {/* BOX 0 — primary. Salinity and water level side by side, no divider,
           no nested card: one region, one surface, one status. */}
       <div
-        data-status={primaryStatus?.level ?? "none"}
+        data-status={primaryStatus?.level ?? "none"} data-tone={(primaryStatus as ToneStatus | null | undefined)?.tone} data-strength={(primaryStatus as ToneStatus | null | undefined)?.strength}
         className={cn(
           cell,
           "status-card",
@@ -520,7 +581,7 @@ function ObservatoryBento({
       >
         {/* "QUAN TRẮC", not "NƯỚC": this box is the observatory's primary
             observation surface, not one domain among several. */}
-        <RegionHeader icon={Waves} title={dict.nav.monitoring} status={primaryStatus} dict={dict} />
+        <RegionHeader icon={Waves} title={dict.nav.monitoring} status={primaryStatus} grayReason={primaryGrayReason} dict={dict} />
         {/* `auto auto`, not `grid-cols-2`.
             Equal halves gave each value exactly 170px at 1440 — and "1.24‰"
             at 60px measures 173px, so the pair collided while "48cm" left
@@ -567,10 +628,11 @@ function ObservatoryBento({
         icon={Zap}
         title={dict.monitoring.soilChemistry}
         readings={[
-          { label: dict.monitoring.bulkEc, metric: soilEc, status: isDemo ? null : advisoryStatus(soilEc, "soil_ec_bulk") },
-          { label: dict.metricLabels.ph, metric: soilPh, status: isDemo ? null : advisoryStatus(soilPh, "soil_ph") },
+          { label: dict.monitoring.bulkEc, metric: soilEc, status: advisoryStatus(soilEc, "soil_ec_bulk", soil), reason: verdictOf(soilEc, "soil_ec_bulk", soil)?.display.key },
+          { label: dict.metricLabels.ph, metric: soilPh, status: advisoryStatus(soilPh, "soil_ph", soil), reason: verdictOf(soilPh, "soil_ph", soil)?.display.key },
         ]}
-        status={isDemo ? null : worstStatus([advisoryStatus(soilEc, "soil_ec_bulk"), advisoryStatus(soilPh, "soil_ph")])}
+        status={soilChemistryRegion.status}
+        grayReason={soilChemistryRegion.grayReason}
         dict={dict}
         placement="col-start-1 col-end-5 row-start-9 row-end-11 md:col-start-3 md:col-end-5 md:row-start-4 md:row-end-5 lg:col-start-5 lg:col-end-7 lg:row-start-3 lg:row-end-4"
       />
@@ -617,10 +679,11 @@ function ObservatoryBento({
         icon={Sprout}
         title={dict.monitoring.soilConditions}
         readings={[
-          { label: dict.metricLabels.moisture, metric: soilMoisture, status: isDemo ? null : advisoryStatus(soilMoisture, "soil_moisture") },
-          { label: dict.metricLabels.soilTemp, metric: soilTemp, status: isDemo ? null : advisoryStatus(soilTemp, "soil_temp") },
+          { label: dict.metricLabels.moisture, metric: soilMoisture, status: advisoryStatus(soilMoisture, "soil_moisture", soil), reason: verdictOf(soilMoisture, "soil_moisture", soil)?.display.key },
+          { label: dict.metricLabels.soilTemp, metric: soilTemp, status: advisoryStatus(soilTemp, "soil_temp", soil), reason: verdictOf(soilTemp, "soil_temp", soil)?.display.key },
         ]}
-        status={soilStatus}
+        status={soilConditionsRegion.status}
+        grayReason={soilConditionsRegion.grayReason}
         dict={dict}
         placement="col-start-1 col-end-5 row-start-7 row-end-9 md:col-start-1 md:col-end-3 md:row-start-4 md:row-end-5 lg:col-start-3 lg:col-end-5 lg:row-start-3 lg:row-end-4"
       />
@@ -677,7 +740,10 @@ export function ObservatoryCanvas({
   weather: initialWeather = null,
   thresholds = [],
   soilModels = [],
+  loading = false,
 }: {
+  /** Placeholder render while the data streams in: real layout, shimmering figures. */
+  loading?: boolean;
   model: ObservatoryViewModel;
   realtime?: PublicRealtimeConfig | null;
   /** The threshold registry (migration 023), loaded on the server. */
@@ -707,12 +773,13 @@ export function ObservatoryCanvas({
       }
     }
 
+    if (loading) return () => { active = false; };
     const id = window.setInterval(refreshWeatherHistory, WEATHER_REFRESH_MS);
     return () => {
       active = false;
       window.clearInterval(id);
     };
-  }, []);
+  }, [loading]);
 
   const series = useMemo(() => {
     if (!weatherSeries24h) return model.series;
@@ -741,12 +808,13 @@ export function ObservatoryCanvas({
       }
     }
 
+    if (loading) return () => { active = false; };
     const id = window.setInterval(refreshWeather, WEATHER_REFRESH_MS);
     return () => {
       active = false;
       window.clearInterval(id);
     };
-  }, []);
+  }, [loading]);
 
   // Domain-grouped, not station-grouped — see lib/monitoring/signals.ts for
   // why this is the information architecture rather than a layout choice.
@@ -789,7 +857,7 @@ export function ObservatoryCanvas({
   );
 
   return (
-    <LiveSignalContext.Provider value={{ connected, demo: model.mode === "demo" }}><div className="space-y-10 md:space-y-14">
+    <ObservatoryLoadingContext.Provider value={loading}><LiveSignalContext.Provider value={{ connected, demo: model.mode === "demo" }}><div className={cn("space-y-10 md:space-y-14", loading && "observatory-is-loading")} aria-busy={loading || undefined}>
       {/* The observatory: the Bento, and nothing above it.
           Two bands used to sit here — a demo notice explaining the `*` and
           `~` markers, and a "MẠNG LƯỚI · 2/3 ĐANG GỬI DỮ LIỆU" summary. The
@@ -813,8 +881,10 @@ export function ObservatoryCanvas({
           series={series}
           mapStations={mapStations}
         />
-        <p className="observatory-source-line">STATION_01 · STATION_02 <span>Open-Meteo · {dict.monitoring.regionalContextLabel}</span></p>
       </section>
+
+      {/* Scope and limits sit directly under the instrument, */}
+      <DataScopeSection dict={dict} />
 
       <section className="instrument-in-2 space-y-6">
         <div>
@@ -832,6 +902,6 @@ export function ObservatoryCanvas({
           <ThresholdTable rows={thresholds} soilModels={soilModels} />
         ) : null}
       </section>
-    </div></LiveSignalContext.Provider>
+    </div></LiveSignalContext.Provider></ObservatoryLoadingContext.Provider>
   );
 }

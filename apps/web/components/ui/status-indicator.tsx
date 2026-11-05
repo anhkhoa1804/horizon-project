@@ -151,6 +151,14 @@ export function StatusIndicator({ status, dict, detail, compact = false, classNa
  * from "no data source exists for this metric" — callers that don't know
  * get the older, safer default (`unavailable`), never a guess.
  */
+/**
+ * Soil moves slowly and the probe reports on a long cadence (about every 8 h), so a
+ * 30 minute "stale" mark would flag healthy soil data as old almost all day.
+ * live <= 9 h (one cadence plus slack), recent <= 24 h, stale <= 7 d. Keep in step with
+ * SOIL_EXPECTED_INTERVAL_MS in lib/monitoring/displayStatus.ts.
+ */
+export const SOIL_FRESHNESS_THRESHOLDS = { liveMs: 9 * 60 * 60_000, recentMs: 24 * 60 * 60_000, staleMs: 7 * 24 * 60 * 60_000 } as const;
+
 export function freshnessStatus(
   timestampIso: string | null | undefined,
   options: { thresholds?: { liveMs: number; recentMs: number; staleMs: number }; hasEverConnected?: boolean } = {},

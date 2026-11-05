@@ -53,7 +53,46 @@ export const en: Dictionary = {
 
   footer: {
     place: "Cồn Hô · Vĩnh Long",
-    copyright: "© Magnus",
+    copyright: "© 2026 Magnus · HORIZON",
+  },
+
+  dataScope: {
+    eyebrow: "Data information",
+    title: "Scope and limits of data use",
+    items: {
+      pilot: { title: "Community pilot", body: "A youth-led environmental-monitoring model at Cồn Hô, Nhị Long commune, Vĩnh Long province (Frogsleap Vietnam × YNet, YAI 2026), serving residents' livelihoods, daily life and climate-adaptation awareness.\nThe network has two stations and a gateway: the riverside Water station measures water level (ultrasonic sensor), water conductivity and temperature, with salinity derived from conductivity; the orchard Soil station measures soil moisture, conductivity, temperature and pH plus air temperature and humidity. Data travels over LoRa to the gateway and reaches the internet over 4G." },
+      place: { title: "Right place, right time", body: "Each figure represents only the point where the sensor sits, not the whole islet or river. The Water station reports about every 3 minutes, the Soil station about every 8 hours; the time shown is when the gateway received the packet, not when the sensor measured.\nReadings can drift when mud or algae coat a probe, a device is moved, a battery runs low or 4G drops (gaps appear). Air temperature, humidity, wind and rain in the four weather boxes come from the Open-Meteo forecast for the Vĩnh Long area, not from the stations." },
+      reference: { title: "Reference, not a substitute", body: "These are reference figures from a community model. They do not replace official monitoring or notices from hydro-meteorological, agricultural and local authorities.\nDo not use them as the only basis for decisions on safety, irrigation intake, production, investment or legal matters; check official notices where they exist. Alert thresholds and their sources are listed under References and thresholds below." },
+      context: { title: "How to read the colours", body: "Colour compares each figure with the station's own history: green is lower than usual, white is within the usual range, red is higher than usual or over a configured threshold. A colour changes only when two consecutive readings agree, so one noisy reading cannot tint a box.\nGray means there is not enough basis: the reading is old (water after about 10 minutes, soil after a day), the sensor reports a fault, or there are fewer than 14 days of history. Colour shows where a figure sits against the usual, not by itself whether it is safe or dangerous." },
+    },
+    legendLabel: "Colour key",
+    legend: {
+      green: "Green · lower than usual",
+      white: "White · within the usual range",
+      red: "Red · higher than usual or over a threshold",
+      gray: "Gray · not enough basis to assess",
+    },
+  },
+
+  assessment: {
+    withinReference: "Within reference threshold",
+    approachingThreshold: "Approaching alert threshold",
+    confirming: "Being confirmed",
+    thresholdExceeded: "Alert threshold exceeded",
+    lowerThanUsual: "Lower than usual",
+    higherThanUsual: "Higher than usual",
+    unusuallyLow: "Unusually low versus history",
+    unusuallyHigh: "Unusually high versus history",
+    withinHistoricalRange: "Within historical variation",
+    stale: "Old data",
+    offline: "No recent data",
+    unknownFreshness: "Measurement time unknown",
+    sensorFault: "Sensor fault",
+    missing: "Data missing",
+    suspect: "Suspect value",
+    unknownQuality: "Quality unknown",
+    noThreshold: "No threshold to assess against",
+    insufficient: "Not enough basis to assess",
   },
 
   common: {
@@ -186,7 +225,7 @@ export const en: Dictionary = {
     spaceTitle: "Station locations",
 
     referenceEyebrow: "Reference",
-    referenceTitle: "REFERENCES & THRESHOLDS",
+    referenceTitle: "References and thresholds",
     statusBasis: {
       configured: "Active",
       device: "Device",
@@ -447,6 +486,13 @@ export const en: Dictionary = {
     draft: "Draft — a working note written during development, not a published document.",
     demo: "Illustrative content, used to demonstrate the interface.",
     placeholder: "Placeholder content.",
+    indexEyebrow: "Notes from Cồn Hô",
+    indexTitle: "Field notes.",
+    indexKeyword: "Field notes",
+    indexLead: "How we chose locations, designed the stations, read the data and learned from residents — written while doing the work.",
+    allNotes: "All notes",
+    readNext: "Read next",
+    openOriginal: "Open original photo",
   },
 
   errors: {
@@ -479,7 +525,7 @@ export const en: Dictionary = {
 
   video: {
     play: "Play video",
-    openOnYoutube: "Watch on YouTube ↗",
+    openOnYoutube: "Watch on YouTube",
   },
 
   notes: {
@@ -624,6 +670,7 @@ export const en: Dictionary = {
     channelWebsite: "Website",
     reportEyebrow: "Field observation",
     reportTitle: "Seen something on the islet?",
+    reportKeyword: "on the islet",
     reportLead:
       "Unusual water levels, plants behaving oddly, or equipment that looks wrong. Every note is stored with its time and place.",
   },

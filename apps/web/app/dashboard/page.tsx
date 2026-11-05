@@ -11,7 +11,7 @@ import { loadThresholdRegistry, loadSoilWaterModels } from "@/lib/monitoring/thr
 import { HashScroll } from "@/components/ui/hash-scroll";
 import { PublicShell } from "@/components/layout/public-shell";
 import { ToolPageHeading } from "@/components/layout/tool-page-heading";
-import DashboardLoading from "./loading";
+import { ObservatoryLoading } from "@/components/monitoring/observatory-loading";
 
 export const revalidate = 60;
 
@@ -103,7 +103,7 @@ export default async function DashboardPage({
           </span>
         ) : null} />
 
-      <Suspense fallback={<DashboardLoading />}>
+      <Suspense fallback={<ObservatoryLoading />}>
         <MonitoringContent mode={mode} />
       </Suspense>
     </PublicShell>

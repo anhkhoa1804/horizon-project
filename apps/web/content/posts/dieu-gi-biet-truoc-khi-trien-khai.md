@@ -4,7 +4,7 @@ excerpt: Ghi lại các giả định ban đầu, để sau này có thể đố
 category: Ghi chép dự án
 date: 2026-01-22
 readingTime: 4 phút đọc
-cover: /assets/field/con-ho-visitors.jpg
+cover: /assets/field-report/con-ho-boat.jpg
 status: draft
 ---
 

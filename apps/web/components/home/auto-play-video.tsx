@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Play } from "lucide-react";
 import { useDict } from "@/lib/i18n/client";
 
 interface AutoPlayVideoProps {
@@ -11,57 +10,46 @@ interface AutoPlayVideoProps {
 }
 
 /**
- * Keep the evidence films visible before they play, then only create the
- * YouTube player once the reader is actually at the frame. A 70% threshold
- * prevents a video from starting while it is merely approaching the viewport.
- *
- * Browser autoplay rules require playback to begin muted; YouTube still keeps
- * its native controls available for an intentional unmute or pause.
- *
- * Before the player exists the poster is a real <button>: previously it was
- * an aria-hidden image with nothing focusable, so a keyboard or screen-reader
- * user — and anyone with `prefers-reduced-motion`, for whom a video starting
- * on scroll is exactly the motion they opted out of — had no way to start the
- * film. Reduced-motion readers now get click-to-play only. A plain "watch on
- * YouTube" link sits under the frame as the fallback when the embed itself is
- * blocked by a network, an extension, or a school/company filter.
+ * The film plays by itself, muted, once most of the frame is on screen (70%), so it is never started
+ * by a frame that is merely approaching. Before that the reader sees the film's own large thumbnail -
+ * no extra play icon on top. The thumbnail is still a real button, so keyboard users and readers with
+ * reduced motion (for whom nothing starts on scroll) can start it themselves. A plain YouTube link
+ * under the frame is the fallback when the embed is blocked.
  */
 export function AutoPlayVideo({ id, title, captionId }: AutoPlayVideoProps) {
   const dict = useDict();
   const frameRef = useRef<HTMLDivElement | null>(null);
-  const [isReadyToPlay, setIsReadyToPlay] = useState(false);
-  const [posterFailed, setPosterFailed] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [byClick, setByClick] = useState(false);
+  const [poster, setPoster] = useState<"max" | "hq" | "none">("max");
 
   useEffect(() => {
     const frame = frameRef.current;
-    if (!frame) return;
+    if (!frame || playing) return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-
-    if (!("IntersectionObserver" in window)) {
-      setIsReadyToPlay(true);
-      return;
-    }
-
+    if (!("IntersectionObserver" in window)) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting && entry.intersectionRatio >= 0.7) {
-          setIsReadyToPlay(true);
+          setPlaying(true);
           observer.disconnect();
         }
       },
       { threshold: [0, 0.7] },
     );
-
     observer.observe(frame);
     return () => observer.disconnect();
-  }, []);
+  }, [playing]);
+
+  // Started by scrolling: muted (browsers require it). Started by a press: with sound.
+  const params = `autoplay=1&mute=${byClick ? 0 : 1}&rel=0&modestbranding=1&iv_load_policy=3&playsinline=1&color=white`;
 
   return (
     <div className="space-y-2">
-      <div ref={frameRef} className="relative aspect-video overflow-hidden rounded-lg bg-wash-sunken">
-        {isReadyToPlay ? (
+      <div ref={frameRef} className="film-frame relative aspect-video overflow-hidden bg-wash-sunken">
+        {playing ? (
           <iframe
-            src={`https://www.youtube-nocookie.com/embed/${id}?rel=0&autoplay=1&mute=1&playsinline=1`}
+            src={`https://www.youtube-nocookie.com/embed/${id}?${params}`}
             title={title}
             aria-describedby={captionId}
             referrerPolicy="strict-origin-when-cross-origin"
@@ -72,36 +60,39 @@ export function AutoPlayVideo({ id, title, captionId }: AutoPlayVideoProps) {
         ) : (
           <button
             type="button"
-            onClick={() => setIsReadyToPlay(true)}
-            className="group absolute inset-0 h-full w-full focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-accent"
+            onClick={() => { setByClick(true); setPlaying(true); }}
+            className="film-poster group absolute inset-0 h-full w-full focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-accent"
             aria-label={`${dict.video.play}: ${title}`}
           >
-            {posterFailed ? null : (
-              // eslint-disable-next-line @next/next/no-img-element -- YouTube's verified thumbnail URL is an intentional lightweight poster.
+            {poster === "none" ? null : (
+              // eslint-disable-next-line @next/next/no-img-element -- YouTube's own thumbnail is the lightest honest poster.
               <img
-                src={`https://i.ytimg.com/vi/${id}/hqdefault.jpg`}
+                src={`https://i.ytimg.com/vi/${id}/${poster === "max" ? "maxresdefault" : "hqdefault"}.jpg`}
                 alt=""
                 loading="lazy"
                 referrerPolicy="no-referrer"
-                onError={() => setPosterFailed(true)}
+                onError={() => setPoster(poster === "max" ? "hq" : "none")}
+                onLoad={(e) => {
+                  // maxresdefault answers a 120x90 "missing" placeholder instead of failing.
+                  if (poster === "max" && e.currentTarget.naturalWidth < 400) setPoster("hq");
+                }}
                 className="h-full w-full object-cover"
               />
             )}
-            <span className="absolute inset-0 grid place-items-center">
-              <span className="grid h-16 w-16 place-items-center rounded-full bg-background/90 text-foreground shadow-sm transition-transform duration-[var(--motion-base)] group-hover:scale-105">
-                <Play className="ml-1 h-7 w-7" aria-hidden />
-              </span>
-            </span>
           </button>
         )}
       </div>
+      {/* The caption IS the YouTube link: one line instead of a title plus a separate "watch on YouTube". */}
       <a
+        id={captionId}
         href={`https://www.youtube.com/watch?v=${id}`}
         target="_blank"
         rel="noreferrer"
-        className="inline-flex min-h-11 items-center text-sm text-muted underline-offset-4 hover:text-accent hover:underline"
+        lang="vi"
+        aria-label={`${title} · ${dict.video.openOnYoutube}`}
+        className="video-caption-link inline-flex min-h-11 items-center gap-1.5 text-sm text-muted underline-offset-4 hover:text-accent hover:underline"
       >
-        {dict.video.openOnYoutube}
+        {title} <span aria-hidden>↗</span>
       </a>
     </div>
   );

@@ -19,12 +19,11 @@ import { parseFrontmatter } from "./frontmatter";
 export type GalleryStatus = "placeholder" | "illustrative" | "verified";
 
 /**
- * Deliberately excludes a "Fieldwork" category. No field deployment has
- * happened — firmware has never been compiled or flashed (docs/ARCHITECTURE.md,
- * "FUTURE / NOT YET DONE") — so offering the category at all would invite
- * mislabelling. Add it when there is real fieldwork to file under it.
+ * "Hiện trường" is for photographs of the real site visits (the project's field report).
+ * `status: verified` should only be given to a photo the team actually took there; stock or
+ * illustrative images keep their own marker.
  */
-export type GalleryCategory = "Thiết kế dự án" | "Phần cứng" | "Cảnh quan";
+export type GalleryCategory = "Thiết kế dự án" | "Phần cứng" | "Cảnh quan" | "Hiện trường";
 
 export interface GalleryItem {
   slug: string;
@@ -36,11 +35,13 @@ export interface GalleryItem {
   image: string;
   /** Attribution/origin for non-project assets. Null when the project made it. */
   source: string | null;
+  /** Optional curated position (1 = first). Curated items come before the rest. */
+  order: number | null;
 }
 
 const GALLERY_DIR = path.join(process.cwd(), "content", "gallery");
 const VALID_STATUSES: GalleryStatus[] = ["placeholder", "illustrative", "verified"];
-const VALID_CATEGORIES: GalleryCategory[] = ["Thiết kế dự án", "Phần cứng", "Cảnh quan"];
+const VALID_CATEGORIES: GalleryCategory[] = ["Thiết kế dự án", "Phần cứng", "Cảnh quan", "Hiện trường"];
 
 function toStatus(value: string | undefined): GalleryStatus {
   // Defaults to `placeholder`, the most conservative label — an unlabelled or
@@ -69,8 +70,10 @@ export function getGalleryItems(): GalleryItem[] {
         status: toStatus(data.status),
         image: data.image || "",
         source: data.source || null,
+        order: Number.isFinite(Number(data.order)) && data.order ? Number(data.order) : null,
       } satisfies GalleryItem;
     })
     .filter((item) => item.image.length > 0)
-    .sort((a, b) => a.slug.localeCompare(b.slug));
+    // Curated order first, then real photographs, then illustrative / placeholder items; stable by slug.
+    .sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || Number(b.status === "verified") - Number(a.status === "verified") || a.slug.localeCompare(b.slug));
 }

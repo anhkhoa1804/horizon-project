@@ -1,17 +1,15 @@
-import { Skeleton } from "@/components/ui/skeleton";
+import { getI18n } from "@/lib/i18n/server";
+import { PublicShell } from "@/components/layout/public-shell";
+import { ToolPageHeading } from "@/components/layout/tool-page-heading";
+import { ObservatoryLoading } from "@/components/monitoring/observatory-loading";
 
-export default function DashboardLoading() {
+/** Route-level loading: the same page, header and canvas, with the figures still loading. */
+export default async function DashboardLoading() {
+  const { dict } = await getI18n();
   return (
-    <div className="space-y-6">
-      <Skeleton className="h-10 w-72" />
-      <div className="grid grid-cols-2 gap-6 border-y border-border/60 py-6 sm:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <Skeleton key={index} className="h-12" />
-        ))}
-      </div>
-      <Skeleton className="h-10 w-64" />
-      <Skeleton className="h-32 w-full max-w-sm" />
-      <Skeleton className="h-64 w-full" />
-    </div>
+    <PublicShell activePath="/dashboard">
+      <ToolPageHeading title={dict.monitoring.title} description={dict.home.subtitle} className="h-text" />
+      <ObservatoryLoading />
+    </PublicShell>
   );
 }

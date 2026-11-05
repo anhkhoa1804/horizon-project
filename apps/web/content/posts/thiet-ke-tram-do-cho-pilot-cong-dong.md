@@ -4,7 +4,7 @@ excerpt: Ràng buộc không chỉ là kỹ thuật. Một trạm đặt trong k
 category: Phần cứng
 date: 2026-02-05
 readingTime: 6 phút đọc
-cover: /assets/hardware/board-gateway.jpg
+cover: /assets/field-report/install-solar-station.jpg
 status: draft
 ---
 
